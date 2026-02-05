@@ -94,7 +94,7 @@ class RAGSimulator:
         for edge in data.get('graph_data', {}).get('edges', []):
             src = edge.get('source', '')
             tgt = edge.get('target', '')
-            rel = edge.get('relationship', '')
+            rel = edge.get('type', '')
             
             if src in self.documents and tgt in self.documents:
                 if rel == 'SIBLINGS':
