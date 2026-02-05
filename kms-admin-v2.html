@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KMS Admin v2.1 - 지식관리체계 검증</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        #network { width: 100%; height: 100%; }
+        .toast { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .regulation-badge { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen overflow-hidden">
+
+<div id="app" class="flex h-full">
+
+    <!-- Toast 알림 -->
+    <div class="fixed top-4 right-4 z-50 space-y-2">
+        <div v-for="(toast, idx) in toasts" :key="idx"
+            :class="toast.type === 'error' ? 'bg-red-500' : toast.type === 'warning' ? 'bg-yellow-500' : 'bg-green-500'"
+            class="toast text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 max-w-sm">
+            <span>{{ toast.message }}</span>
+            <button @click="removeToast(idx)" class="ml-2 hover:opacity-70">&times;</button>
+        </div>
+    </div>
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="w-80 bg-white border-r border-gray-200 flex flex-col">
+        <div class="p-4 border-b border-gray-100">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-lg font-bold text-gray-800">KMS Admin</h1>
+                    <p class="text-xs text-gray-500">v2.1 - 6-Facet Taxonomy</p>
+                </div>
+                <span class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded">확장판</span>
+            </div>
+        </div>
+
+        <!-- Taxonomy Tabs - 2줄 -->
+        <div class="flex-1 overflow-y-auto scrollbar-thin p-3">
+            <!-- 첫째 줄: 기본 탭 -->
+            <div class="flex gap-1 mb-2">
+                <button @click="activeTab = 'carriers'"
+                    :class="activeTab === 'carriers' ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-100'"
+                    class="flex-1 text-xs py-1.5 rounded-md font-medium transition">보험사</button>
+                <button @click="activeTab = 'products'"
+                    :class="activeTab === 'products' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'"
+                    class="flex-1 text-xs py-1.5 rounded-md font-medium transition">상품</button>
+                <button @click="activeTab = 'docTypes'"
+                    :class="activeTab === 'docTypes' ? 'bg-green-100 text-green-700' : 'text-gray-600 hover:bg-gray-100'"
+                    class="flex-1 text-xs py-1.5 rounded-md font-medium transition">문서유형</button>
+            </div>
+            <!-- 둘째 줄: v2.1 확장 탭 -->
+            <div class="flex gap-1 mb-3">
+                <button @click="activeTab = 'processes'"
+                    :class="activeTab === 'processes' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-100'"
+                    class="flex-1 text-xs py-1.5 rounded-md font-medium transition">프로세스</button>
+                <button @click="activeTab = 'audiences'"
+                    :class="activeTab === 'audiences' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'"
+                    class="flex-1 text-xs py-1.5 rounded-md font-medium transition">역할</button>
+                <button @click="activeTab = 'certifications'"
+                    :class="activeTab === 'certifications' ? 'bg-pink-100 text-pink-700' : 'text-gray-600 hover:bg-gray-100'"
+                    class="flex-1 text-xs py-1.5 rounded-md font-medium transition">자격증</button>
+            </div>
+
+            <!-- Carriers -->
+            <div v-if="activeTab === 'carriers'" class="space-y-2">
+                <!-- 필터 -->
+                <div class="flex gap-1 mb-2">
+                    <button @click="carrierTypeFilter = 'all'"
+                        :class="carrierTypeFilter === 'all' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                        class="flex-1 text-xs py-1 rounded">전체</button>
+                    <button @click="carrierTypeFilter = 'life'"
+                        :class="carrierTypeFilter === 'life' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                        class="flex-1 text-xs py-1 rounded">생보</button>
+                    <button @click="carrierTypeFilter = 'non-life'"
+                        :class="carrierTypeFilter === 'non-life' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                        class="flex-1 text-xs py-1 rounded">손보</button>
+                </div>
+                <div v-for="(carrier, id) in filteredCarriers" :key="id"
+                    @click="selectTaxonomy('carrier', id)"
+                    :class="selectedTaxonomy.type === 'carrier' && selectedTaxonomy.id === id ? 'ring-2 ring-purple-400' : ''"
+                    class="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-purple-50 transition">
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-sm">{{ carrier.name }}</span>
+                        <div class="flex items-center gap-1">
+                            <span v-if="carrier.type" class="text-xs px-1.5 py-0.5 rounded"
+                                :class="carrier.type === 'life' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'">
+                                {{ carrier.type === 'life' ? '생' : '손' }}
+                            </span>
+                            <span class="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded">{{ getDocCountByCarrier(id) }}건</span>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">{{ carrier.alias?.join(', ') || '-' }}</div>
+                </div>
+                <button @click="showAddModal('carrier')"
+                    class="w-full p-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 text-sm hover:border-purple-400 hover:text-purple-600 transition">
+                    + 보험사 추가
+                </button>
+            </div>
+
+            <!-- Products -->
+            <div v-if="activeTab === 'products'" class="space-y-2">
+                <!-- 카테고리 필터 -->
+                <select v-model="productCategoryFilter" class="w-full px-2 py-1 text-xs border rounded mb-2">
+                    <option value="all">전체 카테고리</option>
+                    <option v-for="(cat, key) in store.taxonomy.productCategories" :key="key" :value="key">{{ cat.name }}</option>
+                </select>
+                <div v-for="(product, id) in filteredProducts" :key="id"
+                    @click="selectTaxonomy('product', id)"
+                    :class="selectedTaxonomy.type === 'product' && selectedTaxonomy.id === id ? 'ring-2 ring-blue-400' : ''"
+                    class="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-sm">{{ product.name }}</span>
+                        <span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{{ product.category }}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">{{ id }}</div>
+                    <div v-if="product.requires_license" class="text-xs text-orange-600 mt-1">
+                        🔒 {{ product.requires_license }} 자격 필요
+                    </div>
+                </div>
+                <button @click="showAddModal('product')"
+                    class="w-full p-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 text-sm hover:border-blue-400 hover:text-blue-600 transition">
+                    + 상품 추가
+                </button>
+            </div>
+
+            <!-- DocTypes -->
+            <div v-if="activeTab === 'docTypes'" class="space-y-2">
+                <!-- Tier 필터 -->
+                <div class="flex gap-1 mb-2">
+                    <button @click="docTypeTierFilter = 'all'"
+                        :class="docTypeTierFilter === 'all' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                        class="flex-1 text-xs py-1 rounded">전체</button>
+                    <button @click="docTypeTierFilter = 'HOT'"
+                        :class="docTypeTierFilter === 'HOT' ? 'bg-red-200 text-red-700' : 'hover:bg-gray-100'"
+                        class="flex-1 text-xs py-1 rounded">🔥HOT</button>
+                    <button @click="docTypeTierFilter = 'WARM'"
+                        :class="docTypeTierFilter === 'WARM' ? 'bg-yellow-200 text-yellow-700' : 'hover:bg-gray-100'"
+                        class="flex-1 text-xs py-1 rounded">🌡️WARM</button>
+                    <button @click="docTypeTierFilter = 'COLD'"
+                        :class="docTypeTierFilter === 'COLD' ? 'bg-gray-300 text-gray-700' : 'hover:bg-gray-100'"
+                        class="flex-1 text-xs py-1 rounded">❄️COLD</button>
+                </div>
+                <div v-for="(docType, id) in filteredDocTypes" :key="id"
+                    class="p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-sm">{{ docType.name }}</span>
+                        <div class="flex items-center gap-1">
+                            <span v-if="docType.source" class="text-xs px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded">{{ docType.source }}</span>
+                            <span :class="getTierClass(docType.tier)" class="text-xs px-2 py-0.5 rounded">{{ docType.tier }}</span>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">{{ id }}</div>
+                    <div v-if="docType.description" class="text-xs text-gray-400 mt-1">{{ docType.description }}</div>
+                </div>
+            </div>
+
+            <!-- Processes (v2.1 신규) -->
+            <div v-if="activeTab === 'processes'" class="space-y-2">
+                <div class="text-xs text-gray-500 mb-2 p-2 bg-orange-50 rounded">
+                    📋 영업 프로세스 단계별 문서 분류
+                </div>
+                <div v-for="(process, id) in sortedProcesses" :key="id"
+                    @click="selectTaxonomy('process', id)"
+                    :class="selectedTaxonomy.type === 'process' && selectedTaxonomy.id === id ? 'ring-2 ring-orange-400' : ''"
+                    class="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-orange-50 transition">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-6 h-6 flex items-center justify-center bg-orange-100 text-orange-700 rounded-full text-xs font-bold">
+                                {{ process.order }}
+                            </span>
+                            <span class="font-medium text-sm">{{ process.name }}</span>
+                        </div>
+                        <span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded">{{ getDocCountByProcess(id) }}건</span>
+                    </div>
+                    <div v-if="process.description" class="text-xs text-gray-500 mt-2 ml-8">{{ process.description }}</div>
+                </div>
+            </div>
+
+            <!-- Audiences (v2.1 신규) -->
+            <div v-if="activeTab === 'audiences'" class="space-y-2">
+                <div class="text-xs text-gray-500 mb-2 p-2 bg-cyan-50 rounded">
+                    👥 대상 역할별 문서 분류
+                </div>
+                <div v-for="(audience, id) in sortedAudiences" :key="id"
+                    @click="selectTaxonomy('audience', id)"
+                    :class="selectedTaxonomy.type === 'audience' && selectedTaxonomy.id === id ? 'ring-2 ring-cyan-400' : ''"
+                    class="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-cyan-50 transition">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-6 h-6 flex items-center justify-center bg-cyan-100 text-cyan-700 rounded-full text-xs font-bold">
+                                L{{ audience.level }}
+                            </span>
+                            <span class="font-medium text-sm">{{ audience.name }}</span>
+                        </div>
+                        <span class="text-xs px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded">{{ getDocCountByAudience(id) }}건</span>
+                    </div>
+                    <div v-if="audience.description" class="text-xs text-gray-500 mt-2 ml-8">{{ audience.description }}</div>
+                </div>
+            </div>
+
+            <!-- Certifications (v2.1 신규) -->
+            <div v-if="activeTab === 'certifications'" class="space-y-2">
+                <div class="text-xs text-gray-500 mb-2 p-2 bg-pink-50 rounded">
+                    📜 설계사 자격증 관리
+                </div>
+                <div v-for="(cert, id) in store.taxonomy.certifications" :key="id"
+                    class="p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <span class="font-medium text-sm">{{ cert.name }}</span>
+                        <span v-if="cert.mandatory" class="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded">필수</span>
+                        <span v-else class="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">선택</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">{{ id }}</div>
+                    <div v-if="cert.hours" class="text-xs text-gray-400 mt-1">교육시간: {{ cert.hours }}시간</div>
+                    <div v-if="cert.description" class="text-xs text-gray-400">{{ cert.description }}</div>
+                    <div v-if="cert.products" class="flex flex-wrap gap-1 mt-2">
+                        <span v-for="prd in cert.products" :key="prd" class="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
+                            {{ getProductName(prd) }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="p-3 border-t border-gray-100">
+            <label class="block w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition">
+                <span class="text-sm text-gray-600">📁 파일 업로드 (자동 분류)</span>
+                <input type="file" accept=".md,.pdf,.hwp,.docx" @change="handleFileUpload" class="hidden">
+            </label>
+        </div>
+
+        <!-- Data Actions -->
+        <div class="p-3 border-t border-gray-100 flex gap-2">
+            <button @click="exportData" class="flex-1 py-2 px-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium transition">
+                내보내기
+            </button>
+            <label class="flex-1 py-2 px-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium text-center cursor-pointer transition">
+                가져오기
+                <input type="file" accept=".json" @change="importData" class="hidden">
+            </label>
+        </div>
+    </aside>
+
+    <!-- CENTER AREA -->
+    <main class="flex-1 flex flex-col">
+        <!-- Toolbar -->
+        <div class="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-4">
+            <div class="flex items-center gap-2">
+                <button @click="viewMode = 'graph'"
+                    :class="viewMode === 'graph' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                    class="p-2 rounded-lg transition" title="그래프 뷰">📊</button>
+                <button @click="viewMode = 'list'"
+                    :class="viewMode === 'list' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                    class="p-2 rounded-lg transition" title="목록 뷰">📋</button>
+                <button @click="viewMode = 'validation'"
+                    :class="viewMode === 'validation' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                    class="p-2 rounded-lg transition" title="검증 뷰">✅</button>
+                <button @click="viewMode = 'timeline'"
+                    :class="viewMode === 'timeline' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                    class="p-2 rounded-lg transition" title="규제 타임라인">📅</button>
+            </div>
+            <div class="h-6 w-px bg-gray-200"></div>
+            <input type="text" v-model="searchQuery" placeholder="문서 검색..."
+                class="flex-1 px-3 py-1.5 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <!-- 필터 드롭다운 -->
+            <select v-model="filterProcess" class="px-2 py-1.5 text-xs border rounded-lg">
+                <option value="">프로세스 전체</option>
+                <option v-for="(p, id) in store.taxonomy.processes" :key="id" :value="id">{{ p.name }}</option>
+            </select>
+            <select v-model="filterAudience" class="px-2 py-1.5 text-xs border rounded-lg">
+                <option value="">역할 전체</option>
+                <option v-for="(a, id) in store.taxonomy.audiences" :key="id" :value="id">{{ a.name }}</option>
+            </select>
+            <button @click="showAddDocModal" class="px-4 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition">
+                + 문서 생성
+            </button>
+        </div>
+
+        <!-- Regulation Alert Bar (다가오는 규제) -->
+        <div v-if="upcomingRegulation" class="bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-2 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="regulation-badge px-2 py-1 bg-white/20 rounded text-xs font-bold">⚠️ 규제 예고</span>
+                <span class="font-medium">{{ upcomingRegulation.name }}</span>
+                <span class="text-sm opacity-90">{{ upcomingRegulation.date }}</span>
+            </div>
+            <span class="text-sm">D-{{ getDaysUntil(upcomingRegulation.date) }}</span>
+        </div>
+
+        <!-- Graph View -->
+        <div v-show="viewMode === 'graph'" class="flex-1 relative">
+            <div id="network" class="w-full h-full bg-gray-50"></div>
+            <div class="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-lg p-3 shadow-lg text-xs">
+                <div class="font-bold mb-2">범례</div>
+                <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-purple-500"></span> 보험사</div>
+                <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-blue-500"></span> 상품</div>
+                <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-red-500"></span> HOT</div>
+                <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-yellow-500"></span> WARM</div>
+                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-gray-400"></span> COLD</div>
+            </div>
+            <div class="absolute bottom-4 right-4 flex gap-2">
+                <button @click="fitGraph" class="px-4 py-2 bg-white shadow-lg rounded-lg text-sm hover:bg-gray-50 transition">
+                    전체 보기
+                </button>
+                <button v-if="selectedDocId" @click="highlightRelatedDocs" class="px-4 py-2 bg-blue-500 text-white shadow-lg rounded-lg text-sm hover:bg-blue-600 transition">
+                    연관 문서 전파
+                </button>
+            </div>
+        </div>
+
+        <!-- List View -->
+        <div v-show="viewMode === 'list'" class="flex-1 overflow-auto p-4">
+            <table class="w-full bg-white rounded-lg shadow-sm overflow-hidden">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">문서명</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">보험사</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">상품</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">유형</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">프로세스</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">대상</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tier</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">액션</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    <tr v-for="(doc, id) in filteredDocuments" :key="id"
+                        @click="selectDocument(id)"
+                        :class="[selectedDocId === id ? 'bg-blue-50' : '', highlightedDocs.includes(id) ? 'ring-2 ring-blue-400' : '']"
+                        class="cursor-pointer hover:bg-gray-50 transition">
+                        <td class="px-4 py-3 text-sm font-medium text-gray-800">{{ doc.name }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ getCarrierName(doc.carrier) }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ getProductName(doc.product) }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ getDocTypeName(doc.docType) }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ getProcessName(doc.process) }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ getAudienceName(doc.audience) }}</td>
+                        <td class="px-4 py-3">
+                            <span :class="getTierClass(doc.tier)" class="text-xs px-2 py-0.5 rounded">{{ doc.tier }}</span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <button @click.stop="deleteDocument(id)" class="text-red-500 hover:text-red-700 text-sm">삭제</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Validation View -->
+        <div v-show="viewMode === 'validation'" class="flex-1 overflow-auto p-4">
+            <div class="grid grid-cols-2 gap-4">
+                <!-- 유니크 검증 -->
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                    <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                        🔑 유니크 검증
+                    </h3>
+                    <div v-if="duplicateGroups.length === 0" class="text-green-600 text-sm flex items-center gap-2">
+                        ✅ 모든 문서가 유니크합니다
+                    </div>
+                    <div v-else class="space-y-2">
+                        <div v-for="group in duplicateGroups" :key="group.key" class="p-3 bg-red-50 rounded-lg border border-red-200">
+                            <div class="text-sm font-medium text-red-700">{{ group.key }}</div>
+                            <div class="text-xs text-red-600 mt-1">{{ group.docs.length }}개 중복</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 전파 검증 -->
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                    <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                        🔗 전파 검증
+                    </h3>
+                    <div class="text-sm text-gray-600 mb-3">문서를 선택하고 "연관 문서 전파" 버튼을 클릭하세요</div>
+                    <div v-if="selectedDocId" class="space-y-2">
+                        <div class="p-3 bg-blue-50 rounded-lg">
+                            <div class="font-medium text-sm">{{ selectedDoc?.name }}</div>
+                            <div class="text-xs text-gray-500 mt-2">연관 문서 ({{ getRelatedDocIds(selectedDocId).length }}개):</div>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <span v-for="relId in getRelatedDocIds(selectedDocId)" :key="relId"
+                                    class="text-xs px-2 py-1 bg-white rounded border">
+                                    {{ getDocName(relId) }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 통계 (확장) -->
+                <div class="bg-white rounded-lg shadow-sm p-4 col-span-2">
+                    <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                        📊 통계
+                    </h3>
+                    <div class="grid grid-cols-6 gap-3 text-sm">
+                        <div class="p-3 bg-purple-50 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-purple-600">{{ Object.keys(store.taxonomy.carriers).length - 1 }}</div>
+                            <div class="text-xs text-gray-500">보험사</div>
+                        </div>
+                        <div class="p-3 bg-blue-50 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-blue-600">{{ Object.keys(store.taxonomy.products).length - 1 }}</div>
+                            <div class="text-xs text-gray-500">상품</div>
+                        </div>
+                        <div class="p-3 bg-green-50 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-green-600">{{ Object.keys(store.taxonomy.docTypes).length }}</div>
+                            <div class="text-xs text-gray-500">문서유형</div>
+                        </div>
+                        <div class="p-3 bg-orange-50 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-orange-600">{{ Object.keys(store.taxonomy.processes).length - 1 }}</div>
+                            <div class="text-xs text-gray-500">프로세스</div>
+                        </div>
+                        <div class="p-3 bg-cyan-50 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-cyan-600">{{ Object.keys(store.taxonomy.audiences).length - 1 }}</div>
+                            <div class="text-xs text-gray-500">역할</div>
+                        </div>
+                        <div class="p-3 bg-indigo-50 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-indigo-600">{{ Object.keys(store.documents).length }}</div>
+                            <div class="text-xs text-gray-500">문서</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timeline View (v2.1 신규) -->
+        <div v-show="viewMode === 'timeline'" class="flex-1 overflow-auto p-4">
+            <div class="max-w-4xl mx-auto">
+                <h2 class="text-xl font-bold text-gray-800 mb-6">📅 규제 타임라인</h2>
+                <div class="relative">
+                    <!-- 타임라인 선 -->
+                    <div class="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                    
+                    <div v-for="(reg, idx) in store.taxonomy.regulationTimeline" :key="idx" class="relative pl-20 pb-8">
+                        <!-- 노드 -->
+                        <div class="absolute left-6 w-5 h-5 rounded-full border-4"
+                            :class="getRegulationStatusClass(reg.status)"></div>
+                        
+                        <!-- 카드 -->
+                        <div class="bg-white rounded-lg shadow-sm p-4 border-l-4"
+                            :class="getRegulationBorderClass(reg.impact)">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <span class="text-sm text-gray-500">{{ reg.date }}</span>
+                                    <h3 class="font-bold text-gray-800 mt-1">{{ reg.name }}</h3>
+                                    <p class="text-sm text-gray-600 mt-2">{{ reg.description }}</p>
+                                </div>
+                                <div class="flex flex-col items-end gap-2">
+                                    <span class="text-xs px-2 py-1 rounded"
+                                        :class="reg.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'">
+                                        {{ reg.status === 'active' ? '시행중' : '예정' }}
+                                    </span>
+                                    <span v-if="reg.impact" class="text-xs px-2 py-1 rounded"
+                                        :class="reg.impact === 'critical' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'">
+                                        {{ reg.impact === 'critical' ? '⚠️ 매우중요' : '중요' }}
+                                    </span>
+                                    <span v-if="reg.status === 'upcoming'" class="text-xs text-gray-500">
+                                        D-{{ getDaysUntil(reg.date) }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="h-8 bg-gray-100 border-t border-gray-200 flex items-center px-4 text-xs text-gray-600">
+            <span>문서: {{ Object.keys(store.documents).length }}개</span>
+            <span class="mx-2">|</span>
+            <span :class="duplicateGroups.length > 0 ? 'text-red-600 font-medium' : 'text-green-600'">
+                중복: {{ duplicateGroups.length }}건
+            </span>
+            <span class="mx-2">|</span>
+            <span v-if="highlightedDocs.length > 0" class="text-blue-600">
+                전파된 문서: {{ highlightedDocs.length }}개
+            </span>
+            <span class="ml-auto text-gray-400">v{{ store.version }} | {{ formatDate(store.lastModified) }}</span>
+        </div>
+    </main>
+
+    <!-- RIGHT PANEL -->
+    <aside v-show="selectedDocId || selectedTaxonomy.type" class="w-80 bg-white border-l border-gray-200 flex flex-col">
+        
+        <!-- Process Detail -->
+        <div v-if="selectedTaxonomy.type === 'process'" class="flex-1 overflow-y-auto scrollbar-thin">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 class="font-bold text-gray-800">프로세스 상세</h2>
+                <button @click="selectedTaxonomy.type = null; selectedTaxonomy.id = null" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div v-if="store.taxonomy.processes[selectedTaxonomy.id]" class="p-4 space-y-4">
+                <div>
+                    <label class="text-xs font-medium text-gray-500">ID</label>
+                    <div class="text-sm text-gray-800 font-mono bg-gray-50 p-2 rounded mt-1">{{ selectedTaxonomy.id }}</div>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500">프로세스명</label>
+                    <div class="text-sm text-gray-800 bg-gray-50 p-2 rounded mt-1">{{ store.taxonomy.processes[selectedTaxonomy.id].name }}</div>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500">순서</label>
+                    <div class="text-sm text-gray-800 bg-gray-50 p-2 rounded mt-1">{{ store.taxonomy.processes[selectedTaxonomy.id].order }}</div>
+                </div>
+                <div v-if="store.taxonomy.processes[selectedTaxonomy.id].description">
+                    <label class="text-xs font-medium text-gray-500">설명</label>
+                    <div class="text-sm text-gray-600 bg-gray-50 p-2 rounded mt-1">{{ store.taxonomy.processes[selectedTaxonomy.id].description }}</div>
+                </div>
+                <div class="border-t border-gray-100 pt-4">
+                    <label class="text-xs font-medium text-gray-500">관련 문서 ({{ getDocCountByProcess(selectedTaxonomy.id) }}건)</label>
+                    <div class="mt-2 space-y-1 max-h-60 overflow-y-auto">
+                        <div v-for="(doc, docId) in getDocsByProcess(selectedTaxonomy.id)" :key="docId"
+                            @click="selectDocument(docId)"
+                            class="p-2 bg-gray-50 rounded cursor-pointer hover:bg-orange-50 transition text-sm">
+                            {{ doc.name }}
+                        </div>
+                        <div v-if="getDocCountByProcess(selectedTaxonomy.id) === 0" class="text-sm text-gray-400 py-2">
+                            등록된 문서 없음
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audience Detail -->
+        <div v-else-if="selectedTaxonomy.type === 'audience'" class="flex-1 overflow-y-auto scrollbar-thin">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 class="font-bold text-gray-800">역할 상세</h2>
+                <button @click="selectedTaxonomy.type = null; selectedTaxonomy.id = null" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div v-if="store.taxonomy.audiences[selectedTaxonomy.id]" class="p-4 space-y-4">
+                <div>
+                    <label class="text-xs font-medium text-gray-500">ID</label>
+                    <div class="text-sm text-gray-800 font-mono bg-gray-50 p-2 rounded mt-1">{{ selectedTaxonomy.id }}</div>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500">역할명</label>
+                    <div class="text-sm text-gray-800 bg-gray-50 p-2 rounded mt-1">{{ store.taxonomy.audiences[selectedTaxonomy.id].name }}</div>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500">레벨</label>
+                    <div class="text-sm text-gray-800 bg-gray-50 p-2 rounded mt-1">{{ store.taxonomy.audiences[selectedTaxonomy.id].level }}</div>
+                </div>
+                <div class="border-t border-gray-100 pt-4">
+                    <label class="text-xs font-medium text-gray-500">관련 문서 ({{ getDocCountByAudience(selectedTaxonomy.id) }}건)</label>
+                    <div class="mt-2 space-y-1 max-h-60 overflow-y-auto">
+                        <div v-for="(doc, docId) in getDocsByAudience(selectedTaxonomy.id)" :key="docId"
+                            @click="selectDocument(docId)"
+                            class="p-2 bg-gray-50 rounded cursor-pointer hover:bg-cyan-50 transition text-sm">
+                            {{ doc.name }}
+                        </div>
+                        <div v-if="getDocCountByAudience(selectedTaxonomy.id) === 0" class="text-sm text-gray-400 py-2">
+                            등록된 문서 없음
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Carrier Detail -->
+        <div v-else-if="selectedTaxonomy.type === 'carrier'" class="flex-1 overflow-y-auto scrollbar-thin">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 class="font-bold text-gray-800">보험사 상세</h2>
+                <button @click="selectedTaxonomy.type = null; selectedTaxonomy.id = null" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div v-if="store.taxonomy.carriers[selectedTaxonomy.id]" class="p-4 space-y-4">
+                <div>
+                    <label class="text-xs font-medium text-gray-500">ID</label>
+                    <div class="text-sm text-gray-800 font-mono bg-gray-50 p-2 rounded mt-1">{{ selectedTaxonomy.id }}</div>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500">보험사명</label>
+                    <div class="text-sm text-gray-800 bg-gray-50 p-2 rounded mt-1">{{ store.taxonomy.carriers[selectedTaxonomy.id].name }}</div>
+                </div>
+                <div v-if="store.taxonomy.carriers[selectedTaxonomy.id].type">
+                    <label class="text-xs font-medium text-gray-500">구분</label>
+                    <div class="text-sm text-gray-800 bg-gray-50 p-2 rounded mt-1">
+                        {{ store.taxonomy.carriers[selectedTaxonomy.id].type === 'life' ? '생명보험' : '손해보험' }}
+                    </div>
+                </div>
+                <div class="border-t border-gray-100 pt-4">
+                    <label class="text-xs font-medium text-gray-500">통계</label>
+                    <div class="grid grid-cols-3 gap-2 mt-2">
+                        <div class="p-2 bg-purple-50 rounded text-center">
+                            <div class="text-lg font-bold text-purple-600">{{ getDocCountByCarrier(selectedTaxonomy.id) }}</div>
+                            <div class="text-xs text-gray-500">문서</div>
+                        </div>
+                        <div class="p-2 bg-red-50 rounded text-center">
+                            <div class="text-lg font-bold text-red-600">{{ getDocCountByCarrierTier(selectedTaxonomy.id, 'HOT') }}</div>
+                            <div class="text-xs text-gray-500">HOT</div>
+                        </div>
+                        <div class="p-2 bg-yellow-50 rounded text-center">
+                            <div class="text-lg font-bold text-yellow-600">{{ getDocCountByCarrierTier(selectedTaxonomy.id, 'WARM') }}</div>
+                            <div class="text-xs text-gray-500">WARM</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document Detail -->
+        <div v-else-if="selectedDocId" class="flex-1 overflow-y-auto scrollbar-thin">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 class="font-bold text-gray-800">문서 상세</h2>
+                <button @click="selectedDocId = null; highlightedDocs = []" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+
+            <div v-if="selectedDoc" class="p-4 space-y-4">
+                <div>
+                    <label class="text-xs font-medium text-gray-500">문서 ID</label>
+                    <div class="text-sm text-gray-800 font-mono bg-gray-50 p-2 rounded mt-1 break-all">{{ selectedDocId }}</div>
+                </div>
+
+                <div>
+                    <label class="text-xs font-medium text-gray-500">문서명</label>
+                    <input type="text" v-model="selectedDoc.name" @change="saveStore"
+                        class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">보험사</label>
+                        <select v-model="selectedDoc.carrier" @change="saveStore"
+                            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option v-for="(c, id) in store.taxonomy.carriers" :key="id" :value="id">{{ c.name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">상품</label>
+                        <select v-model="selectedDoc.product" @change="saveStore"
+                            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option v-for="(p, id) in store.taxonomy.products" :key="id" :value="id">{{ p.name }}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs font-medium text-gray-500">문서유형</label>
+                    <select v-model="selectedDoc.docType" @change="saveStore"
+                        class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                        <option v-for="(dt, id) in store.taxonomy.docTypes" :key="id" :value="id">{{ dt.name }}</option>
+                    </select>
+                </div>
+
+                <!-- v2.1 신규 필드 -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">프로세스</label>
+                        <select v-model="selectedDoc.process" @change="saveStore"
+                            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="">미지정</option>
+                            <option v-for="(p, id) in store.taxonomy.processes" :key="id" :value="id">{{ p.name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">대상역할</label>
+                        <select v-model="selectedDoc.audience" @change="saveStore"
+                            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="">미지정</option>
+                            <option v-for="(a, id) in store.taxonomy.audiences" :key="id" :value="id">{{ a.name }}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs font-medium text-gray-500">Tier</label>
+                    <div :class="getTierClass(selectedDoc.tier)" class="mt-1 px-3 py-2 rounded-lg text-sm text-center font-medium">
+                        {{ selectedDoc.tier }}
+                    </div>
+                </div>
+
+                <!-- Relations -->
+                <div class="border-t border-gray-100 pt-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-3">관계 설정</h3>
+
+                    <!-- Siblings -->
+                    <div class="mb-3">
+                        <label class="text-xs font-medium text-gray-500">형제 문서 (양방향)</label>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            <span v-for="sibId in selectedDoc.relations?.siblings || []" :key="sibId"
+                                @click="selectDocument(sibId)"
+                                class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs cursor-pointer hover:bg-green-200">
+                                {{ getDocName(sibId) }}
+                                <button @click.stop="removeSiblingRelation(sibId)" class="hover:text-red-500">&times;</button>
+                            </span>
+                        </div>
+                        <select @change="addSiblingRelation($event)"
+                            class="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="">+ 형제 추가</option>
+                            <option v-for="(doc, id) in availableSiblings" :key="id" :value="id">{{ doc.name }}</option>
+                        </select>
+                    </div>
+
+                    <!-- References -->
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">참조 문서 (단방향)</label>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            <span v-for="refId in selectedDoc.relations?.references || []" :key="refId"
+                                @click="selectDocument(refId)"
+                                class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs cursor-pointer hover:bg-gray-200">
+                                {{ getDocName(refId) }}
+                                <button @click.stop="removeReference(refId)" class="hover:text-red-500">&times;</button>
+                            </span>
+                        </div>
+                        <select @change="addReference($event)"
+                            class="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="">+ 참조 추가</option>
+                            <option v-for="(doc, id) in otherDocuments" :key="id" :value="id">{{ doc.name }}</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-3 border-t border-gray-100 flex gap-2">
+                <button @click="highlightRelatedDocs" class="flex-1 py-2 px-3 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-medium">
+                    전파 확인
+                </button>
+                <button @click="deleteDocument(selectedDocId)" class="py-2 px-3 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-medium">
+                    삭제
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Add Taxonomy Modal -->
+    <div v-if="modal.show" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="modal.show = false">
+        <div class="bg-white rounded-xl shadow-2xl w-96 p-6">
+            <h3 class="text-lg font-bold mb-4">{{ modal.title }}</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs font-medium text-gray-500">ID</label>
+                    <input type="text" v-model="modal.data.id" :placeholder="modal.type === 'carrier' ? '예: INS-KB' : '예: PRD-CHILD-NEW'"
+                        class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500">이름</label>
+                    <input type="text" v-model="modal.data.name" :placeholder="modal.type === 'carrier' ? '예: KB손해보험' : '예: 든든 어린이보험 리뉴얼'"
+                        class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                </div>
+                <div v-if="modal.type === 'carrier'">
+                    <label class="text-xs font-medium text-gray-500">구분</label>
+                    <select v-model="modal.data.insurerType" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                        <option value="life">생명보험</option>
+                        <option value="non-life">손해보험</option>
+                    </select>
+                </div>
+                <div v-if="modal.type === 'product'">
+                    <label class="text-xs font-medium text-gray-500">카테고리</label>
+                    <select v-model="modal.data.category" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                        <option v-for="(cat, key) in store.taxonomy.productCategories" :key="key" :value="key">{{ cat.name }}</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-6">
+                <button @click="modal.show = false" class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium">취소</button>
+                <button @click="addTaxonomy" class="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium">추가</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Document Modal -->
+    <div v-if="docModal.show" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="docModal.show = false">
+        <div class="bg-white rounded-xl shadow-2xl w-[500px] p-6">
+            <h3 class="text-lg font-bold mb-4">새 문서 생성</h3>
+            <div class="space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">보험사</label>
+                        <select v-model="docModal.data.carrier" @change="checkDocModalDuplicate"
+                            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="">선택</option>
+                            <option v-for="(c, id) in store.taxonomy.carriers" :key="id" :value="id">{{ c.name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">상품</label>
+                        <select v-model="docModal.data.product" @change="checkDocModalDuplicate"
+                            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="">선택</option>
+                            <option v-for="(p, id) in store.taxonomy.products" :key="id" :value="id">{{ p.name }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500">문서유형</label>
+                    <select v-model="docModal.data.docType" @change="checkDocModalDuplicate"
+                        class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                        <option value="">선택</option>
+                        <option v-for="(dt, id) in store.taxonomy.docTypes" :key="id" :value="id">{{ dt.name }}</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">프로세스</label>
+                        <select v-model="docModal.data.process" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="">미지정</option>
+                            <option v-for="(p, id) in store.taxonomy.processes" :key="id" :value="id">{{ p.name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-500">대상역할</label>
+                        <select v-model="docModal.data.audience" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                            <option value="">미지정</option>
+                            <option v-for="(a, id) in store.taxonomy.audiences" :key="id" :value="id">{{ a.name }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500">문서명 (선택)</label>
+                    <input type="text" v-model="docModal.data.name" placeholder="자동 생성됨"
+                        class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                </div>
+
+                <!-- 중복 경고 -->
+                <div v-if="docModal.duplicateWarning" class="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="text-sm font-medium text-red-700">⚠️ 중복 문서 존재!</div>
+                    <div class="text-xs text-red-600 mt-1">{{ docModal.duplicateWarning }}</div>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-6">
+                <button @click="docModal.show = false" class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium">취소</button>
+                <button @click="createDocument" :disabled="docModal.duplicateWarning"
+                    :class="docModal.duplicateWarning ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
+                    class="flex-1 py-2 text-white rounded-lg text-sm font-medium">생성</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue;
+
+// 기본 데이터 구조 v2.1
+const DEFAULT_DATA = {
+    version: "2.1",
+    lastModified: new Date().toISOString(),
+    taxonomy: {
+        carriers: {
+            "INS-COMMON": { name: "공통", alias: ["전체", "ALL"], type: "common", tier: "common" }
+        },
+        products: {
+            "PRD-COMMON": { name: "공통", category: "COMMON", alias: ["전체", "ALL"] }
+        },
+        productCategories: {
+            "LIFE": { name: "생명보험", order: 1 },
+            "HEALTH": { name: "건강/제3보험", order: 2 },
+            "NON-LIFE": { name: "손해보험", order: 3 },
+            "ANNUITY": { name: "연금/저축", order: 4 },
+            "COMMON": { name: "공통", order: 99 }
+        },
+        docTypes: {},
+        processes: {
+            "BIZ-COMMON": { name: "공통", order: 99 }
+        },
+        audiences: {
+            "AUD-ALL": { name: "전체", level: 0 }
+        },
+        certifications: {},
+        regulationTimeline: [],
+        defaultRelations: {}
+    },
+    documents: {}
+};
+
+// v2.1 JSON 마이그레이션
+function migrateFromTaxonomyV21(taxData) {
+    const data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    
+    if (taxData.carriers) data.taxonomy.carriers = { ...data.taxonomy.carriers, ...taxData.carriers };
+    if (taxData.products) data.taxonomy.products = { ...data.taxonomy.products, ...taxData.products };
+    if (taxData.product_categories) data.taxonomy.productCategories = taxData.product_categories;
+    if (taxData.doc_types) data.taxonomy.docTypes = taxData.doc_types;
+    if (taxData.processes) data.taxonomy.processes = { ...data.taxonomy.processes, ...taxData.processes };
+    if (taxData.audiences) data.taxonomy.audiences = { ...data.taxonomy.audiences, ...taxData.audiences };
+    if (taxData.certifications) data.taxonomy.certifications = taxData.certifications;
+    if (taxData.regulation_timeline) data.taxonomy.regulationTimeline = taxData.regulation_timeline;
+    if (taxData.default_relations) data.taxonomy.defaultRelations = taxData.default_relations;
+    
+    return data;
+}
+
+// knowledge_graph_v2.1.json 마이그레이션
+function migrateFromKnowledgeGraphV21(graphData) {
+    const data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    const nodes = graphData.graph_data?.nodes || [];
+    const edges = graphData.graph_data?.edges || [];
+
+    // taxonomy 병합
+    if (graphData.taxonomy) {
+        Object.assign(data.taxonomy, migrateFromTaxonomyV21(graphData.taxonomy).taxonomy);
+    }
+
+    // 관계 맵 구성
+    const relatedTo = {};
+    const references = {};
+    edges.forEach(e => {
+        if (e.relationship === 'SIBLINGS' || e.relationship === 'RELATED_TO') {
+            if (!relatedTo[e.source]) relatedTo[e.source] = [];
+            relatedTo[e.source].push(e.target);
+        }
+        if (e.relationship === 'REFERENCES') {
+            if (!references[e.source]) references[e.source] = [];
+            references[e.source].push(e.target);
+        }
+    });
+
+    // 문서 노드 처리
+    nodes.forEach(n => {
+        if (!n.labels.includes('Document')) return;
+        const props = n.properties;
+        const docType = n.labels.find(l => l.startsWith('DOC-'));
+        const tier = n.labels.find(l => ['HOT', 'WARM', 'COLD'].includes(l)) || 'COLD';
+
+        data.documents[n.id] = {
+            id: n.id,
+            name: props.name,
+            carrier: props.carrier,
+            product: props.product,
+            docType: docType,
+            tier: tier,
+            process: props.process || '',
+            audience: props.audience || '',
+            status: "ACTIVE",
+            version: "1.0",
+            content: "",
+            relations: { 
+                parent: null, 
+                children: [], 
+                siblings: relatedTo[n.id] || [], 
+                references: references[n.id] || [] 
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+    });
+
+    return data;
+}
+
+createApp({
+    setup() {
+        let network = null;
+
+        const store = reactive(JSON.parse(JSON.stringify(DEFAULT_DATA)));
+        const activeTab = ref('carriers');
+        const viewMode = ref('graph');
+        const searchQuery = ref('');
+        const selectedDocId = ref(null);
+        const selectedTaxonomy = reactive({ type: null, id: null });
+        const modal = reactive({ show: false, type: '', title: '', data: {} });
+        const docModal = reactive({ show: false, data: {}, duplicateWarning: null });
+        const uploadPreview = reactive({ show: false, filename: '', data: {}, confidence: {} });
+        const highlightedDocs = ref([]);
+        const toasts = ref([]);
+
+        // v2.1 필터
+        const carrierTypeFilter = ref('all');
+        const productCategoryFilter = ref('all');
+        const docTypeTierFilter = ref('all');
+        const filterProcess = ref('');
+        const filterAudience = ref('');
+
+        const selectedDoc = computed(() => selectedDocId.value ? store.documents[selectedDocId.value] : null);
+
+        // 필터된 보험사
+        const filteredCarriers = computed(() => {
+            const result = {};
+            Object.entries(store.taxonomy.carriers).forEach(([id, carrier]) => {
+                if (id === 'INS-COMMON') return;
+                if (carrierTypeFilter.value === 'all' || carrier.type === carrierTypeFilter.value) {
+                    result[id] = carrier;
+                }
+            });
+            return result;
+        });
+
+        // 필터된 상품
+        const filteredProducts = computed(() => {
+            const result = {};
+            Object.entries(store.taxonomy.products).forEach(([id, product]) => {
+                if (id === 'PRD-COMMON') return;
+                if (productCategoryFilter.value === 'all' || product.category === productCategoryFilter.value) {
+                    result[id] = product;
+                }
+            });
+            return result;
+        });
+
+        // 필터된 문서유형
+        const filteredDocTypes = computed(() => {
+            const result = {};
+            Object.entries(store.taxonomy.docTypes).forEach(([id, docType]) => {
+                if (docTypeTierFilter.value === 'all' || docType.tier === docTypeTierFilter.value) {
+                    result[id] = docType;
+                }
+            });
+            return result;
+        });
+
+        // 정렬된 프로세스
+        const sortedProcesses = computed(() => {
+            const entries = Object.entries(store.taxonomy.processes)
+                .filter(([id]) => id !== 'BIZ-COMMON')
+                .sort((a, b) => (a[1].order || 99) - (b[1].order || 99));
+            return Object.fromEntries(entries);
+        });
+
+        // 정렬된 역할
+        const sortedAudiences = computed(() => {
+            const entries = Object.entries(store.taxonomy.audiences)
+                .filter(([id]) => id !== 'AUD-ALL')
+                .sort((a, b) => (a[1].level || 0) - (b[1].level || 0));
+            return Object.fromEntries(entries);
+        });
+
+        // 필터된 문서
+        const filteredDocuments = computed(() => {
+            const q = searchQuery.value.toLowerCase();
+            const docs = {};
+            Object.entries(store.documents).forEach(([id, doc]) => {
+                if (q && !doc.name.toLowerCase().includes(q) && !id.toLowerCase().includes(q)) return;
+                if (filterProcess.value && doc.process !== filterProcess.value) return;
+                if (filterAudience.value && doc.audience !== filterAudience.value) return;
+                docs[id] = doc;
+            });
+            return docs;
+        });
+
+        const otherDocuments = computed(() => {
+            const docs = {};
+            Object.entries(store.documents).forEach(([id, doc]) => {
+                if (id !== selectedDocId.value) docs[id] = doc;
+            });
+            return docs;
+        });
+
+        const availableSiblings = computed(() => {
+            if (!selectedDoc.value) return {};
+            const docs = {};
+            Object.entries(store.documents).forEach(([id, doc]) => {
+                if (id !== selectedDocId.value && !(selectedDoc.value.relations?.siblings || []).includes(id)) {
+                    docs[id] = doc;
+                }
+            });
+            return docs;
+        });
+
+        const duplicateGroups = computed(() => {
+            const groups = {};
+            Object.entries(store.documents).forEach(([id, doc]) => {
+                const key = `${doc.carrier}|${doc.product}|${doc.docType}`;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push({ id, name: doc.name });
+            });
+            return Object.entries(groups)
+                .filter(([_, docs]) => docs.length > 1)
+                .map(([key, docs]) => {
+                    const [carrier, product, docType] = key.split('|');
+                    return {
+                        key: `${getCarrierName(carrier)} > ${getProductName(product)} > ${getDocTypeName(docType)}`,
+                        docs
+                    };
+                });
+        });
+
+        // 다가오는 규제
+        const upcomingRegulation = computed(() => {
+            const upcoming = store.taxonomy.regulationTimeline
+                .filter(r => r.status === 'upcoming')
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+            return upcoming[0] || null;
+        });
+
+        // 초기화
+        onMounted(() => {
+            loadStore();
+            nextTick(() => {
+                initGraph();
+            });
+        });
+
+        function loadStore() {
+            const saved = localStorage.getItem('kms_data_v2');
+            if (saved) {
+                Object.assign(store, JSON.parse(saved));
+            } else {
+                // taxonomy_v2.1.json 또는 knowledge_graph_v2.1.json 로드 시도
+                Promise.all([
+                    fetch('./taxonomy_v2.1.json').then(r => r.ok ? r.json() : null).catch(() => null),
+                    fetch('./knowledge_graph_v2.1.json').then(r => r.ok ? r.json() : null).catch(() => null)
+                ]).then(([taxData, graphData]) => {
+                    if (graphData) {
+                        Object.assign(store, migrateFromKnowledgeGraphV21(graphData));
+                    } else if (taxData) {
+                        Object.assign(store, migrateFromTaxonomyV21(taxData));
+                    }
+                    saveStore();
+                    rebuildGraph();
+                });
+            }
+        }
+
+        function saveStore() {
+            store.lastModified = new Date().toISOString();
+            localStorage.setItem('kms_data_v2', JSON.stringify(store));
+            rebuildGraph();
+        }
+
+        function showToast(message, type = 'success') {
+            toasts.value.push({ message, type });
+            setTimeout(() => toasts.value.shift(), 3000);
+        }
+
+        function removeToast(idx) {
+            toasts.value.splice(idx, 1);
+        }
+
+        function initGraph() {
+            const container = document.getElementById('network');
+            if (!container) return;
+
+            const options = {
+                layout: {
+                    hierarchical: { enabled: true, direction: 'LR', sortMethod: 'directed', nodeSpacing: 80, levelSeparation: 200 }
+                },
+                physics: { enabled: false },
+                interaction: { hover: true, selectConnectedEdges: true },
+                nodes: { font: { size: 12 } },
+                edges: { arrows: { to: { enabled: true, scaleFactor: 0.5 } }, smooth: { type: 'cubicBezier', forceDirection: 'horizontal' } }
+            };
+
+            network = new vis.Network(container, { nodes: [], edges: [] }, options);
+            network.on('click', (params) => {
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    if (store.documents[nodeId]) {
+                        selectedTaxonomy.type = null;
+                        selectedTaxonomy.id = null;
+                        selectDocument(nodeId);
+                    }
+                }
+            });
+
+            rebuildGraph();
+        }
+
+        function rebuildGraph() {
+            if (!network) return;
+
+            const nodes = [];
+            const edges = [];
+
+            nodes.push({ id: 'ROOT', label: 'KMS v2.1', level: 0, color: '#2c3e50', shape: 'dot', size: 30, font: { color: '#fff' } });
+
+            // 보험사 노드
+            Object.entries(store.taxonomy.carriers).forEach(([id, c]) => {
+                if (id === 'INS-COMMON') return;
+                nodes.push({ id, label: c.name, level: 1, color: '#8e44ad', shape: 'dot', size: 25, font: { color: '#fff' } });
+                edges.push({ from: 'ROOT', to: id, color: '#bdc3c7' });
+            });
+
+            // 문서 노드 (상위 20개만 표시)
+            const docEntries = Object.entries(store.documents).slice(0, 20);
+            docEntries.forEach(([id, doc]) => {
+                const tierColors = { HOT: '#e74c3c', WARM: '#f39c12', COLD: '#95a5a6' };
+                const isHighlighted = highlightedDocs.value.includes(id);
+
+                nodes.push({
+                    id,
+                    label: getDocTypeName(doc.docType),
+                    level: 2,
+                    color: isHighlighted ? '#3b82f6' : (tierColors[doc.tier] || '#95a5a6'),
+                    shape: 'dot',
+                    size: isHighlighted ? 20 : 15,
+                    borderWidth: isHighlighted ? 3 : 1
+                });
+
+                if (doc.carrier && store.taxonomy.carriers[doc.carrier]) {
+                    edges.push({ from: doc.carrier, to: id, color: '#bdc3c7' });
+                }
+
+                // 관계 엣지
+                (doc.relations?.siblings || []).forEach(sibId => {
+                    if (store.documents[sibId]) {
+                        edges.push({ from: id, to: sibId, color: '#27ae60', dashes: true });
+                    }
+                });
+
+                (doc.relations?.references || []).forEach(refId => {
+                    if (store.documents[refId]) {
+                        edges.push({ from: id, to: refId, color: '#9b59b6', dashes: [5, 5] });
+                    }
+                });
+            });
+
+            network.setData({ nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) });
+        }
+
+        function fitGraph() {
+            network?.fit({ animation: true });
+        }
+
+        function highlightRelatedDocs() {
+            if (!selectedDocId.value) return;
+            const relatedIds = getRelatedDocIds(selectedDocId.value);
+            highlightedDocs.value = [selectedDocId.value, ...relatedIds];
+            rebuildGraph();
+            showToast(`${relatedIds.length}개 연관 문서 전파됨`, 'success');
+        }
+
+        function getRelatedDocIds(docId, visited = new Set()) {
+            if (visited.has(docId)) return [];
+            visited.add(docId);
+
+            const doc = store.documents[docId];
+            if (!doc) return [];
+
+            let related = [];
+
+            (doc.relations?.siblings || []).forEach(sibId => {
+                if (!visited.has(sibId)) {
+                    related.push(sibId);
+                    related = related.concat(getRelatedDocIds(sibId, visited));
+                }
+            });
+
+            (doc.relations?.references || []).forEach(refId => {
+                if (!visited.has(refId)) {
+                    related.push(refId);
+                }
+            });
+
+            return [...new Set(related)];
+        }
+
+        function selectDocument(id) {
+            selectedTaxonomy.type = null;
+            selectedTaxonomy.id = null;
+            selectedDocId.value = id;
+            highlightedDocs.value = [];
+            network?.selectNodes([id]);
+            network?.focus(id, { scale: 1.2, animation: true });
+        }
+
+        function selectTaxonomy(type, id) {
+            selectedDocId.value = null;
+            highlightedDocs.value = [];
+            selectedTaxonomy.type = type;
+            selectedTaxonomy.id = id;
+        }
+
+        function checkDuplicate(carrier, product, docType, excludeId = null) {
+            const found = Object.entries(store.documents).find(([id, doc]) => {
+                if (excludeId && id === excludeId) return false;
+                return doc.carrier === carrier && doc.product === product && doc.docType === docType;
+            });
+            return found ? found[1] : null;
+        }
+
+        function checkDocModalDuplicate() {
+            const { carrier, product, docType } = docModal.data;
+            if (!carrier || !product || !docType) {
+                docModal.duplicateWarning = null;
+                return;
+            }
+            const dup = checkDuplicate(carrier, product, docType);
+            docModal.duplicateWarning = dup ? `이미 존재: ${dup.name}` : null;
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            showToast('파일 업로드 기능은 목록뷰에서 수동 분류를 권장합니다', 'warning');
+            event.target.value = '';
+        }
+
+        function showAddModal(type) {
+            const titles = { carrier: '보험사 추가', product: '상품 추가' };
+            modal.show = true;
+            modal.type = type;
+            modal.title = titles[type];
+            modal.data = { id: '', name: '', alias: '', category: 'LIFE', insurerType: 'life' };
+        }
+
+        function addTaxonomy() {
+            const { type, data } = modal;
+            if (!data.id || !data.name) return showToast('ID와 이름을 입력하세요', 'error');
+
+            if (type === 'carrier') {
+                store.taxonomy.carriers[data.id] = {
+                    name: data.name,
+                    alias: [],
+                    type: data.insurerType,
+                    tier: 'mid'
+                };
+            } else if (type === 'product') {
+                store.taxonomy.products[data.id] = {
+                    name: data.name,
+                    category: data.category || 'LIFE',
+                    alias: []
+                };
+            }
+
+            saveStore();
+            modal.show = false;
+            showToast(`${type === 'carrier' ? '보험사' : '상품'}가 추가되었습니다`, 'success');
+        }
+
+        function showAddDocModal() {
+            docModal.show = true;
+            docModal.data = { carrier: '', product: '', docType: '', process: '', audience: '', name: '' };
+            docModal.duplicateWarning = null;
+        }
+
+        function createDocument() {
+            const { carrier, product, docType, process, audience, name } = docModal.data;
+            if (!carrier || !product || !docType) {
+                return showToast('보험사, 상품, 문서유형을 선택하세요', 'error');
+            }
+
+            if (docModal.duplicateWarning) {
+                return showToast('중복 문서가 존재합니다', 'error');
+            }
+
+            const count = Object.keys(store.documents).length + 1;
+            const id = `${docType}-${carrier}-${product}-${String(count).padStart(3, '0')}`;
+            const docTypeObj = store.taxonomy.docTypes[docType];
+            const carrierObj = store.taxonomy.carriers[carrier];
+            const productObj = store.taxonomy.products[product];
+
+            const docName = name || `${carrierObj?.name || carrier} ${productObj?.name || product} ${docTypeObj?.name || docType}`;
+
+            store.documents[id] = {
+                id,
+                name: docName,
+                carrier,
+                product,
+                docType,
+                tier: docTypeObj?.tier || 'COLD',
+                process: process || '',
+                audience: audience || '',
+                status: "ACTIVE",
+                version: "1.0",
+                content: "",
+                relations: { parent: null, children: [], siblings: [], references: [] },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            saveStore();
+            selectDocument(id);
+            docModal.show = false;
+            showToast('문서가 생성되었습니다', 'success');
+        }
+
+        function deleteDocument(id) {
+            if (!confirm(`"${store.documents[id]?.name}" 문서를 삭제하시겠습니까?`)) return;
+
+            Object.values(store.documents).forEach(doc => {
+                if (doc.relations?.parent === id) doc.relations.parent = null;
+                if (doc.relations?.children) doc.relations.children = doc.relations.children.filter(c => c !== id);
+                if (doc.relations?.siblings) doc.relations.siblings = doc.relations.siblings.filter(s => s !== id);
+                if (doc.relations?.references) doc.relations.references = doc.relations.references.filter(r => r !== id);
+            });
+
+            delete store.documents[id];
+            if (selectedDocId.value === id) {
+                selectedDocId.value = null;
+                highlightedDocs.value = [];
+            }
+            saveStore();
+            showToast('문서가 삭제되었습니다', 'success');
+        }
+
+        function addSiblingRelation(event) {
+            const sibId = event.target.value;
+            if (!sibId || !selectedDoc.value) return;
+
+            if (!selectedDoc.value.relations) selectedDoc.value.relations = { siblings: [], references: [] };
+            if (!selectedDoc.value.relations.siblings) selectedDoc.value.relations.siblings = [];
+            
+            if (!selectedDoc.value.relations.siblings.includes(sibId)) {
+                selectedDoc.value.relations.siblings.push(sibId);
+            }
+            if (store.documents[sibId]) {
+                if (!store.documents[sibId].relations) store.documents[sibId].relations = { siblings: [], references: [] };
+                if (!store.documents[sibId].relations.siblings) store.documents[sibId].relations.siblings = [];
+                if (!store.documents[sibId].relations.siblings.includes(selectedDocId.value)) {
+                    store.documents[sibId].relations.siblings.push(selectedDocId.value);
+                }
+            }
+
+            event.target.value = '';
+            saveStore();
+            showToast('형제 관계가 추가되었습니다', 'success');
+        }
+
+        function removeSiblingRelation(sibId) {
+            if (!selectedDoc.value?.relations?.siblings) return;
+            selectedDoc.value.relations.siblings = selectedDoc.value.relations.siblings.filter(s => s !== sibId);
+
+            if (store.documents[sibId]?.relations?.siblings) {
+                store.documents[sibId].relations.siblings =
+                    store.documents[sibId].relations.siblings.filter(s => s !== selectedDocId.value);
+            }
+
+            saveStore();
+        }
+
+        function addReference(event) {
+            const refId = event.target.value;
+            if (!refId || !selectedDoc.value) return;
+
+            if (!selectedDoc.value.relations) selectedDoc.value.relations = { siblings: [], references: [] };
+            if (!selectedDoc.value.relations.references) selectedDoc.value.relations.references = [];
+
+            if (!selectedDoc.value.relations.references.includes(refId)) {
+                selectedDoc.value.relations.references.push(refId);
+            }
+
+            event.target.value = '';
+            saveStore();
+            showToast('참조 관계가 추가되었습니다', 'success');
+        }
+
+        function removeReference(refId) {
+            if (!selectedDoc.value?.relations?.references) return;
+            selectedDoc.value.relations.references = selectedDoc.value.relations.references.filter(r => r !== refId);
+            saveStore();
+        }
+
+        function exportData() {
+            const blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kms_data_v2.1_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.graph_data) {
+                        Object.assign(store, migrateFromKnowledgeGraphV21(data));
+                    } else if (data.carriers && data.doc_types) {
+                        Object.assign(store, migrateFromTaxonomyV21(data));
+                    } else if (data.taxonomy && data.documents) {
+                        Object.assign(store, data);
+                    } else {
+                        throw new Error('알 수 없는 형식');
+                    }
+                    saveStore();
+                    showToast('데이터를 가져왔습니다', 'success');
+                } catch (err) {
+                    showToast('데이터 형식 오류: ' + err.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // Helper functions
+        function getCarrierName(id) { return store.taxonomy.carriers[id]?.name || id; }
+        function getProductName(id) { return store.taxonomy.products[id]?.name || id; }
+        function getDocTypeName(id) { return store.taxonomy.docTypes[id]?.name || id; }
+        function getProcessName(id) { return store.taxonomy.processes[id]?.name || id || '-'; }
+        function getAudienceName(id) { return store.taxonomy.audiences[id]?.name || id || '-'; }
+        function getDocName(id) { return store.documents[id]?.name || id; }
+
+        function getDocCountByCarrier(carrierId) {
+            return Object.values(store.documents).filter(d => d.carrier === carrierId).length;
+        }
+
+        function getDocCountByCarrierTier(carrierId, tier) {
+            return Object.values(store.documents).filter(d => d.carrier === carrierId && d.tier === tier).length;
+        }
+
+        function getDocCountByProcess(processId) {
+            return Object.values(store.documents).filter(d => d.process === processId).length;
+        }
+
+        function getDocCountByAudience(audienceId) {
+            return Object.values(store.documents).filter(d => d.audience === audienceId).length;
+        }
+
+        function getDocsByProcess(processId) {
+            const docs = {};
+            Object.entries(store.documents).forEach(([id, doc]) => {
+                if (doc.process === processId) docs[id] = doc;
+            });
+            return docs;
+        }
+
+        function getDocsByAudience(audienceId) {
+            const docs = {};
+            Object.entries(store.documents).forEach(([id, doc]) => {
+                if (doc.audience === audienceId) docs[id] = doc;
+            });
+            return docs;
+        }
+
+        function getTierClass(tier) {
+            const classes = { HOT: 'bg-red-100 text-red-700', WARM: 'bg-yellow-100 text-yellow-700', COLD: 'bg-gray-100 text-gray-700' };
+            return classes[tier] || 'bg-gray-100 text-gray-600';
+        }
+
+        function formatDate(isoString) {
+            if (!isoString) return '-';
+            return new Date(isoString).toLocaleString('ko-KR', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+            });
+        }
+
+        function getDaysUntil(dateStr) {
+            const target = new Date(dateStr);
+            const today = new Date();
+            const diff = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+            return diff > 0 ? diff : 0;
+        }
+
+        function getRegulationStatusClass(status) {
+            return status === 'active' 
+                ? 'bg-green-500 border-green-500' 
+                : 'bg-white border-yellow-500';
+        }
+
+        function getRegulationBorderClass(impact) {
+            if (impact === 'critical') return 'border-red-500';
+            if (impact === 'high') return 'border-orange-500';
+            return 'border-blue-500';
+        }
+
+        return {
+            store,
+            activeTab,
+            viewMode,
+            searchQuery,
+            selectedDocId,
+            selectedDoc,
+            selectedTaxonomy,
+            modal,
+            docModal,
+            uploadPreview,
+            highlightedDocs,
+            toasts,
+            carrierTypeFilter,
+            productCategoryFilter,
+            docTypeTierFilter,
+            filterProcess,
+            filterAudience,
+            filteredCarriers,
+            filteredProducts,
+            filteredDocTypes,
+            sortedProcesses,
+            sortedAudiences,
+            filteredDocuments,
+            otherDocuments,
+            availableSiblings,
+            duplicateGroups,
+            upcomingRegulation,
+            removeToast,
+            showToast,
+            saveStore,
+            fitGraph,
+            highlightRelatedDocs,
+            getRelatedDocIds,
+            selectDocument,
+            selectTaxonomy,
+            checkDocModalDuplicate,
+            handleFileUpload,
+            showAddModal,
+            addTaxonomy,
+            showAddDocModal,
+            createDocument,
+            deleteDocument,
+            addSiblingRelation,
+            removeSiblingRelation,
+            addReference,
+            removeReference,
+            exportData,
+            importData,
+            getCarrierName,
+            getProductName,
+            getDocTypeName,
+            getProcessName,
+            getAudienceName,
+            getDocName,
+            getDocCountByCarrier,
+            getDocCountByCarrierTier,
+            getDocCountByProcess,
+            getDocCountByAudience,
+            getDocsByProcess,
+            getDocsByAudience,
+            getTierClass,
+            formatDate,
+            getDaysUntil,
+            getRegulationStatusClass,
+            getRegulationBorderClass
+        };
+    }
+}).mount('#app');
+</script>
+
+</body>
+</html>
