@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Claude Code
+.claude/
+
+# Test artifacts
+test-*.png
+nul
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
