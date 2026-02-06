@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Phase 2: 황금 데이터셋 (Golden Set)
+Phase 1: 황금 데이터셋 (Golden Set)
 
 "이 질문에는 이 API 파라미터 조합이 정답이다"를 정의한다.
-시뮬레이터(가상 셰프)가 이 정답지대로 창고 API를 호출하고 검증한다.
+구조 검증기(StructureValidator)가 이 정답지대로 창고 API를 호출하고 검증한다.
 
 축적 목적:
-  - Phase 2: 창고 API 정확성 검증
+  - Phase 1: "이 구조로 Phase 2 API를 만들어도 되는가?" 사전 검증
   - Phase 3: 미들웨어 학습 데이터 (질문→파라미터 자동 변환)
 """
 
