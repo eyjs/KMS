@@ -279,7 +279,7 @@ class KMSVerifierExtended:
 
 
 def main():
-    base_path = os.path.dirname(os.path.abspath(__file__))
+    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     verifier = KMSVerifierExtended(base_path)
     return 0 if verifier.run_all() else 1
 

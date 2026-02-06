@@ -105,17 +105,18 @@
 ├── .gitignore
 ├── package.json
 │
-├── taxonomy.py                      # 마스터 데이터 정의
-├── ontology.py                      # 온톨로지 클래스/관계/동의어
-├── simulator.py                     # 데이터 시뮬레이터
-├── simulator_ontology.py            # 온톨로지 그래프 생성
-├── simulator_golden.py              # Golden Set 검증 시뮬레이터
-├── verifier.py                      # 데이터 검증기
-├── ontology_validator.py            # 온톨로지 검증기
-├── rag_simulator.py                 # RAG 시뮬레이터
-├── warehouse_api.py                 # Warehouse API (데이터 접근 계층)
-├── golden_set.py                    # Golden Set 정의
-├── doc_templates.py                 # 문서 템플릿
+├── src/                             # Python 소스
+│   ├── taxonomy.py                  # 마스터 데이터 정의
+│   ├── ontology.py                  # 온톨로지 클래스/관계/동의어
+│   ├── simulator.py                 # 데이터 시뮬레이터
+│   ├── simulator_ontology.py        # 온톨로지 그래프 생성
+│   ├── simulator_golden.py          # Golden Set 검증 시뮬레이터
+│   ├── verifier.py                  # 데이터 검증기
+│   ├── ontology_validator.py        # 온톨로지 검증기
+│   ├── rag_simulator.py             # RAG 시뮬레이터
+│   ├── warehouse_api.py             # Warehouse API (데이터 접근 계층)
+│   ├── golden_set.py                # Golden Set 정의
+│   └── doc_templates.py             # 문서 템플릿
 │
 ├── data/                            # 생성 데이터
 │   ├── taxonomy.json                # 분류체계 JSON
@@ -233,15 +234,15 @@ KB손해보험 > 든든 어린이보험 > 상품요약본 v1.0  (이미 존재)
 
 ```bash
 # 데이터 생성
-python taxonomy.py         # 분류체계 JSON 내보내기
-python simulator.py        # 지식 그래프 + 샘플 문서 생성
-python simulator_ontology.py  # 온톨로지 그래프 생성
+python src/taxonomy.py         # 분류체계 JSON 내보내기
+python src/simulator.py        # 지식 그래프 + 샘플 문서 생성
+python src/simulator_ontology.py  # 온톨로지 그래프 생성
 
 # 검증
-python verifier.py         # 데이터 검증
-python ontology_validator.py  # 온톨로지 검증
-python simulator_golden.py    # Golden Set 검증
-python rag_simulator.py       # RAG 시뮬레이션
+python src/verifier.py         # 데이터 검증
+python src/ontology_validator.py  # 온톨로지 검증
+python src/simulator_golden.py    # Golden Set 검증
+python src/rag_simulator.py       # RAG 시뮬레이션
 
 # UI 확인
 npx serve . -p 8080

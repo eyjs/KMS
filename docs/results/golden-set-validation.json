@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-06T10:30:42.668048",
+  "timestamp": "2026-02-06T10:44:37.608537",
   "version": "phase2-v1.0",
   "summary": {
     "total": 10,
@@ -11,14 +11,14 @@
       "question": "삼성생명 종신보험 수수료가 어떻게 되나요?",
       "intent": "settlement",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-COMMISSION-CALC', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-INCENTIVE'}",
+      "detail": "문서유형 전수 확인: {'DOC-COMMISSION-CALC', 'DOC-INCENTIVE', 'DOC-COMMISSION', 'DOC-SETTLEMENT'}",
       "steps": [
         {
           "action": "fetch_documents",
           "doc_count": 2,
           "doc_types": [
-            "DOC-COMMISSION",
-            "DOC-COMMISSION-CALC"
+            "DOC-COMMISSION-CALC",
+            "DOC-COMMISSION"
           ]
         },
         {
@@ -26,9 +26,9 @@
           "doc_count": 5,
           "doc_types": [
             "DOC-RATE-TABLE",
-            "DOC-COMMISSION-CALC",
-            "DOC-INCENTIVE",
             "DOC-SETTLEMENT",
+            "DOC-INCENTIVE",
+            "DOC-COMMISSION-CALC",
             "DOC-COMMISSION"
           ]
         }
@@ -39,19 +39,19 @@
       "question": "정산 프로세스에서 쓰는 문서가 뭐가 있나요?",
       "intent": "settlement",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-CHARGEBACK', 'DOC-COMMISSION-CALC', 'DOC-COMMISSION', 'DOC-SETTLEMENT'}",
+      "detail": "문서유형 전수 확인: {'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT', 'DOC-CHARGEBACK', 'DOC-COMMISSION'}",
       "steps": [
         {
           "action": "fetch_process_documents",
           "doc_count": 161,
           "doc_types": [
-            "DOC-PERFORMANCE",
-            "DOC-CHARGEBACK",
             "DOC-RATE-TABLE",
-            "DOC-COMMISSION-CALC",
             "DOC-INCENTIVE",
             "DOC-SETTLEMENT",
-            "DOC-COMMISSION"
+            "DOC-CHARGEBACK",
+            "DOC-COMMISSION",
+            "DOC-COMMISSION-CALC",
+            "DOC-PERFORMANCE"
           ]
         }
       ]
@@ -61,15 +61,15 @@
       "question": "당뇨 환자 심사 가능한가요?",
       "intent": "underwriting",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-UW-GUIDE', 'DOC-UW-DISEASE', 'DOC-UW-RULE'}",
+      "detail": "문서유형 전수 확인: {'DOC-UW-GUIDE', 'DOC-UW-RULE', 'DOC-UW-DISEASE'}",
       "steps": [
         {
           "action": "fetch_documents",
           "doc_count": 69,
           "doc_types": [
             "DOC-UW-GUIDE",
-            "DOC-UW-DISEASE",
-            "DOC-UW-RULE"
+            "DOC-UW-RULE",
+            "DOC-UW-DISEASE"
           ]
         }
       ]
@@ -79,7 +79,7 @@
       "question": "1200%룰 GA 적용 언제부터인가요?",
       "intent": "regulatory",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-REGULATION', 'DOC-COMMISSION-CALC'}; GOVERNS: ['BIZ-SETTLE'], RESTRICTS: ['DOC-REGULATION-COMMON-001']",
+      "detail": "문서유형 전수 확인: {'DOC-COMMISSION-CALC', 'DOC-REGULATION'}; GOVERNS: ['BIZ-SETTLE'], RESTRICTS: ['DOC-REGULATION-COMMON-001']",
       "steps": [
         {
           "action": "fetch_regulation_impact",
@@ -90,8 +90,8 @@
           "action": "fetch_documents",
           "doc_count": 24,
           "doc_types": [
-            "DOC-REGULATION",
-            "DOC-COMMISSION-CALC"
+            "DOC-COMMISSION-CALC",
+            "DOC-REGULATION"
           ]
         }
       ]
@@ -123,14 +123,14 @@
       "question": "어린이보험 상품 비교해주세요",
       "intent": "sales_support",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-COMPARISON', 'DOC-GUIDE'}",
+      "detail": "문서유형 전수 확인: {'DOC-GUIDE', 'DOC-COMPARISON'}",
       "steps": [
         {
           "action": "fetch_documents",
           "doc_count": 6,
           "doc_types": [
-            "DOC-COMPARISON",
-            "DOC-GUIDE"
+            "DOC-GUIDE",
+            "DOC-COMPARISON"
           ]
         }
       ]
@@ -184,11 +184,11 @@
           "action": "fetch_neighbors",
           "doc_count": 6,
           "doc_types": [
-            "DOC-TERMS-SPECIAL",
-            "DOC-TRAINING",
-            "DOC-TERMS",
             "DOC-CONFIRMATION",
             "DOC-SCRIPT",
+            "DOC-TERMS-SPECIAL",
+            "DOC-TERMS",
+            "DOC-TRAINING",
             "DOC-BEST-PRACTICE"
           ]
         }
@@ -199,14 +199,14 @@
       "question": "KB손해보험 자동차보험 수수료 규정이 어떻게 되나요?",
       "intent": "settlement",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-COMMISSION', 'DOC-COMMISSION-CALC'}",
+      "detail": "문서유형 전수 확인: {'DOC-COMMISSION-CALC', 'DOC-COMMISSION'}",
       "steps": [
         {
           "action": "fetch_documents",
           "doc_count": 2,
           "doc_types": [
-            "DOC-COMMISSION",
-            "DOC-COMMISSION-CALC"
+            "DOC-COMMISSION-CALC",
+            "DOC-COMMISSION"
           ]
         },
         {
@@ -249,10 +249,10 @@
       ],
       "found_doc_types": [
         "DOC-RATE-TABLE",
-        "DOC-COMMISSION-CALC",
-        "DOC-INCENTIVE",
         "DOC-SETTLEMENT",
-        "DOC-COMMISSION"
+        "DOC-INCENTIVE",
+        "DOC-COMMISSION",
+        "DOC-COMMISSION-CALC"
       ],
       "passed": true
     },
@@ -269,13 +269,13 @@
         }
       ],
       "found_doc_types": [
-        "DOC-PERFORMANCE",
-        "DOC-CHARGEBACK",
         "DOC-RATE-TABLE",
-        "DOC-COMMISSION-CALC",
         "DOC-INCENTIVE",
         "DOC-SETTLEMENT",
-        "DOC-COMMISSION"
+        "DOC-CHARGEBACK",
+        "DOC-COMMISSION",
+        "DOC-COMMISSION-CALC",
+        "DOC-PERFORMANCE"
       ],
       "passed": true
     },
@@ -297,8 +297,8 @@
       ],
       "found_doc_types": [
         "DOC-UW-GUIDE",
-        "DOC-UW-DISEASE",
-        "DOC-UW-RULE"
+        "DOC-UW-RULE",
+        "DOC-UW-DISEASE"
       ],
       "passed": true
     },
@@ -325,8 +325,8 @@
         }
       ],
       "found_doc_types": [
-        "DOC-REGULATION",
-        "DOC-COMMISSION-CALC"
+        "DOC-COMMISSION-CALC",
+        "DOC-REGULATION"
       ],
       "passed": true
     },
@@ -343,12 +343,12 @@
         }
       ],
       "found_doc_types": [
-        "BIZ-CONSULT",
         "BIZ-UW",
-        "BIZ-ISSUE",
         "BIZ-PROSPECT",
-        "BIZ-MAINTAIN",
         "BIZ-CLAIM",
+        "BIZ-MAINTAIN",
+        "BIZ-ISSUE",
+        "BIZ-CONSULT",
         "BIZ-HAPPYCALL"
       ],
       "passed": true
@@ -370,8 +370,8 @@
         }
       ],
       "found_doc_types": [
-        "DOC-COMPARISON",
-        "DOC-GUIDE"
+        "DOC-GUIDE",
+        "DOC-COMPARISON"
       ],
       "passed": true
     },
@@ -439,13 +439,13 @@
         }
       ],
       "found_doc_types": [
-        "DOC-TERMS-SPECIAL",
-        "DOC-CONFIRMATION",
         "DOC-TRAINING",
-        "DOC-TERMS",
-        "DOC-GUIDE",
         "DOC-BEST-PRACTICE",
-        "DOC-SCRIPT"
+        "DOC-TERMS-SPECIAL",
+        "DOC-SCRIPT",
+        "DOC-GUIDE",
+        "DOC-CONFIRMATION",
+        "DOC-TERMS"
       ],
       "passed": true
     },
@@ -480,8 +480,8 @@
         }
       ],
       "found_doc_types": [
-        "DOC-COMMISSION",
-        "DOC-COMMISSION-CALC"
+        "DOC-COMMISSION-CALC",
+        "DOC-COMMISSION"
       ],
       "passed": true
     }

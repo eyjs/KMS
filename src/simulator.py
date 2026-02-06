@@ -625,7 +625,7 @@ def generate_sample_files(base_path: str):
 
 
 def main():
-    base_path = os.path.dirname(os.path.abspath(__file__))
+    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
     print("=" * 60)
     print("KMS v2.1 샘플 데이터 생성기")

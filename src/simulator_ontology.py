@@ -302,7 +302,7 @@ def main():
 
     graph_data = generate_ontology_graph()
 
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "knowledge-graph-ontology.json")
+    output_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "knowledge-graph-ontology.json")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(graph_data, f, ensure_ascii=False, indent=2)
 

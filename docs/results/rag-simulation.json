@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-06T10:30:48.438403",
+  "timestamp": "2026-02-06T10:44:38.818995",
   "version": "2.1",
   "results": [
     {
@@ -7,33 +7,33 @@
       "match_rate": 75.0,
       "primary_count": 10,
       "propagated_count": 1,
-      "time_ms": 2.4709701538085938
+      "time_ms": 2.3496150970458984
     },
     {
       "scenario": "시나리오 2: 상품 비교",
       "match_rate": 0.0,
       "primary_count": 10,
       "propagated_count": 1,
-      "time_ms": 1.508474349975586
+      "time_ms": 1.4586448669433594
     },
     {
       "scenario": "시나리오 3: 심사 문의",
       "match_rate": 100.0,
       "primary_count": 10,
       "propagated_count": 15,
-      "time_ms": 1.7483234405517578
+      "time_ms": 1.7251968383789062
     },
     {
       "scenario": "시나리오 4: 규제 문의",
       "match_rate": 0.0,
       "primary_count": 10,
       "propagated_count": 1,
-      "time_ms": 1.6584396362304688
+      "time_ms": 1.8186569213867188
     }
   ],
   "summary": {
     "total_scenarios": 4,
     "avg_match_rate": 43.75,
-    "avg_time_ms": 1.8465518951416016
+    "avg_time_ms": 1.8380284309387207
   }
 }
