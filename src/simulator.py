@@ -17,16 +17,26 @@ from taxonomy import (
     REGULATION_TIMELINE, COMMISSION_TYPES, CHARGEBACK_RULES, KPI_METRICS
 )
 
-# 샘플 생성 대상
-SAMPLE_CARRIERS = [
-    "INS-SAMSUNG", "INS-HANWHA", "INS-KYOBO",  # 생명
-    "INS-SAMSUNGF", "INS-HYUNDAI", "INS-DB", "INS-KB",  # 손해
-]
+# 전체 보험사 (공통 제외)
+SAMPLE_CARRIERS = [k for k in CARRIERS.keys() if k != "INS-COMMON"]
 
+# 카테고리별 전체 상품 (공통/버전 상품 제외)
 SAMPLE_PRODUCTS = {
-    "life": ["PRD-LIFE-WHOLE", "PRD-CHILD", "PRD-HEALTH-CANCER", "PRD-LIFE-VARIABLE", "PRD-HEALTH-CI"],
-    "non-life": ["PRD-NONLIFE-AUTO", "PRD-HEALTH-MEDICAL"],
+    "life": [p for p, v in PRODUCTS.items()
+             if v.get("category") in ("LIFE", "HEALTH", "ANNUITY")
+             and p != "PRD-COMMON" and not v.get("supersedes")],
+    "non-life": [p for p, v in PRODUCTS.items()
+                 if v.get("category") in ("NON-LIFE", "HEALTH")
+                 and p != "PRD-COMMON" and not v.get("supersedes")],
 }
+
+# 버전/개편 상품 (메이저 보험사만)
+VERSIONED_PRODUCTS = {
+    "life": [p for p, v in PRODUCTS.items() if v.get("supersedes") and v.get("category") in ("LIFE", "HEALTH", "ANNUITY")],
+    "non-life": [p for p, v in PRODUCTS.items() if v.get("supersedes") and v.get("category") in ("NON-LIFE", "HEALTH")],
+}
+
+MAJOR_CARRIERS = [k for k, v in CARRIERS.items() if v.get("tier") == "major"]
 
 # 공통 문서 (보험사/상품 무관)
 COMMON_DOC_TYPES = [
@@ -481,80 +491,101 @@ def generate_graph_data():
         })
         edges.append({"source": "ROOT-IFA-KNOWLEDGE", "target": doc_id, "type": "HAS_COMMON_DOC"})
     
+    # 상품별 문서 생성 헬퍼
+    def add_product_docs(carrier_id, carrier, product_id, product, nodes, edges):
+        """보험사-상품 조합의 문서 노드/엣지 생성"""
+        count = 0
+        product_node_id = f"{carrier_id}-{product_id}"
+
+        # 상품 노드
+        nodes.append({
+            "id": product_node_id,
+            "labels": ["Product", carrier_id, product.get("category", "COMMON")],
+            "properties": {
+                "name": f"{carrier.get('name', '')} {product.get('name', '')}",
+                "carrier": carrier_id,
+                "product": product_id,
+                "category": product.get("category", "COMMON")
+            }
+        })
+        edges.append({"source": carrier_id, "target": product_node_id, "type": "OFFERS"})
+
+        # SUPERSEDES 엣지 (버전 상품인 경우)
+        supersedes = product.get("supersedes")
+        if supersedes:
+            old_product_node_id = f"{carrier_id}-{supersedes}"
+            edges.append({"source": product_node_id, "target": old_product_node_id, "type": "SUPERSEDES"})
+
+        # 문서 노드 (공통 문서 제외)
+        for doc_type_id, doc_type in DOC_TYPES.items():
+            if doc_type_id in COMMON_DOC_TYPES:
+                continue
+
+            doc_id = generate_doc_id(doc_type_id, carrier_id, product_id)
+            tier = doc_type.get("tier", "WARM")
+
+            today = datetime.now()
+            if tier == "HOT":
+                valid_from = today.strftime("%Y-%m-01")
+                valid_to = (today + timedelta(days=30)).strftime("%Y-%m-%d")
+            else:
+                valid_from = (today - timedelta(days=90)).strftime("%Y-%m-%d")
+                valid_to = None
+
+            nodes.append({
+                "id": doc_id,
+                "labels": ["Document", doc_type_id, tier],
+                "properties": {
+                    "name": f"{carrier.get('name', '')} {product.get('name', '')} {doc_type.get('name', '')}",
+                    "carrier": carrier_id,
+                    "product": product_id,
+                    "doc_type": doc_type_id,
+                    "tier": tier,
+                    "source": doc_type.get("source", "ga"),
+                    "processes": DOC_PROCESS_MAP.get(doc_type_id, ["BIZ-COMMON"]),
+                    "audiences": DOC_AUDIENCE_MAP.get(doc_type_id, ["AUD-ALL"]),
+                    "status": "active",
+                    "valid_from": valid_from,
+                    "valid_to": valid_to,
+                    "version": "1.0"
+                }
+            })
+            edges.append({"source": product_node_id, "target": doc_id, "type": "HAS_DOCUMENT"})
+            count += 1
+
+            # 관계 추가
+            relations = DEFAULT_RELATIONS.get(doc_type_id, {})
+            for rel_type, targets in relations.items():
+                for target_doc_type in targets:
+                    if target_doc_type in COMMON_DOC_TYPES:
+                        target_id = generate_doc_id(target_doc_type)
+                    else:
+                        target_id = generate_doc_id(target_doc_type, carrier_id, product_id)
+                    edges.append({"source": doc_id, "target": target_id, "type": rel_type})
+                    if rel_type == "SIBLINGS":
+                        edges.append({"source": target_id, "target": doc_id, "type": rel_type})
+
+        return count
+
     # 상품별 문서 생성
     doc_count = 0
     for carrier_id in SAMPLE_CARRIERS:
         carrier = CARRIERS.get(carrier_id, {})
         carrier_type = carrier.get("type", "life")
-        
+        is_major = carrier.get("tier") == "major"
+
+        # 기본 상품
         products = SAMPLE_PRODUCTS["non-life"] if carrier_type == "non-life" else SAMPLE_PRODUCTS["life"]
-        
         for product_id in products:
             product = PRODUCTS.get(product_id, {})
-            product_node_id = f"{carrier_id}-{product_id}"
-            
-            # 상품 노드
-            nodes.append({
-                "id": product_node_id,
-                "labels": ["Product", carrier_id, product.get("category", "COMMON")],
-                "properties": {
-                    "name": f"{carrier.get('name', '')} {product.get('name', '')}",
-                    "carrier": carrier_id,
-                    "product": product_id,
-                    "category": product.get("category", "COMMON")
-                }
-            })
-            edges.append({"source": carrier_id, "target": product_node_id, "type": "OFFERS"})
-            
-            # 문서 노드 (공통 문서 제외)
-            for doc_type_id, doc_type in DOC_TYPES.items():
-                if doc_type_id in COMMON_DOC_TYPES:
-                    continue
-                
-                doc_id = generate_doc_id(doc_type_id, carrier_id, product_id)
-                tier = doc_type.get("tier", "WARM")
-                
-                today = datetime.now()
-                if tier == "HOT":
-                    valid_from = today.strftime("%Y-%m-01")
-                    valid_to = (today + timedelta(days=30)).strftime("%Y-%m-%d")
-                else:
-                    valid_from = (today - timedelta(days=90)).strftime("%Y-%m-%d")
-                    valid_to = None
-                
-                nodes.append({
-                    "id": doc_id,
-                    "labels": ["Document", doc_type_id, tier],
-                    "properties": {
-                        "name": f"{carrier.get('name', '')} {product.get('name', '')} {doc_type.get('name', '')}",
-                        "carrier": carrier_id,
-                        "product": product_id,
-                        "doc_type": doc_type_id,
-                        "tier": tier,
-                        "source": doc_type.get("source", "ga"),
-                        "processes": DOC_PROCESS_MAP.get(doc_type_id, ["BIZ-COMMON"]),
-                        "audiences": DOC_AUDIENCE_MAP.get(doc_type_id, ["AUD-ALL"]),
-                        "status": "active",
-                        "valid_from": valid_from,
-                        "valid_to": valid_to,
-                        "version": "1.0"
-                    }
-                })
-                edges.append({"source": product_node_id, "target": doc_id, "type": "HAS_DOCUMENT"})
-                doc_count += 1
-                
-                # 관계 추가
-                relations = DEFAULT_RELATIONS.get(doc_type_id, {})
-                for rel_type, targets in relations.items():
-                    for target_doc_type in targets:
-                        # 공통 문서는 공통 ID로 참조
-                        if target_doc_type in COMMON_DOC_TYPES:
-                            target_id = generate_doc_id(target_doc_type)
-                        else:
-                            target_id = generate_doc_id(target_doc_type, carrier_id, product_id)
-                        edges.append({"source": doc_id, "target": target_id, "type": rel_type})
-                        if rel_type == "SIBLINGS":
-                            edges.append({"source": target_id, "target": doc_id, "type": rel_type})
+            doc_count += add_product_docs(carrier_id, carrier, product_id, product, nodes, edges)
+
+        # 버전/개편 상품 (메이저 보험사만)
+        if is_major:
+            versioned = VERSIONED_PRODUCTS["non-life"] if carrier_type == "non-life" else VERSIONED_PRODUCTS["life"]
+            for product_id in versioned:
+                product = PRODUCTS.get(product_id, {})
+                doc_count += add_product_docs(carrier_id, carrier, product_id, product, nodes, edges)
     
     # 규제 일정 노드
     for reg in REGULATION_TIMELINE:
@@ -603,24 +634,34 @@ def generate_sample_files(base_path: str):
         file_count += 1
     
     # 보험사/상품별 문서 생성
+    def write_product_docs(carrier_id, product_id, samples_path):
+        count = 0
+        doc_dir = os.path.join(samples_path, carrier_id, product_id)
+        os.makedirs(doc_dir, exist_ok=True)
+        for doc_type_id in DOC_TYPES.keys():
+            if doc_type_id in COMMON_DOC_TYPES:
+                continue
+            content = generate_doc_content(doc_type_id, carrier_id, product_id)
+            fp = os.path.join(doc_dir, f"{doc_type_id}.md")
+            with open(fp, "w", encoding="utf-8") as f:
+                f.write(content)
+            count += 1
+        return count
+
     for carrier_id in SAMPLE_CARRIERS:
         carrier = CARRIERS.get(carrier_id, {})
         carrier_type = carrier.get("type", "life")
+        is_major = carrier.get("tier") == "major"
+
         products = SAMPLE_PRODUCTS["non-life"] if carrier_type == "non-life" else SAMPLE_PRODUCTS["life"]
-        
         for product_id in products:
-            doc_dir = os.path.join(samples_path, carrier_id, product_id)
-            os.makedirs(doc_dir, exist_ok=True)
-            
-            for doc_type_id in DOC_TYPES.keys():
-                if doc_type_id in COMMON_DOC_TYPES:
-                    continue
-                content = generate_doc_content(doc_type_id, carrier_id, product_id)
-                file_path = os.path.join(doc_dir, f"{doc_type_id}.md")
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                file_count += 1
-    
+            file_count += write_product_docs(carrier_id, product_id, samples_path)
+
+        if is_major:
+            versioned = VERSIONED_PRODUCTS["non-life"] if carrier_type == "non-life" else VERSIONED_PRODUCTS["life"]
+            for product_id in versioned:
+                file_count += write_product_docs(carrier_id, product_id, samples_path)
+
     return file_count
 
 

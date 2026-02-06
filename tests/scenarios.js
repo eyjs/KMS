@@ -1,5 +1,5 @@
 /**
- * Phase A 검증 시나리오 테스트
+ * Phase 1 검증 시나리오 테스트
  * JavaScript evaluate 기반 - UI 렌더링 문제 우회
  */
 const { chromium } = require('playwright');
@@ -28,20 +28,19 @@ async function runTests() {
     // 페이지 로드
     await page.goto(HTML_PATH, { waitUntil: 'networkidle' });
 
-    // localStorage 초기화
-    await page.evaluate(() => localStorage.removeItem('kms_data'));
+    // localStorage 초기화 후 리로드 (v2 키 사용)
+    await page.evaluate(() => localStorage.removeItem('kms_data_v2'));
     await page.reload({ waitUntil: 'networkidle' });
 
-    // Petite-Vue 초기화 대기
-    console.log('Petite-Vue 초기화 대기 중...');
+    // Vue 초기화 대기
+    console.log('Vue 초기화 대기 중...');
     await page.waitForTimeout(5000);
 
-    // 페이지 HTML 확인
     const bodyHtml = await page.evaluate(() => document.body.innerHTML.length);
     console.log('Body HTML 길이:', bodyHtml);
 
     console.log('\n========================================');
-    console.log('Phase A 검증 시나리오 테스트 (evaluate 방식)');
+    console.log('Phase 1 검증 시나리오 테스트');
     console.log('========================================\n');
 
     const results = {
@@ -52,13 +51,12 @@ async function runTests() {
     };
 
     // ============================================
-    // 시나리오 1: 문서 전파 검증 (evaluate로 직접 테스트)
+    // 시나리오 1: 문서 전파 검증 (부모-자식-형제-참조)
     // ============================================
     console.log('▶ 시나리오 1: 문서 전파 검증');
     try {
         const scenario1Result = await page.evaluate(() => {
-            // localStorage에서 데이터 가져오기
-            const data = JSON.parse(localStorage.getItem('kms_data') || '{}');
+            const data = JSON.parse(localStorage.getItem('kms_data_v2') || '{}');
             const documents = data.documents || {};
             const docIds = Object.keys(documents);
 
@@ -77,17 +75,22 @@ async function runTests() {
 
             const [docId, doc] = incentiveDoc;
             const siblings = doc.relations?.siblings || [];
+            const parent = doc.relations?.parent;
+            const children = doc.relations?.children || [];
+            const references = doc.relations?.references || [];
 
-            // 관계 규칙 확인 (시책 → 수수료)
-            const relationRules = data.taxonomy?.relationRules || {};
-            const expectedRelations = relationRules['DOC-INCENTIVE'] || [];
+            // 관계가 있거나, defaultRelations 규칙이 존재하면 성공
+            const defaultRelations = data.taxonomy?.defaultRelations || {};
+            const expectedRelations = defaultRelations['DOC-INCENTIVE'] || {};
+            const hasDefaultRefs = (expectedRelations.REFERENCES || []).length > 0;
+
+            const totalRelations = siblings.length + (parent ? 1 : 0) + children.length + references.length;
 
             return {
-                success: siblings.length > 0 || expectedRelations.length > 0,
-                message: `시책 문서: ${doc.name}, 형제관계: ${siblings.length}개, 규칙상 연관: ${expectedRelations.join(', ')}`,
+                success: totalRelations > 0 || hasDefaultRefs,
+                message: `시책 문서: ${doc.name}, 부모: ${parent || '없음'}, 자식: ${children.length}개, 형제: ${siblings.length}개, 참조: ${references.length}개, 기본관계규칙: ${JSON.stringify(expectedRelations)}`,
                 docId,
-                siblings,
-                expectedRelations
+                totalRelations
             };
         });
 
@@ -103,12 +106,12 @@ async function runTests() {
     console.log(`   결과: ${results.scenario1.passed ? '✅ PASS' : '❌ FAIL'} - ${results.scenario1.details}\n`);
 
     // ============================================
-    // 시나리오 2: 유니크 검증 (evaluate로 직접 테스트)
+    // 시나리오 2: 유니크 검증
     // ============================================
     console.log('▶ 시나리오 2: 유니크 검증');
     try {
         const scenario2Result = await page.evaluate(() => {
-            const data = JSON.parse(localStorage.getItem('kms_data') || '{}');
+            const data = JSON.parse(localStorage.getItem('kms_data_v2') || '{}');
             const documents = data.documents || {};
 
             // 중복 체크 로직 (보험사 + 상품 + 문서유형)
@@ -122,7 +125,7 @@ async function runTests() {
             const duplicates = Object.entries(groups)
                 .filter(([_, docs]) => docs.length > 1);
 
-            // 중복 시도 테스트
+            // 중복 시도 테스트: 기존에 있는 조합으로 시도
             const testCarrier = 'INS-SAMSUNG';
             const testProduct = 'PRD-LIFE-WHOLE';
             const testDocType = 'DOC-TERMS';
@@ -152,45 +155,51 @@ async function runTests() {
     console.log(`   결과: ${results.scenario2.passed ? '✅ PASS' : '❌ FAIL'} - ${results.scenario2.details}\n`);
 
     // ============================================
-    // 시나리오 3: 상품 개편 (evaluate로 직접 테스트)
+    // 시나리오 3: 상품 개편
     // ============================================
     console.log('▶ 시나리오 3: 상품 개편');
     try {
         const scenario3Result = await page.evaluate(() => {
-            const data = JSON.parse(localStorage.getItem('kms_data') || '{}');
+            const data = JSON.parse(localStorage.getItem('kms_data_v2') || '{}');
             const products = data.taxonomy?.products || {};
 
             // 새 상품 추가 시뮬레이션
             const newProductId = 'PRD-CHILD-RENEWAL-202602';
-            const newProduct = {
-                name: '든든 어린이보험 리뉴얼(2026-02)',
-                category: '어린이/태아',
-                alias: [],
-                supersedes: 'PRD-CHILD-DENDEN',
-                active: true
-            };
+            const supersedesTarget = 'PRD-CHILD';
 
-            // supersedes 대상 상품 존재 확인
-            const supersedesTarget = products[newProduct.supersedes];
-
-            if (!supersedesTarget) {
+            if (!products[supersedesTarget]) {
                 return {
                     success: false,
-                    message: `supersedes 대상 상품(${newProduct.supersedes})이 존재하지 않음`
+                    message: `supersedes 대상 상품(${supersedesTarget})이 존재하지 않음`
                 };
             }
 
+            const targetName = products[supersedesTarget].name;
+
             // 실제 추가 (테스트용)
-            products[newProductId] = newProduct;
+            products[newProductId] = {
+                name: '든든 어린이보험 리뉴얼(2026-02)',
+                category: 'LIFE',
+                alias: [],
+                supersedes: supersedesTarget
+            };
+
             data.taxonomy.products = products;
-            localStorage.setItem('kms_data', JSON.stringify(data));
+            localStorage.setItem('kms_data_v2', JSON.stringify(data));
+
+            // 별개 엔티티 확인
+            const isDistinct = products[supersedesTarget] && products[newProductId]
+                && products[supersedesTarget].name !== products[newProductId].name;
+
+            // supersedes 관계 확인
+            const hasSupersedes = products[newProductId].supersedes === supersedesTarget;
 
             return {
-                success: true,
-                message: `새 상품 등록 가능: ${newProduct.name} → supersedes: ${supersedesTarget.name}`,
+                success: isDistinct && hasSupersedes,
+                message: `새 상품 등록: ${products[newProductId].name} → supersedes: ${targetName}, 별개 엔티티: ${isDistinct}`,
                 newProductId,
-                supersedes: newProduct.supersedes,
-                targetName: supersedesTarget.name
+                supersedes: supersedesTarget,
+                targetName
             };
         });
 
@@ -206,27 +215,28 @@ async function runTests() {
     console.log(`   결과: ${results.scenario3.passed ? '✅ PASS' : '❌ FAIL'} - ${results.scenario3.details}\n`);
 
     // ============================================
-    // 시나리오 4: 자동 분류 (evaluate로 직접 테스트)
+    // 시나리오 4: 자동 분류
     // ============================================
     console.log('▶ 시나리오 4: 자동 분류');
     try {
         const scenario4Result = await page.evaluate(() => {
-            const data = JSON.parse(localStorage.getItem('kms_data') || '{}');
+            const data = JSON.parse(localStorage.getItem('kms_data_v2') || '{}');
             const taxonomy = data.taxonomy || {};
 
             const filename = 'KB손해_든든어린이_상품요약_202602.pdf';
-            const lowerFilename = filename.toLowerCase().replace(/[_\-\.]/g, ' ');
+            const normalized = filename.toLowerCase().replace(/[_\-\.]/g, ' ').replace(/\s+/g, ' ');
 
             let carrier = '', product = '', docType = '';
-            let carrierConfidence = 0, productConfidence = 0, docTypeConfidence = 0;
+            let carrierConf = 0, productConf = 0, docTypeConf = 0;
 
             // 보험사 매칭
             for (const [id, c] of Object.entries(taxonomy.carriers || {})) {
-                const allNames = [c.name.toLowerCase(), ...(c.alias || []).map(a => a.toLowerCase())];
-                for (const name of allNames) {
-                    if (lowerFilename.includes(name)) {
+                if (id === 'INS-COMMON') continue;
+                const names = [c.name.toLowerCase(), ...(c.alias || []).map(a => a.toLowerCase())];
+                for (const name of names) {
+                    if (name && normalized.includes(name)) {
                         carrier = id;
-                        carrierConfidence = name.length > 2 ? 0.9 : 0.7;
+                        carrierConf = name.length > 2 ? 0.9 : 0.7;
                         break;
                     }
                 }
@@ -235,38 +245,62 @@ async function runTests() {
 
             // 상품 매칭
             for (const [id, p] of Object.entries(taxonomy.products || {})) {
-                const allNames = [p.name.toLowerCase(), ...(p.alias || []).map(a => a.toLowerCase())];
-                for (const name of allNames) {
-                    if (lowerFilename.includes(name)) {
+                if (id === 'PRD-COMMON') continue;
+                const names = [p.name.toLowerCase(), ...(p.alias || []).map(a => a.toLowerCase())];
+                for (const name of names) {
+                    if (name && name.length > 1 && normalized.includes(name)) {
                         product = id;
-                        productConfidence = 0.8;
+                        productConf = name.length > 2 ? 0.85 : 0.6;
                         break;
                     }
                 }
                 if (product) break;
             }
 
-            // 문서유형 매칭
-            for (const [id, dt] of Object.entries(taxonomy.docTypes || {})) {
-                for (const kw of dt.keywords || []) {
-                    if (lowerFilename.includes(kw.toLowerCase())) {
-                        docType = id;
-                        docTypeConfidence = 0.85;
+            // 문서유형 매칭 (키워드 기반)
+            const DOC_TYPE_KEYWORDS = {
+                'DOC-TERMS': ['약관', '보통약관'],
+                'DOC-TERMS-SPECIAL': ['특별약관', '특약'],
+                'DOC-GUIDE': ['상품설명서', '상품설명', '설명서'],
+                'DOC-RATE-TABLE': ['보험료표', '요율표'],
+                'DOC-PRODUCT-SUMMARY': ['상품요약', '요약서', '요약본', '요약'],
+                'DOC-SCRIPT': ['스크립트', '화법', '판매스크립트'],
+                'DOC-COMPARISON': ['비교표', '비교', '상품비교'],
+                'DOC-INCENTIVE': ['시책', '인센티브'],
+                'DOC-COMMISSION': ['수수료', '커미션'],
+                'DOC-TRAINING': ['교육자료', '교육', '연수'],
+                'DOC-ONBOARDING': ['신입교육', '온보딩'],
+                'DOC-UW-GUIDE': ['심사가이드', '심사'],
+                'DOC-REGULATION': ['감독규정', '규정'],
+                'DOC-SETTLEMENT': ['정산', '정산자료'],
+                'DOC-FAQ': ['faq', '자주묻는'],
+            };
+
+            for (const [dtId, keywords] of Object.entries(DOC_TYPE_KEYWORDS)) {
+                for (const kw of keywords) {
+                    if (normalized.includes(kw.toLowerCase())) {
+                        docType = dtId;
+                        docTypeConf = kw.length > 2 ? 0.85 : 0.65;
                         break;
                     }
                 }
                 if (docType) break;
             }
 
+            // 날짜 추출
+            let version = '';
+            const dateMatch = filename.match(/(\d{4})[\-_]?(\d{2})/);
+            if (dateMatch) version = `${dateMatch[1]}년 ${dateMatch[2]}월`;
+
             const carrierName = taxonomy.carriers?.[carrier]?.name || carrier;
             const productName = taxonomy.products?.[product]?.name || product;
             const docTypeName = taxonomy.docTypes?.[docType]?.name || docType;
 
             return {
-                success: carrier && product && docType,
-                message: `파일: ${filename} → 보험사: ${carrierName}, 상품: ${productName}, 유형: ${docTypeName}`,
-                carrier, product, docType,
-                confidence: { carrier: carrierConfidence, product: productConfidence, docType: docTypeConfidence }
+                success: carrier !== '' && product !== '' && docType !== '',
+                message: `파일: ${filename} → 보험사: ${carrierName}(${Math.round(carrierConf*100)}%), 상품: ${productName}(${Math.round(productConf*100)}%), 유형: ${docTypeName}(${Math.round(docTypeConf*100)}%), 날짜: ${version}`,
+                carrier, product, docType, version,
+                confidence: { carrier: carrierConf, product: productConf, docType: docTypeConf }
             };
         });
 
@@ -297,10 +331,10 @@ async function runTests() {
 
     console.log(`\n총 ${totalCount}개 중 ${passCount}개 통과 (${Math.round(passCount/totalCount*100)}%)\n`);
 
-    // 추가 데이터 통계
+    // 데이터 통계
     console.log('▶ 데이터 통계');
     const stats = await page.evaluate(() => {
-        const data = JSON.parse(localStorage.getItem('kms_data') || '{}');
+        const data = JSON.parse(localStorage.getItem('kms_data_v2') || '{}');
         return {
             carriers: Object.keys(data.taxonomy?.carriers || {}).length,
             products: Object.keys(data.taxonomy?.products || {}).length,
@@ -313,9 +347,9 @@ async function runTests() {
     console.log(`   보험사: ${stats.carriers}개, 상품: ${stats.products}개, 문서유형: ${stats.docTypes}개`);
     console.log(`   문서: ${stats.documents}개`);
 
-    // 스크린샷 (디버깅용)
+    // 스크린샷
     await page.screenshot({ path: 'test-result.png', fullPage: true });
-    console.log('\n📸 스크린샷 저장: test-result.png');
+    console.log('\n스크린샷 저장: test-result.png');
 
     await page.waitForTimeout(2000);
     await browser.close();
@@ -325,7 +359,7 @@ async function runTests() {
 
 runTests()
     .then(success => {
-        console.log(success ? '\n🎉 대부분의 테스트 통과!' : '\n⚠️ 테스트 결과 확인 필요');
+        console.log(success ? '\n대부분의 테스트 통과!' : '\n테스트 결과 확인 필요');
         process.exit(success ? 0 : 1);
     })
     .catch(err => {

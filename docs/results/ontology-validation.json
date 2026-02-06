@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-02-06T10:44:35.275047",
-  "version": "1.0-ontology",
+  "timestamp": "2026-02-06T10:59:18.821298",
+  "version": "1.1-structure",
   "graph_stats": {
     "nodes": 840,
     "edges": 2439,
@@ -10,10 +10,10 @@
     "regulations": 5
   },
   "validation": {
-    "total_tests": 16,
-    "passed": 16,
+    "total_tests": 6,
+    "passed": 6,
     "pass_rate": "100%",
-    "avg_score": "0.95"
+    "avg_score": "1.00"
   },
   "results": [
     {
@@ -51,66 +51,6 @@
       "passed": true,
       "score": 1.0,
       "details": "813개 USED_IN 엣지"
-    },
-    {
-      "name": "시나리오1: 수수료 동의어 확장",
-      "passed": true,
-      "score": 1.0,
-      "details": "기대: {'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT', 'DOC-COMMISSION', 'DOC-INCENTIVE'}, 발견: {'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT', 'DOC-COMMISSION', 'DOC-INCENTIVE'}, 삼성매칭: True"
-    },
-    {
-      "name": "시나리오2: UW 클래스 계층 검색",
-      "passed": true,
-      "score": 1.0,
-      "details": "ga:UWDocument 하위 115개 노드"
-    },
-    {
-      "name": "시나리오3: 심사 동의어+클래스",
-      "passed": true,
-      "score": 1.0,
-      "details": "기대: {'DOC-UW-RULE', 'DOC-UW-GUIDE', 'DOC-UW-DISEASE'}, 발견: {'DOC-UW-RULE', 'DOC-UW-GUIDE', 'DOC-UW-DISEASE'}"
-    },
-    {
-      "name": "시나리오4: 1200%룰 규제 영향",
-      "passed": true,
-      "score": 1.0,
-      "details": "GOVERNS: ['BIZ-SETTLE'], RESTRICTS: ['DOC-REGULATION-COMMON-001']"
-    },
-    {
-      "name": "시나리오5: 판매프로세스 순서",
-      "passed": true,
-      "score": 1.0,
-      "details": "체인: BIZ-PROSPECT → BIZ-CONSULT → BIZ-UW → BIZ-ISSUE → BIZ-HAPPYCALL → BIZ-MAINTAIN → BIZ-CLAIM"
-    },
-    {
-      "name": "시나리오6: 정산 프로세스 문서",
-      "passed": true,
-      "score": 1.0,
-      "details": "기대: {'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT', 'DOC-COMMISSION', 'DOC-CHARGEBACK'}, 발견: {'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT', 'DOC-COMMISSION', 'DOC-CHARGEBACK'}"
-    },
-    {
-      "name": "시나리오7: 보험료 개념 그래프",
-      "passed": true,
-      "score": 1.0,
-      "details": "하위개념: ['CONCEPT-NET-PREMIUM', 'CONCEPT-LOADING-PREMIUM', 'CONCEPT-NET-PREMIUM', 'CONCEPT-LOADING-PREMIUM'], EXPLAINS: ['DOC-RATE-TABLE-INS-SAMSUNG-PRD-LIFE-WHOLE-001', 'DOC-GUIDE-INS-SAMSUNG-PRD-LIFE-WHOLE-001']"
-    },
-    {
-      "name": "시나리오8: 상품비교 검색",
-      "passed": true,
-      "score": 0.667,
-      "details": "기대: {'DOC-COMPARISON', 'DOC-TERMS', 'DOC-GUIDE'}, 발견: {'DOC-COMPARISON', 'DOC-GUIDE'}"
-    },
-    {
-      "name": "시나리오9: 규제 자연어 질문",
-      "passed": true,
-      "score": 0.5,
-      "details": "기대: {'DOC-COMMISSION-CALC', 'DOC-REGULATION'}, 발견: {'DOC-COMMISSION-CALC'}"
-    },
-    {
-      "name": "시나리오10: 교육 검색",
-      "passed": true,
-      "score": 1.0,
-      "details": "기대: {'DOC-ONBOARDING', 'DOC-TRAINING'}, 발견: {'DOC-ONBOARDING', 'DOC-TRAINING'}"
     }
   ]
 }

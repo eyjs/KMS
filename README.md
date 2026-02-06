@@ -86,10 +86,8 @@ AI RAG 시스템 구축 전, 전사 지식체계를 수립하고 검증하기 �
 python src/taxonomy.py              # 분류체계 JSON 내보내기
 python src/simulator.py             # 지식 그래프 + 샘플 문서 생성
 python src/simulator_ontology.py    # 온톨로지 그래프 생성
-python src/verifier.py              # 데이터 검증
-python src/ontology_validator.py    # 온톨로지 검증
-python src/simulator_golden.py      # Golden Set 검증
-python src/rag_simulator.py         # RAG 시뮬레이션
+python src/verifier.py              # 데이터 무결성 검증
+python src/ontology_validator.py    # 온톨로지 구조 검증
 ```
 
 ### Admin 페이지 (Phase 1)
@@ -148,12 +146,8 @@ KMS/
 │   ├── ontology.py          # 온톨로지 클래스/관계
 │   ├── simulator.py         # 데이터 시뮬레이터
 │   ├── simulator_ontology.py # 온톨로지 그래프 생성
-│   ├── simulator_golden.py  # Golden Set 검증
-│   ├── verifier.py          # 데이터 검증기
-│   ├── ontology_validator.py # 온톨로지 검증기
-│   ├── rag_simulator.py     # RAG 시뮬레이터
-│   ├── warehouse_api.py     # Warehouse API
-│   ├── golden_set.py        # Golden Set 정의
+│   ├── verifier.py          # 데이터 무결성 검증
+│   ├── ontology_validator.py # 온톨로지 구조 검증
 │   └── doc_templates.py     # 문서 템플릿
 ├── data/                    # 생성 데이터
 │   ├── taxonomy.json

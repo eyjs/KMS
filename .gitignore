@@ -5,6 +5,9 @@ node_modules/
 __pycache__/
 *.pyc
 
+# Generated data
+data/
+
 # Claude Code
 .claude/
 

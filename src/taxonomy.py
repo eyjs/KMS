@@ -91,6 +91,13 @@ PRODUCTS = {
     
     # ── 공통 ──
     "PRD-COMMON": {"name": "공통", "category": "COMMON", "alias": ["전체", "ALL"]},
+
+    # ── 버전/개편 상품 ──
+    "PRD-LIFE-WHOLE-R2602": {"name": "종신보험 리뉴얼(2026-02)", "category": "LIFE", "alias": ["종신 리뉴얼"], "supersedes": "PRD-LIFE-WHOLE"},
+    "PRD-CHILD-R2602": {"name": "어린이보험 리뉴얼(2026-02)", "category": "LIFE", "alias": ["어린이 리뉴얼"], "supersedes": "PRD-CHILD"},
+    "PRD-HEALTH-CANCER-V2": {"name": "암보험 2세대", "category": "HEALTH", "alias": ["암보험2세대", "암보험V2"], "supersedes": "PRD-HEALTH-CANCER", "exemption_period": 90},
+    "PRD-HEALTH-CI-PLUS": {"name": "CI보험 플러스", "category": "HEALTH", "alias": ["CI플러스"], "supersedes": "PRD-HEALTH-CI"},
+    "PRD-HEALTH-MEDICAL-5G": {"name": "실손의료보험 5세대", "category": "HEALTH", "alias": ["실손5세대", "5세대실손"], "supersedes": "PRD-HEALTH-MEDICAL", "generation": 5},
 }
 
 
@@ -340,19 +347,56 @@ KPI_METRICS = {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 DEFAULT_RELATIONS = {
+    # ── 상품 문서 ──
     "DOC-GUIDE": {"REFERENCES": ["DOC-TERMS", "DOC-TERMS-SPECIAL"], "SIBLINGS": ["DOC-SCRIPT", "DOC-BROCHURE"]},
+    "DOC-TERMS-SPECIAL": {"CHILD_OF": ["DOC-TERMS"]},
+    "DOC-BROCHURE": {"REFERENCES": ["DOC-GUIDE"], "SIBLINGS": ["DOC-PRODUCT-SUMMARY"]},
+    "DOC-PRODUCT-SUMMARY": {"REFERENCES": ["DOC-GUIDE", "DOC-TERMS"]},
+    "DOC-RATE-TABLE": {"REFERENCES": ["DOC-TERMS"]},
+    "DOC-COMPARISON": {"REFERENCES": ["DOC-GUIDE", "DOC-RATE-TABLE"]},
+
+    # ── 영업 문서 ──
     "DOC-SCRIPT": {"REFERENCES": ["DOC-GUIDE", "DOC-INCENTIVE", "DOC-COMPARISON"]},
+    "DOC-PROPOSAL": {"REFERENCES": ["DOC-GUIDE", "DOC-RATE-TABLE", "DOC-NEEDS-ANALYSIS"]},
+    "DOC-NEEDS-ANALYSIS": {"SIBLINGS": ["DOC-CUSTOMER-CARD"]},
+    "DOC-CUSTOMER-CARD": {"REFERENCES": ["DOC-NEEDS-ANALYSIS"]},
+
+    # ── 수수료/시책 ──
     "DOC-INCENTIVE": {"REFERENCES": ["DOC-COMMISSION", "DOC-RATE-TABLE"]},
     "DOC-COMMISSION": {"REFERENCES": ["DOC-RATE-TABLE", "DOC-COMMISSION-CALC"]},
-    "DOC-TERMS-SPECIAL": {"CHILD_OF": ["DOC-TERMS"]},
+    "DOC-COMMISSION-CALC": {"REFERENCES": ["DOC-CHARGEBACK"]},
+
+    # ── 청약/계약 ──
+    "DOC-APPLICATION": {"REFERENCES": ["DOC-DISCLOSURE", "DOC-TERMS"]},
+    "DOC-DISCLOSURE": {"REFERENCES": ["DOC-TERMS"]},
+    "DOC-CONFIRMATION": {"REFERENCES": ["DOC-COMPARISON", "DOC-GUIDE"]},
+
+    # ── 심사 ──
     "DOC-UW-GUIDE": {"REFERENCES": ["DOC-UW-RULE", "DOC-UW-DISEASE", "DOC-UW-JOB", "DOC-EXCLUSION"]},
+    "DOC-UW-DISEASE": {"CHILD_OF": ["DOC-UW-RULE"], "SIBLINGS": ["DOC-UW-JOB"]},
+    "DOC-UW-JOB": {"CHILD_OF": ["DOC-UW-RULE"]},
+    "DOC-EXCLUSION": {"REFERENCES": ["DOC-TERMS"]},
+
+    # ── 법률/교육 ──
+    "DOC-COMPLIANCE": {"REFERENCES": ["DOC-LAW-INSURANCE", "DOC-LAW-CONSUMER", "DOC-REGULATION"]},
+    "DOC-COMPLIANCE-GUIDE": {"REFERENCES": ["DOC-COMPLIANCE", "DOC-LAW-CONSUMER"]},
     "DOC-TRAINING": {"REFERENCES": ["DOC-TERMS", "DOC-GUIDE", "DOC-SCRIPT"]},
     "DOC-ONBOARDING": {"REFERENCES": ["DOC-TRAINING", "DOC-COMPLIANCE", "DOC-SYSTEM-MANUAL"]},
-    "DOC-COMPLIANCE": {"REFERENCES": ["DOC-LAW-INSURANCE", "DOC-LAW-CONSUMER", "DOC-REGULATION"]},
-    "DOC-APPLICATION": {"REFERENCES": ["DOC-DISCLOSURE", "DOC-TERMS"]},
-    "DOC-CONFIRMATION": {"REFERENCES": ["DOC-COMPARISON", "DOC-GUIDE"]},
+
+    # ── 정산/실적 ──
     "DOC-SETTLEMENT": {"REFERENCES": ["DOC-COMMISSION", "DOC-CHARGEBACK"]},
+    "DOC-PERFORMANCE": {"REFERENCES": ["DOC-SETTLEMENT", "DOC-COMMISSION"]},
+    "DOC-CHARGEBACK": {"REFERENCES": ["DOC-COMMISSION-CALC"]},
+
+    # ── 전문가/지식 ──
     "DOC-BEST-PRACTICE": {"REFERENCES": ["DOC-GUIDE", "DOC-SCRIPT", "DOC-UW-GUIDE"]},
+    "DOC-EXPERT-TIP": {"SIBLINGS": ["DOC-BEST-PRACTICE", "DOC-CASE-STUDY"]},
+    "DOC-CASE-STUDY": {"REFERENCES": ["DOC-BEST-PRACTICE"]},
+    "DOC-FAQ": {"REFERENCES": ["DOC-GUIDE", "DOC-UW-GUIDE"]},
+
+    # ── 내부 운영 ──
+    "DOC-NOTICE": {"REFERENCES": ["DOC-COMMISSION", "DOC-INCENTIVE"]},
+    "DOC-PROCESS": {"REFERENCES": ["DOC-SYSTEM-MANUAL"]},
 }
 
 
