@@ -44,7 +44,7 @@ SYSTEM_CONFIG = {
         "CHILD_OF": {"inverse": "PARENT_OF", "scope": "same_domain", "bidirectional": True},
         "SIBLING": {"inverse": "SIBLING", "scope": "same_domain", "bidirectional": True},
         "REFERENCE": {"inverse": None, "scope": "cross_domain", "bidirectional": False},
-        "SUPERSEDES": {"inverse": "SUPERSEDED_BY", "scope": "same_domain", "bidirectional": False},
+        "SUPERSEDES": {"inverse": "SUPERSEDED_BY", "scope": "cross_domain", "bidirectional": False},
     },
     # 버전 규칙
     "version_scheme": "MAJOR.MINOR",

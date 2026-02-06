@@ -282,6 +282,10 @@ def generate_graph_data():
         })
         edges.append({"source": "ROOT-IFA-KNOWLEDGE", "target": doc_id, "type": "HAS_COMMON_DOC"})
 
+    # SSOT 중복 방지: 도메인의 ssotKey에 product가 없으면 carrier당 1건만
+    carrier_level_docs = set()  # (carrier_id, doc_type_id) 이미 생성된 것
+    global_level_docs = set()   # (doc_type_id) 이미 생성된 것
+
     def add_product_docs(carrier_id, carrier, product_id, product, nodes, edges):
         count = 0
         product_node_id = f"{carrier_id}-{product_id}"
@@ -308,9 +312,25 @@ def generate_graph_data():
             if doc_type_id in COMMON_DOC_TYPES:
                 continue
 
+            # SSOT 준수: 도메인의 ssotKey에 따라 생성 범위 제한
+            domain = DOC_TYPE_DOMAIN_MAP.get(doc_type_id, "GA-SALES")
+            domain_def = DOMAINS.get(domain, {})
+            ssot_key = domain_def.get("ssotKey", [])
+
+            if "product" not in ssot_key and "carrier" in ssot_key:
+                # carrier 단위 (GA-COMP): carrier당 doc_type 1건만
+                key = (carrier_id, doc_type_id)
+                if key in carrier_level_docs:
+                    continue
+                carrier_level_docs.add(key)
+            elif "product" not in ssot_key and "carrier" not in ssot_key:
+                # 전역 단위 (GA-EDU, COMMON-COMP): doc_type 1건만
+                if doc_type_id in global_level_docs:
+                    continue
+                global_level_docs.add(doc_type_id)
+
             doc_id = generate_doc_id(doc_type_id, carrier_id, product_id)
             tier = doc_type.get("tier", "WARM")
-            domain = DOC_TYPE_DOMAIN_MAP.get(doc_type_id, "GA-SALES")
             lifecycle = random_lifecycle()
             created_at, updated_at, reviewed_at = random_dates(tier, lifecycle)
 
