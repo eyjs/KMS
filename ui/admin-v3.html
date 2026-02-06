@@ -1,0 +1,2577 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KMS Admin v3.0 - Framework First</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+      .scrollbar-thin::-webkit-scrollbar {
+        width: 6px;
+      }
+      .scrollbar-thin::-webkit-scrollbar-thumb {
+        background: #d1d5db;
+        border-radius: 3px;
+      }
+      #network {
+        width: 100%;
+        height: 100%;
+      }
+      .toast {
+        animation: slideIn 0.3s ease-out;
+      }
+      @keyframes slideIn {
+        from {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      .card-hover {
+        transition: all 0.2s;
+      }
+      .card-hover:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      }
+      .tree-item {
+        transition: background 0.15s;
+      }
+      .tree-item:hover {
+        background: rgba(99, 102, 241, 0.08);
+      }
+      .lc-bar {
+        height: 4px;
+        border-radius: 2px;
+        display: flex;
+        overflow: hidden;
+      }
+      .lc-bar > span {
+        display: block;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 h-screen overflow-hidden">
+    <div id="app" class="flex h-full">
+      <!-- Toast -->
+      <div class="fixed top-4 right-4 z-50 space-y-2">
+        <div
+          v-for="(toast, idx) in toasts"
+          :key="idx"
+          :class="toast.type === 'error' ? 'bg-red-500' : toast.type === 'warning' ? 'bg-yellow-500' : 'bg-green-500'"
+          class="toast text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 max-w-sm"
+        >
+          <span>{{ toast.message }}</span>
+          <button @click="removeToast(idx)" class="ml-2 hover:opacity-70">&times;</button>
+        </div>
+      </div>
+
+      <!-- LEFT SIDEBAR -->
+      <aside class="w-72 bg-white border-r border-gray-200 flex flex-col">
+        <!-- Header -->
+        <div class="p-4 border-b border-gray-100">
+          <div class="flex items-center justify-between">
+            <div>
+              <h1 class="text-lg font-bold text-gray-800">KMS Admin</h1>
+              <p class="text-xs text-gray-500">v3.0 - Framework First</p>
+            </div>
+            <span class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded">v3</span>
+          </div>
+        </div>
+
+        <!-- Tree Navigation -->
+        <div class="flex-1 overflow-y-auto scrollbar-thin p-3">
+          <!-- Root -->
+          <div
+            @click="navigateTo('root')"
+            class="tree-item flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer mb-1"
+            :class="navLevel === 'root' && !navBusiness ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-gray-700'"
+          >
+            <span class="text-sm">&#x1F3E0;</span>
+            <span class="text-sm">전체 지식체계</span>
+            <span class="ml-auto text-xs text-gray-400">{{ totalDocCount }}건</span>
+          </div>
+
+          <!-- Business Tree -->
+          <div v-for="(biz, bizId) in store.businesses" :key="bizId" class="ml-2">
+            <div
+              @click="navigateTo('business', bizId)"
+              class="tree-item flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer"
+              :class="navBusiness === bizId && navLevel === 'business' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-gray-600'"
+            >
+              <span class="text-sm">&#x1F3E2;</span>
+              <span class="text-sm truncate">{{ biz.name }}</span>
+              <span class="ml-auto text-xs text-gray-400">{{ getDocCountByBusiness(bizId) }}</span>
+            </div>
+            <!-- Domains under this business -->
+            <div v-if="navBusiness === bizId || navLevel === 'root'" class="ml-4">
+              <div
+                v-for="(dom, domId) in getDomainsForBusiness(bizId)"
+                :key="domId"
+                @click="navigateTo('domain', bizId, domId)"
+                class="tree-item flex items-center gap-2 px-3 py-1 rounded-lg cursor-pointer"
+                :class="navDomain === domId ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-500'"
+              >
+                <span class="text-xs">&#x1F4C1;</span>
+                <span class="text-xs truncate">{{ dom.name }}</span>
+                <span class="ml-auto text-[10px] text-gray-400">{{ getDocCountByDomain(domId) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Facet Tabs (Domain 선택 시) -->
+          <div v-if="navLevel === 'domain' && currentDomainConfig" class="mt-4 pt-3 border-t border-gray-100">
+            <div class="text-xs font-medium text-gray-400 mb-2 px-2">분류 축</div>
+            <div class="flex flex-wrap gap-1 px-2 mb-2">
+              <button
+                v-for="facet in currentDomainConfig.ssotKey"
+                :key="facet"
+                @click="activeFacet = facet"
+                :class="activeFacet === facet ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'"
+                class="text-xs px-2.5 py-1 rounded-md font-medium transition"
+              >
+                {{ facetLabel(facet) }}
+              </button>
+            </div>
+            <!-- Facet Items -->
+            <div class="space-y-1 px-1">
+              <div
+                v-for="item in facetItems"
+                :key="item.id"
+                @click="selectFacetItem(item)"
+                class="tree-item flex items-center justify-between px-2 py-1.5 rounded cursor-pointer"
+                :class="selectedFacetId === item.id ? 'bg-indigo-50 ring-1 ring-indigo-300' : ''"
+              >
+                <span class="text-xs text-gray-700 truncate">{{ item.name }}</span>
+                <span class="text-[10px] text-gray-400">{{ item.count }}건</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload + Data Actions -->
+        <div class="p-3 border-t border-gray-100">
+          <label
+            class="block w-full p-2.5 border-2 border-dashed border-gray-300 rounded-lg text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition"
+          >
+            <span class="text-xs text-gray-600">파일 업로드 (자동 분류)</span>
+            <input type="file" accept=".md,.pdf,.hwp,.docx" @change="handleFileUpload" class="hidden" />
+          </label>
+        </div>
+        <div class="p-3 border-t border-gray-100 flex gap-2">
+          <button
+            @click="exportData"
+            class="flex-1 py-1.5 px-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium transition"
+          >
+            내보내기
+          </button>
+          <label
+            class="flex-1 py-1.5 px-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium text-center cursor-pointer transition"
+          >
+            가져오기
+            <input type="file" accept=".json" @change="importData" class="hidden" />
+          </label>
+        </div>
+      </aside>
+
+      <!-- CENTER AREA -->
+      <main class="flex-1 flex flex-col min-w-0">
+        <!-- Breadcrumb + Toolbar -->
+        <div class="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-3">
+          <!-- Breadcrumb -->
+          <div class="flex items-center gap-1.5 text-sm min-w-0">
+            <button
+              @click="navigateTo('root')"
+              class="hover:text-indigo-600 transition"
+              :class="navLevel === 'root' && !navBusiness ? 'font-bold text-gray-800' : 'text-indigo-600'"
+            >
+              전체
+            </button>
+            <template v-if="navBusiness">
+              <span class="text-gray-400">&#x203A;</span>
+              <button
+                @click="navigateTo('business', navBusiness)"
+                class="hover:text-indigo-600 transition truncate"
+                :class="navLevel === 'business' ? 'font-bold text-gray-800' : 'text-indigo-600'"
+              >
+                {{ store.businesses[navBusiness]?.name }}
+              </button>
+            </template>
+            <template v-if="navDomain">
+              <span class="text-gray-400">&#x203A;</span>
+              <button
+                @click="navigateTo('domain', navBusiness, navDomain)"
+                class="hover:text-indigo-600 transition truncate"
+                :class="navLevel === 'domain' && !selectedDocId ? 'font-bold text-gray-800' : 'text-indigo-600'"
+              >
+                {{ store.domains[navDomain]?.name }}
+              </button>
+            </template>
+            <template v-if="selectedDocId && selectedDoc">
+              <span class="text-gray-400">&#x203A;</span>
+              <span class="font-bold text-gray-800 truncate">{{ selectedDoc.name }}</span>
+            </template>
+          </div>
+
+          <div class="flex-1"></div>
+
+          <!-- Domain-level toolbar -->
+          <template v-if="navLevel === 'domain'">
+            <div class="flex items-center gap-1">
+              <button
+                @click="domainView = 'graph'"
+                :class="domainView === 'graph' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                class="p-1.5 rounded-lg transition text-sm"
+                title="그래프"
+              >
+                &#x1F4CA;
+              </button>
+              <button
+                @click="domainView = 'list'"
+                :class="domainView === 'list' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                class="p-1.5 rounded-lg transition text-sm"
+                title="목록"
+              >
+                &#x1F4CB;
+              </button>
+              <button
+                @click="domainView = 'validation'"
+                :class="domainView === 'validation' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                class="p-1.5 rounded-lg transition text-sm"
+                title="검증"
+              >
+                &#x2705;
+              </button>
+              <button
+                @click="domainView = 'dashboard'"
+                :class="domainView === 'dashboard' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+                class="p-1.5 rounded-lg transition text-sm"
+                title="대시보드"
+              >
+                &#x1FA7A;
+              </button>
+            </div>
+            <div class="h-5 w-px bg-gray-200"></div>
+            <input
+              type="text"
+              v-model="searchQuery"
+              @keydown.enter="applySearch"
+              placeholder="검색..."
+              class="w-40 px-2.5 py-1 bg-gray-100 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <button v-if="appliedSearch" @click="clearSearch" class="text-xs text-gray-400 hover:text-red-500">
+              &times;
+            </button>
+            <select v-model="filterLifecycle" class="px-2 py-1 text-xs border rounded-lg">
+              <option value="">상태 전체</option>
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="STALE">STALE</option>
+              <option value="DRAFT">DRAFT</option>
+              <option value="DEPRECATED">DEPRECATED</option>
+            </select>
+            <button
+              @click="showAddDocModal"
+              class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-medium transition"
+            >
+              + 문서
+            </button>
+          </template>
+
+          <!-- Root/Business toolbar -->
+          <template v-if="navLevel === 'root'">
+            <button
+              @click="showBizModal = true"
+              class="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-xs font-medium transition"
+            >
+              + 사업 추가
+            </button>
+          </template>
+          <template v-if="navLevel === 'business'">
+            <button
+              @click="openDomainModal()"
+              class="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-xs font-medium transition"
+            >
+              + 도메인 추가
+            </button>
+          </template>
+        </div>
+
+        <!-- ==================== MAIN CONTENT ==================== -->
+
+        <!-- ROOT VIEW: Business Cards -->
+        <div v-if="navLevel === 'root'" class="flex-1 overflow-auto p-6">
+          <!-- Global Stats -->
+          <div class="grid grid-cols-4 gap-3 mb-6">
+            <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+              <div class="text-3xl font-bold text-indigo-600">{{ Object.keys(store.businesses).length }}</div>
+              <div class="text-xs text-gray-500 mt-1">사업</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+              <div class="text-3xl font-bold text-purple-600">{{ Object.keys(store.domains).length }}</div>
+              <div class="text-xs text-gray-500 mt-1">도메인</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+              <div class="text-3xl font-bold text-blue-600">{{ totalDocCount }}</div>
+              <div class="text-xs text-gray-500 mt-1">전체 문서</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+              <div
+                class="text-3xl font-bold"
+                :class="globalHealthScore >= 90 ? 'text-green-600' : globalHealthScore >= 70 ? 'text-yellow-600' : 'text-red-600'"
+              >
+                {{ globalHealthScore }}
+              </div>
+              <div class="text-xs text-gray-500 mt-1">건강 점수</div>
+            </div>
+          </div>
+
+          <!-- Business Cards Grid -->
+          <h2 class="text-sm font-bold text-gray-600 mb-3">사업 (Business)</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div
+              v-for="(biz, bizId) in store.businesses"
+              :key="bizId"
+              @click="navigateTo('business', bizId)"
+              class="card-hover bg-white rounded-xl shadow-sm p-5 cursor-pointer border border-gray-100"
+            >
+              <div class="flex items-start justify-between mb-3">
+                <div>
+                  <h3 class="font-bold text-gray-800">{{ biz.name }}</h3>
+                  <p class="text-xs text-gray-500 mt-0.5">{{ biz.description }}</p>
+                </div>
+                <span class="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-mono">{{ bizId }}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 mb-3">
+                <div class="p-2 bg-gray-50 rounded text-center">
+                  <div class="text-lg font-bold text-purple-600">{{ getDomainCountByBusiness(bizId) }}</div>
+                  <div class="text-[10px] text-gray-500">도메인</div>
+                </div>
+                <div class="p-2 bg-gray-50 rounded text-center">
+                  <div class="text-lg font-bold text-blue-600">{{ getDocCountByBusiness(bizId) }}</div>
+                  <div class="text-[10px] text-gray-500">문서</div>
+                </div>
+              </div>
+              <!-- Lifecycle Bar -->
+              <div class="lc-bar w-full bg-gray-100" v-if="getDocCountByBusiness(bizId) > 0">
+                <span
+                  class="bg-green-400"
+                  :style="{ width: getBizLifecyclePct(bizId, 'ACTIVE') + '%' }"
+                  :title="'ACTIVE ' + getBizLifecyclePct(bizId, 'ACTIVE') + '%'"
+                ></span>
+                <span class="bg-orange-400" :style="{ width: getBizLifecyclePct(bizId, 'STALE') + '%' }"></span>
+                <span class="bg-gray-300" :style="{ width: getBizLifecyclePct(bizId, 'DRAFT') + '%' }"></span>
+                <span class="bg-red-400" :style="{ width: getBizLifecyclePct(bizId, 'DEPRECATED') + '%' }"></span>
+              </div>
+            </div>
+
+            <!-- Add Card -->
+            <div
+              @click="showBizModal = true"
+              class="card-hover bg-white rounded-xl shadow-sm p-5 cursor-pointer border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-indigo-400 hover:text-indigo-600 text-gray-400 min-h-[140px]"
+            >
+              <div class="text-center">
+                <div class="text-3xl mb-1">+</div>
+                <div class="text-sm font-medium">사업 추가</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BUSINESS VIEW: Domain Cards -->
+        <div v-else-if="navLevel === 'business'" class="flex-1 overflow-auto p-6">
+          <h2 class="text-sm font-bold text-gray-600 mb-3">{{ store.businesses[navBusiness]?.name }} - 도메인</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div
+              v-for="(dom, domId) in getDomainsForBusiness(navBusiness)"
+              :key="domId"
+              @click="navigateTo('domain', navBusiness, domId)"
+              class="card-hover bg-white rounded-xl shadow-sm p-5 cursor-pointer border border-gray-100"
+            >
+              <div class="flex items-start justify-between mb-3">
+                <div>
+                  <h3 class="font-bold text-gray-800">{{ dom.name }}</h3>
+                  <div class="flex gap-1 mt-1">
+                    <span
+                      v-for="key in (dom.ssotKey || [])"
+                      :key="key"
+                      class="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded"
+                      >{{ facetLabel(key) }}</span
+                    >
+                  </div>
+                </div>
+                <span class="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-700 rounded font-mono">{{ domId }}</span>
+              </div>
+              <div class="p-2 bg-gray-50 rounded text-center mb-3">
+                <div class="text-xl font-bold text-blue-600">{{ getDocCountByDomain(domId) }}</div>
+                <div class="text-[10px] text-gray-500">문서</div>
+              </div>
+              <div class="lc-bar w-full bg-gray-100" v-if="getDocCountByDomain(domId) > 0">
+                <span class="bg-green-400" :style="{ width: getDomainLifecyclePct(domId, 'ACTIVE') + '%' }"></span>
+                <span class="bg-orange-400" :style="{ width: getDomainLifecyclePct(domId, 'STALE') + '%' }"></span>
+                <span class="bg-gray-300" :style="{ width: getDomainLifecyclePct(domId, 'DRAFT') + '%' }"></span>
+                <span class="bg-red-400" :style="{ width: getDomainLifecyclePct(domId, 'DEPRECATED') + '%' }"></span>
+              </div>
+            </div>
+
+            <div
+              @click="openDomainModal()"
+              class="card-hover bg-white rounded-xl shadow-sm p-5 cursor-pointer border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-purple-400 hover:text-purple-600 text-gray-400 min-h-[140px]"
+            >
+              <div class="text-center">
+                <div class="text-3xl mb-1">+</div>
+                <div class="text-sm font-medium">도메인 추가</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DOMAIN VIEW -->
+        <template v-else-if="navLevel === 'domain'">
+          <!-- Graph View -->
+          <div v-show="domainView === 'graph'" class="flex-1 relative">
+            <div id="network" class="w-full h-full bg-gray-50"></div>
+            <div class="absolute bottom-4 right-4 flex gap-2">
+              <button
+                @click="fitGraph"
+                class="px-3 py-1.5 bg-white shadow-lg rounded-lg text-xs hover:bg-gray-50 transition"
+              >
+                맞춤 보기
+              </button>
+              <button
+                v-if="selectedDocId"
+                @click="highlightRelatedDocs"
+                class="px-3 py-1.5 bg-blue-500 text-white shadow-lg rounded-lg text-xs hover:bg-blue-600 transition"
+              >
+                연관 문서 전파
+              </button>
+            </div>
+          </div>
+
+          <!-- List View -->
+          <div v-show="domainView === 'list'" class="flex-1 overflow-auto p-4">
+            <div v-if="appliedSearch" class="mb-2 text-xs text-orange-600">
+              "{{ appliedSearch }}" 검색 결과 ({{ domainFilteredDocs.length }}건)
+              <button @click="clearSearch" class="ml-1 text-gray-400 hover:text-red-500">&times;</button>
+            </div>
+            <table class="w-full bg-white rounded-lg shadow-sm overflow-hidden">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">문서명</th>
+                  <th
+                    v-for="key in (currentDomainConfig?.ssotKey || [])"
+                    :key="key"
+                    class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
+                  >
+                    {{ facetLabel(key) }}
+                  </th>
+                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">신선도</th>
+                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tier</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <tr
+                  v-for="[docId, doc] in domainFilteredDocs"
+                  :key="docId"
+                  @click="selectDocument(docId)"
+                  class="cursor-pointer hover:bg-gray-50 transition"
+                  :class="selectedDocId === docId ? 'bg-indigo-50' : ''"
+                >
+                  <td class="px-4 py-2.5 text-sm font-medium text-gray-800">{{ doc.name }}</td>
+                  <td
+                    v-for="key in (currentDomainConfig?.ssotKey || [])"
+                    :key="key"
+                    class="px-4 py-2.5 text-sm text-gray-600"
+                  >
+                    {{ getFacetValueName(key, getDocFacetValue(doc, key)) }}
+                  </td>
+                  <td class="px-4 py-2.5">
+                    <span :class="getLifecycleClass(doc.lifecycle || 'ACTIVE')" class="text-xs px-2 py-0.5 rounded"
+                      >{{ doc.lifecycle || 'ACTIVE' }}</span
+                    >
+                  </td>
+                  <td class="px-4 py-2.5">
+                    <span :class="getFreshnessClass(calcFreshness(doc).status)" class="text-xs px-2 py-0.5 rounded"
+                      >{{ calcFreshness(doc).status }}</span
+                    >
+                  </td>
+                  <td class="px-4 py-2.5">
+                    <span :class="getTierClass(doc.tier)" class="text-xs px-2 py-0.5 rounded">{{ doc.tier }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-if="domainFilteredDocs.length === 0" class="text-center py-12 text-gray-400 text-sm">
+              이 도메인에 문서가 없습니다
+            </div>
+          </div>
+
+          <!-- Validation View -->
+          <div v-show="domainView === 'validation'" class="flex-1 overflow-auto p-4">
+            <div class="grid grid-cols-2 gap-4">
+              <!-- SSOT -->
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2 text-sm">
+                  SSOT 검증 ({{ navDomain }})
+                </h3>
+                <div class="text-xs text-gray-500 mb-2">
+                  SSOT 키: {{ (currentDomainConfig?.ssotKey || []).map(k => facetLabel(k)).join(' x ') }}
+                </div>
+                <div v-if="domainDuplicateGroups.length === 0" class="text-green-600 text-sm flex items-center gap-2">
+                  모든 문서가 유니크합니다
+                </div>
+                <div v-else class="space-y-2">
+                  <div
+                    v-for="group in domainDuplicateGroups"
+                    :key="group.key"
+                    class="p-3 bg-red-50 rounded-lg border border-red-200"
+                  >
+                    <div class="text-sm font-medium text-red-700">{{ group.key }}</div>
+                    <div class="text-xs text-red-600 mt-1">{{ group.docs.length }}개 ACTIVE 중복</div>
+                  </div>
+                </div>
+              </div>
+              <!-- Propagation -->
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">전파 검증</h3>
+                <div v-if="!selectedDocId" class="text-sm text-gray-500">
+                  문서를 선택하고 "연관 문서 전파" 버튼을 클릭하세요
+                </div>
+                <div v-else-if="selectedDoc" class="space-y-2">
+                  <div class="p-3 bg-blue-50 rounded-lg">
+                    <div class="font-medium text-sm">{{ selectedDoc.name }}</div>
+                    <div class="text-xs text-gray-500 mt-2">
+                      연관 문서 ({{ getRelatedDocIds(selectedDocId).length }}개):
+                    </div>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                      <span
+                        v-for="relId in getRelatedDocIds(selectedDocId)"
+                        :key="relId"
+                        class="text-xs px-2 py-1 bg-white rounded border"
+                        >{{ getDocName(relId) }}</span
+                      >
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Stats -->
+              <div class="bg-white rounded-lg shadow-sm p-4 col-span-2">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">도메인 통계</h3>
+                <div class="grid grid-cols-4 gap-3 text-sm">
+                  <div class="p-3 bg-blue-50 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-blue-600">{{ domainDocs.length }}</div>
+                    <div class="text-xs text-gray-500">문서 수</div>
+                  </div>
+                  <div class="p-3 bg-green-50 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-green-600">
+                      {{ domainDocs.filter(([,d]) => (d.lifecycle || 'ACTIVE') === 'ACTIVE').length }}
+                    </div>
+                    <div class="text-xs text-gray-500">ACTIVE</div>
+                  </div>
+                  <div class="p-3 bg-orange-50 rounded-lg text-center">
+                    <div class="text-2xl font-bold text-orange-600">
+                      {{ domainDocs.filter(([,d]) => (d.lifecycle || 'ACTIVE') === 'STALE').length }}
+                    </div>
+                    <div class="text-xs text-gray-500">STALE</div>
+                  </div>
+                  <div class="p-3 bg-red-50 rounded-lg text-center">
+                    <div
+                      class="text-2xl font-bold"
+                      :class="domainDuplicateGroups.length === 0 ? 'text-green-600' : 'text-red-600'"
+                    >
+                      {{ domainDuplicateGroups.length }}
+                    </div>
+                    <div class="text-xs text-gray-500">SSOT 위반</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dashboard View -->
+          <div v-show="domainView === 'dashboard'" class="flex-1 overflow-auto p-4">
+            <div class="max-w-5xl mx-auto space-y-4">
+              <!-- Health Score -->
+              <div class="bg-white rounded-lg shadow-sm p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <h2 class="text-lg font-bold text-gray-800">{{ store.domains[navDomain]?.name }} 대시보드</h2>
+                  <span
+                    class="text-sm font-bold px-3 py-1 rounded-full"
+                    :class="domainDashboard.score >= 90 ? 'bg-green-100 text-green-700' : domainDashboard.score >= 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'"
+                  >
+                    {{ domainDashboard.score }}점
+                  </span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-3">
+                  <div
+                    class="h-3 rounded-full transition-all duration-500"
+                    :class="domainDashboard.score >= 90 ? 'bg-green-500' : domainDashboard.score >= 70 ? 'bg-yellow-500' : 'bg-red-500'"
+                    :style="{ width: domainDashboard.score + '%' }"
+                  ></div>
+                </div>
+              </div>
+              <!-- Lifecycle + Freshness -->
+              <div class="grid grid-cols-2 gap-3">
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                  <h3 class="font-bold text-gray-800 mb-3 text-sm">라이프사이클 분포</h3>
+                  <div class="space-y-2">
+                    <div v-for="lc in domainDashboard.lifecycleDist" :key="lc.name">
+                      <div class="flex justify-between text-xs mb-1">
+                        <span :class="getLifecycleClass(lc.name)" class="px-1.5 py-0.5 rounded font-medium"
+                          >{{ lc.name }}</span
+                        >
+                        <span class="text-gray-600">{{ lc.count }}건 ({{ lc.pct }}%)</span>
+                      </div>
+                      <div class="w-full bg-gray-100 rounded-full h-2">
+                        <div class="h-2 rounded-full bg-indigo-400" :style="{ width: lc.pct + '%' }"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                  <h3 class="font-bold text-gray-800 mb-3 text-sm">신선도 분포</h3>
+                  <div class="space-y-2">
+                    <div v-for="f in domainDashboard.freshnessDist" :key="f.name">
+                      <div class="flex justify-between text-xs mb-1">
+                        <span :class="getFreshnessClass(f.name)" class="font-medium">{{ f.name }}</span>
+                        <span class="text-gray-600">{{ f.count }}건 ({{ f.pct }}%)</span>
+                      </div>
+                      <div class="w-full bg-gray-100 rounded-full h-2">
+                        <div
+                          class="h-2 rounded-full"
+                          :class="f.name === 'FRESH' ? 'bg-green-400' : f.name === 'WARNING' ? 'bg-yellow-400' : 'bg-red-400'"
+                          :style="{ width: f.pct + '%' }"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Tier + Issues -->
+              <div class="grid grid-cols-2 gap-3">
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                  <h3 class="font-bold text-gray-800 mb-3 text-sm">Tier 분포</h3>
+                  <div class="space-y-2">
+                    <div v-for="tier in domainDashboard.tierDist" :key="tier.name">
+                      <div class="flex justify-between text-xs mb-1">
+                        <span
+                          :class="tier.name === 'HOT' ? 'text-red-600 font-bold' : tier.name === 'WARM' ? 'text-orange-600 font-bold' : 'text-blue-600 font-bold'"
+                          >{{ tier.name }}</span
+                        >
+                        <span class="text-gray-600">{{ tier.count }}건 ({{ tier.pct }}%)</span>
+                      </div>
+                      <div class="w-full bg-gray-100 rounded-full h-2">
+                        <div
+                          class="h-2 rounded-full"
+                          :class="tier.name === 'HOT' ? 'bg-red-400' : tier.name === 'WARM' ? 'bg-orange-400' : 'bg-blue-400'"
+                          :style="{ width: tier.pct + '%' }"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                  <h3 class="font-bold text-gray-800 mb-3 text-sm">발견된 문제</h3>
+                  <div v-if="domainDashboard.issues.length === 0" class="text-green-600 text-sm">문제 없음</div>
+                  <div v-else class="space-y-1 max-h-40 overflow-auto scrollbar-thin">
+                    <div
+                      v-for="(issue, idx) in domainDashboard.issues"
+                      :key="idx"
+                      class="text-xs p-2 rounded"
+                      :class="issue.severity === 'error' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'"
+                    >
+                      {{ issue.message }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Status Bar -->
+        <div class="h-8 bg-gray-100 border-t border-gray-200 flex items-center px-4 text-xs text-gray-600">
+          <span
+            >{{ navLevel === 'domain' ? store.domains[navDomain]?.name + ': ' + domainDocs.length + '건' : '전체: ' +
+            totalDocCount + '건' }}</span
+          >
+          <span class="mx-2">|</span>
+          <span class="text-green-600"
+            >ACTIVE: {{ navLevel === 'domain' ? domainLifecycleCounts.ACTIVE || 0 : globalLifecycleCounts.ACTIVE || 0
+            }}</span
+          >
+          <span class="mx-1 text-orange-600"
+            >STALE: {{ navLevel === 'domain' ? domainLifecycleCounts.STALE || 0 : globalLifecycleCounts.STALE || 0
+            }}</span
+          >
+          <span class="mx-1 text-gray-500"
+            >DRAFT: {{ navLevel === 'domain' ? domainLifecycleCounts.DRAFT || 0 : globalLifecycleCounts.DRAFT || 0
+            }}</span
+          >
+          <span class="ml-auto text-gray-400">v{{ store.version }} | {{ formatDate(store.lastModified) }}</span>
+        </div>
+      </main>
+
+      <!-- RIGHT PANEL -->
+      <aside
+        v-show="(selectedDocId && navLevel === 'domain') || navLevel === 'business'"
+        class="w-80 bg-white border-l border-gray-200 flex flex-col"
+      >
+        <!-- Business Detail (Business Level) -->
+        <div v-if="navLevel === 'business' && !selectedDocId" class="flex-1 overflow-y-auto scrollbar-thin">
+          <div class="p-4 border-b border-gray-100">
+            <h2 class="font-bold text-gray-800">사업 상세</h2>
+          </div>
+          <div class="p-4 space-y-4">
+            <div>
+              <label class="text-xs font-medium text-gray-500">코드</label>
+              <div class="text-sm text-gray-800 font-mono bg-gray-50 p-2 rounded mt-1">{{ navBusiness }}</div>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">이름</label>
+              <div class="text-sm text-gray-800 bg-gray-50 p-2 rounded mt-1">
+                {{ store.businesses[navBusiness]?.name }}
+              </div>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">설명</label>
+              <div class="text-sm text-gray-600 bg-gray-50 p-2 rounded mt-1">
+                {{ store.businesses[navBusiness]?.description }}
+              </div>
+            </div>
+            <div class="border-t border-gray-100 pt-4">
+              <label class="text-xs font-medium text-gray-500">도메인 목록</label>
+              <div class="mt-2 space-y-1">
+                <div
+                  v-for="(dom, domId) in getDomainsForBusiness(navBusiness)"
+                  :key="domId"
+                  @click="navigateTo('domain', navBusiness, domId)"
+                  class="p-2 bg-gray-50 rounded cursor-pointer hover:bg-indigo-50 transition text-sm flex justify-between"
+                >
+                  <span>{{ dom.name }}</span>
+                  <span class="text-xs text-gray-400">{{ getDocCountByDomain(domId) }}건</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Document Detail (Domain Level) -->
+        <div v-else-if="selectedDocId && selectedDoc" class="flex-1 overflow-y-auto scrollbar-thin">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="font-bold text-gray-800">문서 상세</h2>
+            <button @click="selectedDocId = null" class="text-gray-400 hover:text-gray-600">&times;</button>
+          </div>
+          <div class="p-4 space-y-4">
+            <div>
+              <label class="text-xs font-medium text-gray-500">문서 ID</label>
+              <div class="text-sm text-gray-800 font-mono bg-gray-50 p-2 rounded mt-1 break-all">
+                {{ selectedDocId }}
+              </div>
+            </div>
+
+            <!-- Lifecycle -->
+            <div>
+              <label class="text-xs font-medium text-gray-500">라이프사이클</label>
+              <div class="mt-1 flex items-center gap-2 flex-wrap">
+                <span
+                  :class="getLifecycleClass(selectedDoc.lifecycle || 'ACTIVE')"
+                  class="text-xs px-3 py-1.5 rounded-lg font-bold"
+                  >{{ selectedDoc.lifecycle || 'ACTIVE' }}</span
+                >
+                <button
+                  v-for="next in getNextLifecycleStates(selectedDoc.lifecycle || 'ACTIVE')"
+                  :key="next"
+                  @click="transitionLifecycle(selectedDocId, next)"
+                  class="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 transition"
+                >
+                  &rarr; {{ next }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Freshness -->
+            <div>
+              <label class="text-xs font-medium text-gray-500">신선도</label>
+              <div class="mt-1">
+                <div class="flex justify-between text-xs mb-1">
+                  <span :class="getFreshnessClass(calcFreshness(selectedDoc).status)" class="font-medium"
+                    >{{ calcFreshness(selectedDoc).status }}</span
+                  >
+                  <span class="text-gray-500"
+                    >{{ calcFreshness(selectedDoc).daysSince }}일 / {{ calcFreshness(selectedDoc).maxDays }}일</span
+                  >
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    class="h-2 rounded-full transition-all"
+                    :class="calcFreshness(selectedDoc).status === 'FRESH' ? 'bg-green-500' : calcFreshness(selectedDoc).status === 'WARNING' ? 'bg-yellow-500' : 'bg-red-500'"
+                    :style="{ width: Math.min(100, calcFreshness(selectedDoc).pct) + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Domain + Version -->
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-medium text-gray-500">도메인</label>
+                <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700">
+                  {{ selectedDoc.domain || navDomain }}
+                </div>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-500">버전</label>
+                <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700">
+                  v{{ typeof selectedDoc.version === 'object' ? selectedDoc.version.major + '.' +
+                  selectedDoc.version.minor : selectedDoc.version || '1.0' }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Name -->
+            <div>
+              <label class="text-xs font-medium text-gray-500">문서명</label>
+              <input
+                type="text"
+                v-model="selectedDoc.name"
+                @change="saveStore"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+
+            <!-- Dynamic Facets -->
+            <div v-for="facet in (currentDomainConfig?.ssotKey || [])" :key="facet">
+              <label class="text-xs font-medium text-gray-500">{{ facetLabel(facet) }}</label>
+              <select
+                :value="getDocFacetValue(selectedDoc, facet)"
+                @change="setDocClassification(selectedDoc, facet, $event.target.value); saveStore()"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                <option v-for="(item, id) in getFacetOptions(facet)" :key="id" :value="id">{{ item.name }}</option>
+              </select>
+            </div>
+
+            <!-- Relations -->
+            <div class="border-t border-gray-100 pt-4">
+              <h3 class="text-sm font-bold text-gray-700 mb-3">관계 설정</h3>
+
+              <!-- Parent -->
+              <div class="mb-3">
+                <label class="text-xs font-medium text-gray-500">부모 문서</label>
+                <div v-if="selectedDoc.relations?.parent" class="mt-1">
+                  <span
+                    @click="selectDocument(selectedDoc.relations.parent)"
+                    class="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs cursor-pointer hover:bg-indigo-200"
+                  >
+                    {{ getDocName(selectedDoc.relations.parent) }}
+                    <button @click.stop="removeParent" class="hover:text-red-500">&times;</button>
+                  </span>
+                </div>
+                <select
+                  @change="setParent($event)"
+                  class="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                >
+                  <option value="">{{ selectedDoc.relations?.parent ? '부모 변경' : '+ 부모 설정' }}</option>
+                  <option v-for="(doc, id) in availableParents" :key="id" :value="id">{{ doc.name }}</option>
+                </select>
+              </div>
+
+              <!-- Children -->
+              <div class="mb-3">
+                <label class="text-xs font-medium text-gray-500">자식 문서</label>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <span
+                    v-for="childId in selectedDoc.relations?.children || []"
+                    :key="childId"
+                    @click="selectDocument(childId)"
+                    class="inline-flex items-center gap-1 px-2 py-1 bg-violet-100 text-violet-700 rounded text-xs cursor-pointer hover:bg-violet-200"
+                  >
+                    {{ getDocName(childId) }}
+                    <button @click.stop="removeChild(childId)" class="hover:text-red-500">&times;</button>
+                  </span>
+                </div>
+                <select
+                  @change="addChild($event)"
+                  class="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                >
+                  <option value="">+ 자식 추가</option>
+                  <option v-for="(doc, id) in availableChildren" :key="id" :value="id">{{ doc.name }}</option>
+                </select>
+              </div>
+
+              <!-- Siblings -->
+              <div class="mb-3">
+                <label class="text-xs font-medium text-gray-500">형제 문서</label>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <span
+                    v-for="sibId in selectedDoc.relations?.siblings || []"
+                    :key="sibId"
+                    @click="selectDocument(sibId)"
+                    class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs cursor-pointer hover:bg-green-200"
+                  >
+                    {{ getDocName(sibId) }}
+                    <button @click.stop="removeSiblingRelation(sibId)" class="hover:text-red-500">&times;</button>
+                  </span>
+                </div>
+                <select
+                  @change="addSiblingRelation($event)"
+                  class="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                >
+                  <option value="">+ 형제 추가</option>
+                  <option v-for="(doc, id) in availableSiblings" :key="id" :value="id">{{ doc.name }}</option>
+                </select>
+              </div>
+
+              <!-- References -->
+              <div>
+                <label class="text-xs font-medium text-gray-500">참조 문서</label>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <span
+                    v-for="refId in selectedDoc.relations?.references || []"
+                    :key="refId"
+                    @click="selectDocument(refId)"
+                    class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs cursor-pointer hover:bg-gray-200"
+                  >
+                    {{ getDocName(refId) }}
+                    <button @click.stop="removeReference(refId)" class="hover:text-red-500">&times;</button>
+                  </span>
+                </div>
+                <select
+                  @change="addReference($event)"
+                  class="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                >
+                  <option value="">+ 참조 추가</option>
+                  <option v-for="(doc, id) in availableReferences" :key="id" :value="id">{{ doc.name }}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-3 border-t border-gray-100 flex gap-2">
+            <button
+              @click="highlightRelatedDocs"
+              class="flex-1 py-2 px-3 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-medium"
+            >
+              전파 확인
+            </button>
+            <button
+              @click="deleteDocument(selectedDocId)"
+              class="py-2 px-3 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-medium"
+            >
+              삭제
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ==================== MODALS ==================== -->
+
+      <!-- Business Create Modal -->
+      <div
+        v-if="showBizModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="showBizModal = false"
+      >
+        <div class="bg-white rounded-xl shadow-2xl w-96 p-6">
+          <h3 class="text-lg font-bold mb-4">사업 추가</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs font-medium text-gray-500">코드 (영문)</label>
+              <input
+                type="text"
+                v-model="bizModalData.id"
+                placeholder="예: MEDI"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">이름</label>
+              <input
+                type="text"
+                v-model="bizModalData.name"
+                placeholder="예: 메디코드"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">설명</label>
+              <input
+                type="text"
+                v-model="bizModalData.description"
+                placeholder="설명"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <div class="flex gap-2 mt-6">
+            <button
+              @click="showBizModal = false"
+              class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+            >
+              취소
+            </button>
+            <button
+              @click="createBusiness"
+              class="flex-1 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium"
+            >
+              추가
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Domain Create Modal -->
+      <div
+        v-if="showDomainModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="showDomainModal = false"
+      >
+        <div class="bg-white rounded-xl shadow-2xl w-[440px] p-6">
+          <h3 class="text-lg font-bold mb-4">도메인 추가</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs font-medium text-gray-500">사업</label>
+              <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-sm">
+                {{ store.businesses[domainModalData.business]?.name || domainModalData.business }}
+              </div>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">기능 코드 (영문)</label>
+              <input
+                type="text"
+                v-model="domainModalData.func"
+                placeholder="예: SALES"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">이름</label>
+              <input
+                type="text"
+                v-model="domainModalData.name"
+                placeholder="예: 영업/상담"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">SSOT 키 (다중 선택)</label>
+              <div class="flex flex-wrap gap-2 mt-1">
+                <label v-for="f in ['carrier','product','docType']" :key="f" class="flex items-center gap-1 text-xs">
+                  <input type="checkbox" :value="f" v-model="domainModalData.ssotKey" class="rounded" />
+                  {{ facetLabel(f) }}
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-2 mt-6">
+            <button
+              @click="showDomainModal = false"
+              class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+            >
+              취소
+            </button>
+            <button
+              @click="createDomain"
+              class="flex-1 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-medium"
+            >
+              추가
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Document Create Modal -->
+      <div
+        v-if="docModal.show"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="docModal.show = false"
+      >
+        <div class="bg-white rounded-xl shadow-2xl w-[500px] p-6">
+          <h3 class="text-lg font-bold mb-2">새 문서 생성</h3>
+          <div class="text-xs text-gray-500 mb-4">도메인: {{ store.domains[navDomain]?.name }}</div>
+          <div class="space-y-3">
+            <!-- Dynamic facets based on domain ssotKey -->
+            <div v-for="facet in (currentDomainConfig?.ssotKey || [])" :key="facet">
+              <label class="text-xs font-medium text-gray-500">{{ facetLabel(facet) }}</label>
+              <select
+                v-model="docModal.data[facet]"
+                @change="checkDocModalDuplicate"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="">선택</option>
+                <option v-for="(item, id) in getFacetOptions(facet)" :key="id" :value="id">{{ item.name }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">문서명 (선택)</label>
+              <input
+                type="text"
+                v-model="docModal.data.name"
+                placeholder="자동 생성됨"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div v-if="docModal.duplicateWarning" class="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div class="text-sm font-medium text-red-700">SSOT 위반!</div>
+              <div class="text-xs text-red-600 mt-1">{{ docModal.duplicateWarning }}</div>
+            </div>
+          </div>
+          <div class="flex gap-2 mt-6">
+            <button
+              @click="docModal.show = false"
+              class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+            >
+              취소
+            </button>
+            <button
+              @click="createDocument"
+              :disabled="docModal.duplicateWarning"
+              :class="docModal.duplicateWarning ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
+              class="flex-1 py-2 text-white rounded-lg text-sm font-medium"
+            >
+              생성
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload Preview Modal -->
+      <div
+        v-if="uploadPreview.show"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="uploadPreview.show = false"
+      >
+        <div class="bg-white rounded-xl shadow-2xl w-[520px] p-6">
+          <h3 class="text-lg font-bold mb-2">자동 분류 결과</h3>
+          <div class="text-sm text-gray-500 mb-4">파일: {{ uploadPreview.filename }}</div>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs font-medium text-gray-500">보험사</label>
+              <select
+                v-model="uploadPreview.data.carrier"
+                @change="checkUploadDuplicate"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="">미매칭</option>
+                <option v-for="(c, id) in store.taxonomy.carriers" :key="id" :value="id">{{ c.name }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">상품</label>
+              <select
+                v-model="uploadPreview.data.product"
+                @change="checkUploadDuplicate"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="">미매칭</option>
+                <option v-for="(p, id) in store.taxonomy.products" :key="id" :value="id">{{ p.name }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-500">문서유형</label>
+              <select
+                v-model="uploadPreview.data.docType"
+                @change="checkUploadDuplicate"
+                class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="">미매칭</option>
+                <option v-for="(dt, id) in store.taxonomy.docTypes" :key="id" :value="id">{{ dt.name }}</option>
+              </select>
+            </div>
+            <div v-if="uploadPreview.duplicateWarning" class="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div class="text-sm font-medium text-red-700">중복 문서 존재!</div>
+              <div class="text-xs text-red-600 mt-1">{{ uploadPreview.duplicateWarning }}</div>
+            </div>
+          </div>
+          <div class="flex gap-2 mt-6">
+            <button
+              @click="uploadPreview.show = false"
+              class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+            >
+              취소
+            </button>
+            <button
+              @click="createFromUpload"
+              :disabled="uploadPreview.duplicateWarning || !uploadPreview.data.carrier || !uploadPreview.data.product || !uploadPreview.data.docType"
+              :class="(uploadPreview.duplicateWarning || !uploadPreview.data.carrier || !uploadPreview.data.product || !uploadPreview.data.docType) ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
+              class="flex-1 py-2 text-white rounded-lg text-sm font-medium"
+            >
+              문서 생성
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue;
+
+      // 기본 데이터 구조 v3.0 (admin.html과 동일)
+      const DEFAULT_DATA = {
+        version: '3.0',
+        lastModified: new Date().toISOString(),
+        system: {
+          lifecycleStates: ['DRAFT', 'REVIEW', 'ACTIVE', 'STALE', 'DEPRECATED', 'ARCHIVED'],
+          lifecycleTransitions: {
+            DRAFT: ['REVIEW'],
+            REVIEW: ['ACTIVE', 'REJECTED'],
+            REJECTED: ['DRAFT'],
+            ACTIVE: ['STALE', 'DEPRECATED'],
+            STALE: ['ACTIVE', 'DEPRECATED'],
+            DEPRECATED: ['ARCHIVED'],
+            ARCHIVED: [],
+          },
+          freshnessDefaults: { HOT: 30, WARM: 90, COLD: 365 },
+          freshnessThresholds: { FRESH: 0.7, WARNING: 1.0 },
+          relationshipTypes: ['PARENT_OF', 'CHILD_OF', 'SIBLING', 'REFERENCE', 'SUPERSEDES'],
+        },
+        businesses: {
+          GA: { name: 'GA 보험영업', description: '보험대리점 영업/계약/정산' },
+          MEDI: { name: '메디코드', description: 'AI 보험설계 서비스' },
+          COMMON: { name: '공통', description: '전사 공통 규제/시스템' },
+        },
+        domains: {
+          'GA-SALES': {
+            business: 'GA',
+            function: 'SALES',
+            name: 'GA 영업/상담',
+            ssotKey: ['carrier', 'product', 'docType'],
+          },
+          'GA-COMM': {
+            business: 'GA',
+            function: 'COMM',
+            name: 'GA 수수료/정산',
+            ssotKey: ['carrier', 'product', 'docType'],
+          },
+          'GA-CONTRACT': {
+            business: 'GA',
+            function: 'CONTRACT',
+            name: 'GA 계약관리',
+            ssotKey: ['carrier', 'product', 'docType'],
+          },
+          'GA-COMP': { business: 'GA', function: 'COMP', name: 'GA 컴플라이언스', ssotKey: ['carrier', 'docType'] },
+          'GA-EDU': { business: 'GA', function: 'EDU', name: 'GA 교육/역량', ssotKey: ['docType'] },
+          'COMMON-COMP': { business: 'COMMON', function: 'COMP', name: '공통 규제/법률', ssotKey: ['docType'] },
+        },
+        docTypeDomainMap: {
+          'DOC-TERMS': 'GA-SALES',
+          'DOC-TERMS-SPECIAL': 'GA-SALES',
+          'DOC-GUIDE': 'GA-SALES',
+          'DOC-RATE-TABLE': 'GA-SALES',
+          'DOC-BROCHURE': 'GA-SALES',
+          'DOC-PRODUCT-SUMMARY': 'GA-SALES',
+          'DOC-SCRIPT': 'GA-SALES',
+          'DOC-COMPARISON': 'GA-SALES',
+          'DOC-PROPOSAL': 'GA-SALES',
+          'DOC-INCENTIVE': 'GA-COMM',
+          'DOC-COMMISSION': 'GA-COMM',
+          'DOC-COMMISSION-CALC': 'GA-COMM',
+          'DOC-SETTLEMENT': 'GA-COMM',
+          'DOC-PERFORMANCE': 'GA-COMM',
+          'DOC-CHARGEBACK': 'GA-COMM',
+          'DOC-APPLICATION': 'GA-CONTRACT',
+          'DOC-DISCLOSURE': 'GA-CONTRACT',
+          'DOC-CONFIRMATION': 'GA-CONTRACT',
+          'DOC-COMPLIANCE-GUIDE': 'GA-COMP',
+          'DOC-PROCESS': 'GA-COMP',
+          'DOC-SYSTEM-MANUAL': 'GA-COMP',
+          'DOC-TRAINING': 'GA-EDU',
+          'DOC-ONBOARDING': 'GA-EDU',
+          'DOC-COMPLIANCE': 'GA-EDU',
+          'DOC-CERTIFICATION': 'GA-EDU',
+          'DOC-LAW-INSURANCE': 'COMMON-COMP',
+          'DOC-LAW-CONSUMER': 'COMMON-COMP',
+          'DOC-REGULATION': 'COMMON-COMP',
+        },
+        taxonomy: {
+          carriers: { 'INS-COMMON': { name: '공통', alias: ['전체', 'ALL'], type: 'common', tier: 'common' } },
+          products: { 'PRD-COMMON': { name: '공통', category: 'COMMON', alias: ['전체', 'ALL'] } },
+          productCategories: {
+            LIFE: { name: '생명보험', order: 1 },
+            HEALTH: { name: '건강/제3보험', order: 2 },
+            'NON-LIFE': { name: '손해보험', order: 3 },
+            ANNUITY: { name: '연금/저축', order: 4 },
+            COMMON: { name: '공통', order: 99 },
+          },
+          docTypes: {},
+          processes: { 'BIZ-COMMON': { name: '공통', order: 99 } },
+          audiences: { 'AUD-ALL': { name: '전체', level: 0 } },
+          certifications: {},
+          regulationTimeline: [],
+          defaultRelations: {},
+        },
+        documents: {},
+      };
+
+      // v2.1/v3.0 마이그레이션 (admin.html과 동일)
+      function migrateFromTaxonomyV21(taxData) {
+        const data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+        if (taxData.carriers) data.taxonomy.carriers = { ...data.taxonomy.carriers, ...taxData.carriers };
+        if (taxData.products) data.taxonomy.products = { ...data.taxonomy.products, ...taxData.products };
+        if (taxData.product_categories) data.taxonomy.productCategories = taxData.product_categories;
+        if (taxData.doc_types) data.taxonomy.docTypes = taxData.doc_types;
+        if (taxData.processes) data.taxonomy.processes = { ...data.taxonomy.processes, ...taxData.processes };
+        if (taxData.audiences) data.taxonomy.audiences = { ...data.taxonomy.audiences, ...taxData.audiences };
+        if (taxData.certifications) data.taxonomy.certifications = taxData.certifications;
+        if (taxData.regulation_timeline) data.taxonomy.regulationTimeline = taxData.regulation_timeline;
+        if (taxData.default_relations) data.taxonomy.defaultRelations = taxData.default_relations;
+        if (taxData.system) data.system = { ...data.system, ...taxData.system };
+        if (taxData.businesses) data.businesses = { ...data.businesses, ...taxData.businesses };
+        if (taxData.domains) data.domains = { ...data.domains, ...taxData.domains };
+        if (taxData.doc_type_domain_map)
+          data.docTypeDomainMap = { ...data.docTypeDomainMap, ...taxData.doc_type_domain_map };
+        return data;
+      }
+
+      function migrateFromKnowledgeGraphV21(graphData) {
+        const data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+        const nodes = graphData.graph_data?.nodes || [];
+        const edges = graphData.graph_data?.edges || [];
+        if (graphData.taxonomy) Object.assign(data.taxonomy, migrateFromTaxonomyV21(graphData.taxonomy).taxonomy);
+        const relatedTo = {},
+          references = {},
+          childOf = {},
+          parentOf = {};
+        edges.forEach((e) => {
+          const rel = e.type || e.relationship;
+          if (rel === 'SIBLINGS' || rel === 'RELATED_TO') {
+            if (!relatedTo[e.source]) relatedTo[e.source] = [];
+            relatedTo[e.source].push(e.target);
+          }
+          if (rel === 'REFERENCES') {
+            if (!references[e.source]) references[e.source] = [];
+            references[e.source].push(e.target);
+          }
+          if (rel === 'CHILD_OF') {
+            childOf[e.source] = e.target;
+            if (!parentOf[e.target]) parentOf[e.target] = [];
+            parentOf[e.target].push(e.source);
+          }
+        });
+        nodes.forEach((n) => {
+          if (!n.labels.includes('Document')) return;
+          const props = n.properties;
+          const docType = props.doc_type || n.labels.find((l) => l.startsWith('DOC-'));
+          const tier = n.labels.find((l) => ['HOT', 'WARM', 'COLD'].includes(l)) || props.tier || 'COLD';
+          const carrier = props.classification?.carrier || props.carrier;
+          const product = props.classification?.product || props.product;
+          const dt = props.classification?.docType || docType;
+          const process = props.meta?.process || (props.processes && props.processes[0]) || props.process || '';
+          const audience = props.meta?.audience || (props.audiences && props.audiences[0]) || props.audience || '';
+          const lifecycle = props.lifecycle || 'ACTIVE';
+          const version = props.version || { major: 1, minor: 0 };
+          const domain = props.domain || data.docTypeDomainMap?.[dt] || 'GA-SALES';
+          data.documents[n.id] = {
+            id: n.id,
+            name: props.name,
+            domain,
+            lifecycle,
+            version: typeof version === 'object' ? version : { major: parseInt(version) || 1, minor: 0 },
+            classification: { carrier, product, docType: dt },
+            meta: { process, audience },
+            tier,
+            content: props.content || '',
+            relations: {
+              parent: childOf[n.id] || null,
+              children: parentOf[n.id] || [],
+              siblings: relatedTo[n.id] || [],
+              references: references[n.id] || [],
+              supersedes: props.relations?.supersedes || null,
+              supersededBy: props.relations?.supersededBy || null,
+            },
+            createdAt: props.createdAt || new Date().toISOString(),
+            updatedAt: props.updatedAt || new Date().toISOString(),
+            reviewedAt: props.reviewedAt || null,
+          };
+        });
+        return data;
+      }
+
+      function migrateDocToV3(doc, docTypeDomainMap) {
+        if (doc.classification) return doc;
+        const docType = doc.docType || '';
+        return {
+          ...doc,
+          domain: doc.domain || docTypeDomainMap?.[docType] || 'GA-SALES',
+          lifecycle: doc.lifecycle || doc.status || 'ACTIVE',
+          version: typeof doc.version === 'object' ? doc.version : { major: parseInt(doc.version) || 1, minor: 0 },
+          classification: { carrier: doc.carrier || '', product: doc.product || '', docType },
+          meta: { process: doc.process || '', audience: doc.audience || '' },
+          reviewedAt: doc.reviewedAt || doc.updatedAt || null,
+          relations: {
+            ...doc.relations,
+            supersedes: doc.relations?.supersedes || null,
+            supersededBy: doc.relations?.supersededBy || null,
+          },
+        };
+      }
+
+      createApp({
+        setup() {
+          let network = null;
+          const store = reactive(JSON.parse(JSON.stringify(DEFAULT_DATA)));
+
+          // === Navigation State (NEW) ===
+          const navLevel = ref('root'); // 'root' | 'business' | 'domain'
+          const navBusiness = ref(null);
+          const navDomain = ref(null);
+          const domainView = ref('list'); // 'graph' | 'list' | 'validation' | 'dashboard'
+
+          // === UI State ===
+          const selectedDocId = ref(null);
+          const searchQuery = ref('');
+          const appliedSearch = ref('');
+          const filterLifecycle = ref('');
+          const activeFacet = ref('');
+          const selectedFacetId = ref(null);
+          const highlightedDocs = ref([]);
+          const toasts = ref([]);
+
+          // Modals
+          const showBizModal = ref(false);
+          const bizModalData = reactive({ id: '', name: '', description: '' });
+          const showDomainModal = ref(false);
+          const domainModalData = reactive({
+            business: '',
+            func: '',
+            name: '',
+            ssotKey: ['carrier', 'product', 'docType'],
+          });
+          const docModal = reactive({ show: false, data: {}, duplicateWarning: null });
+          const uploadPreview = reactive({
+            show: false,
+            filename: '',
+            data: {},
+            confidence: {},
+            duplicateWarning: null,
+          });
+
+          // === v3 Helpers ===
+          function getDocCarrier(doc) {
+            return doc?.classification?.carrier || doc?.carrier || '';
+          }
+          function getDocProduct(doc) {
+            return doc?.classification?.product || doc?.product || '';
+          }
+          function getDocDocType(doc) {
+            return doc?.classification?.docType || doc?.docType || '';
+          }
+          function getDocMeta(doc, key) {
+            return doc?.meta?.[key] || doc?.[key] || '';
+          }
+          function setDocClassification(doc, key, val) {
+            if (!doc.classification) doc.classification = {};
+            doc.classification[key] = val;
+            doc[key] = val;
+          }
+          function setDocMeta(doc, key, val) {
+            if (!doc.meta) doc.meta = {};
+            doc.meta[key] = val;
+            doc[key] = val;
+          }
+
+          function getDocFacetValue(doc, facet) {
+            if (facet === 'carrier') return getDocCarrier(doc);
+            if (facet === 'product') return getDocProduct(doc);
+            if (facet === 'docType') return getDocDocType(doc);
+            return getDocMeta(doc, facet);
+          }
+
+          function facetLabel(f) {
+            const map = {
+              carrier: '보험사',
+              product: '상품',
+              docType: '문서유형',
+              process: '프로세스',
+              audience: '역할',
+            };
+            return map[f] || f;
+          }
+
+          function getFacetOptions(facet) {
+            if (facet === 'carrier') return store.taxonomy.carriers;
+            if (facet === 'product') return store.taxonomy.products;
+            if (facet === 'docType') return store.taxonomy.docTypes;
+            if (facet === 'process') return store.taxonomy.processes;
+            if (facet === 'audience') return store.taxonomy.audiences;
+            return {};
+          }
+
+          function getFacetValueName(facet, val) {
+            const opts = getFacetOptions(facet);
+            return opts[val]?.name || val || '-';
+          }
+
+          // === Freshness ===
+          function calcFreshness(doc) {
+            if (!doc) return { daysSince: 0, maxDays: 90, pct: 0, status: 'FRESH' };
+            const lastDate = new Date(
+              Math.max(
+                new Date(doc.updatedAt || doc.createdAt || Date.now()).getTime(),
+                new Date(doc.reviewedAt || 0).getTime(),
+              ),
+            );
+            const daysSince = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / 86400000));
+            const tier = doc.tier || 'WARM';
+            const defaults = store.system?.freshnessDefaults || { HOT: 30, WARM: 90, COLD: 365 };
+            const maxDays = defaults[tier] || 90;
+            const pct = Math.round((daysSince / maxDays) * 100);
+            let status = 'FRESH';
+            if (daysSince >= maxDays) status = 'EXPIRED';
+            else if (daysSince >= maxDays * 0.7) status = 'WARNING';
+            return { daysSince, maxDays, pct, status };
+          }
+
+          // === Lifecycle ===
+          function getNextLifecycleStates(current) {
+            return (store.system?.lifecycleTransitions || DEFAULT_DATA.system.lifecycleTransitions)[current] || [];
+          }
+          function transitionLifecycle(docId, nextState) {
+            const doc = store.documents[docId];
+            if (!doc) return;
+            const oldState = doc.lifecycle || 'ACTIVE';
+            doc.lifecycle = nextState;
+            if (nextState === 'ACTIVE') doc.reviewedAt = new Date().toISOString();
+            doc.updatedAt = new Date().toISOString();
+            if (nextState === 'ACTIVE') {
+              const domain = doc.domain || navDomain.value;
+              const domCfg = store.domains[domain];
+              const ssotKey = domCfg?.ssotKey || ['carrier', 'product', 'docType'];
+              Object.entries(store.documents).forEach(([id, d]) => {
+                if (id === docId || d.domain !== domain || d.lifecycle !== 'ACTIVE') return;
+                const match = ssotKey.every((k) => getDocFacetValue(d, k) === getDocFacetValue(doc, k));
+                if (match) {
+                  d.lifecycle = 'DEPRECATED';
+                  d.updatedAt = new Date().toISOString();
+                }
+              });
+            }
+            saveStore();
+            showToast(`${oldState} → ${nextState}`, 'success');
+          }
+
+          function getLifecycleClass(state) {
+            return (
+              {
+                DRAFT: 'bg-gray-200 text-gray-700',
+                REVIEW: 'bg-blue-100 text-blue-700',
+                ACTIVE: 'bg-green-100 text-green-700',
+                STALE: 'bg-orange-100 text-orange-700',
+                DEPRECATED: 'bg-red-100 text-red-700',
+                ARCHIVED: 'bg-gray-300 text-gray-600',
+                REJECTED: 'bg-red-200 text-red-800',
+              }[state] || 'bg-gray-100 text-gray-600'
+            );
+          }
+          function getFreshnessClass(status) {
+            return (
+              { FRESH: 'text-green-600', WARNING: 'text-orange-600', EXPIRED: 'text-red-600' }[status] ||
+              'text-gray-600'
+            );
+          }
+          function getTierClass(tier) {
+            return (
+              {
+                HOT: 'bg-red-100 text-red-700',
+                WARM: 'bg-yellow-100 text-yellow-700',
+                COLD: 'bg-gray-100 text-gray-700',
+              }[tier] || 'bg-gray-100 text-gray-600'
+            );
+          }
+
+          // === Navigation ===
+          function navigateTo(level, bizId, domId) {
+            navLevel.value = level;
+            selectedDocId.value = null;
+            selectedFacetId.value = null;
+            appliedSearch.value = '';
+            searchQuery.value = '';
+            if (level === 'root') {
+              navBusiness.value = null;
+              navDomain.value = null;
+            } else if (level === 'business') {
+              navBusiness.value = bizId;
+              navDomain.value = null;
+            } else if (level === 'domain') {
+              navBusiness.value = bizId;
+              navDomain.value = domId;
+              const cfg = store.domains[domId];
+              if (cfg?.ssotKey?.length > 0) activeFacet.value = cfg.ssotKey[0];
+              nextTick(() => {
+                if (domainView.value === 'graph') initGraph();
+              });
+            }
+          }
+
+          // === Business/Domain helpers ===
+          function getDomainsForBusiness(bizId) {
+            const result = {};
+            Object.entries(store.domains).forEach(([id, dom]) => {
+              if (dom.business === bizId) result[id] = dom;
+            });
+            return result;
+          }
+          function getDomainCountByBusiness(bizId) {
+            return Object.values(store.domains).filter((d) => d.business === bizId).length;
+          }
+          function getDocCountByBusiness(bizId) {
+            const domIds = Object.entries(store.domains)
+              .filter(([, d]) => d.business === bizId)
+              .map(([id]) => id);
+            return Object.values(store.documents).filter((d) => domIds.includes(d.domain)).length;
+          }
+          function getDocCountByDomain(domId) {
+            return Object.values(store.documents).filter((d) => d.domain === domId).length;
+          }
+          const totalDocCount = computed(() => Object.keys(store.documents).length);
+
+          function getBizLifecyclePct(bizId, state) {
+            const total = getDocCountByBusiness(bizId);
+            if (total === 0) return 0;
+            const domIds = Object.entries(store.domains)
+              .filter(([, d]) => d.business === bizId)
+              .map(([id]) => id);
+            const count = Object.values(store.documents).filter(
+              (d) => domIds.includes(d.domain) && (d.lifecycle || 'ACTIVE') === state,
+            ).length;
+            return Math.round((count / total) * 100);
+          }
+          function getDomainLifecyclePct(domId, state) {
+            const total = getDocCountByDomain(domId);
+            if (total === 0) return 0;
+            const count = Object.values(store.documents).filter(
+              (d) => d.domain === domId && (d.lifecycle || 'ACTIVE') === state,
+            ).length;
+            return Math.round((count / total) * 100);
+          }
+
+          // === Domain-scoped data ===
+          const currentDomainConfig = computed(() => (navDomain.value ? store.domains[navDomain.value] : null));
+          const domainDocs = computed(() => {
+            if (!navDomain.value) return [];
+            return Object.entries(store.documents).filter(([, d]) => d.domain === navDomain.value);
+          });
+          const domainFilteredDocs = computed(() => {
+            let docs = domainDocs.value;
+            const q = appliedSearch.value.toLowerCase();
+            if (q) docs = docs.filter(([id, d]) => d.name.toLowerCase().includes(q) || id.toLowerCase().includes(q));
+            if (filterLifecycle.value)
+              docs = docs.filter(([, d]) => (d.lifecycle || 'ACTIVE') === filterLifecycle.value);
+            if (selectedFacetId.value && activeFacet.value)
+              docs = docs.filter(([, d]) => getDocFacetValue(d, activeFacet.value) === selectedFacetId.value);
+            return docs;
+          });
+
+          // Facet items for sidebar
+          const facetItems = computed(() => {
+            if (!activeFacet.value || !navDomain.value) return [];
+            const docs = domainDocs.value;
+            const groups = {};
+            docs.forEach(([, d]) => {
+              const val = getDocFacetValue(d, activeFacet.value);
+              if (!val) return;
+              if (!groups[val]) groups[val] = { id: val, name: getFacetValueName(activeFacet.value, val), count: 0 };
+              groups[val].count++;
+            });
+            return Object.values(groups).sort((a, b) => b.count - a.count);
+          });
+
+          function selectFacetItem(item) {
+            selectedFacetId.value = selectedFacetId.value === item.id ? null : item.id;
+          }
+
+          // === Domain SSOT Validation ===
+          const domainDuplicateGroups = computed(() => {
+            if (!navDomain.value || !currentDomainConfig.value) return [];
+            const ssotKey = currentDomainConfig.value.ssotKey || [];
+            const groups = {};
+            domainDocs.value.forEach(([id, doc]) => {
+              if ((doc.lifecycle || 'ACTIVE') !== 'ACTIVE') return;
+              const key = ssotKey.map((k) => getDocFacetValue(doc, k)).join('|');
+              if (!groups[key]) groups[key] = [];
+              groups[key].push({ id, name: doc.name });
+            });
+            return Object.entries(groups)
+              .filter(([, docs]) => docs.length > 1)
+              .map(([key, docs]) => {
+                const parts = key.split('|');
+                const labels = ssotKey.map((k, i) => getFacetValueName(k, parts[i]));
+                return { key: labels.join(' > '), docs };
+              });
+          });
+
+          // === Domain Dashboard ===
+          const domainDashboard = computed(() => {
+            const docs = domainDocs.value;
+            const total = docs.length;
+            const pct = (n) => (total > 0 ? Math.round((n / total) * 100) : 0);
+            if (total === 0) return { score: 100, lifecycleDist: [], freshnessDist: [], tierDist: [], issues: [] };
+
+            const lcMap = {};
+            docs.forEach(([, d]) => {
+              const s = d.lifecycle || 'ACTIVE';
+              lcMap[s] = (lcMap[s] || 0) + 1;
+            });
+            const lifecycleDist = Object.entries(lcMap)
+              .sort((a, b) => b[1] - a[1])
+              .map(([name, count]) => ({ name, count, pct: pct(count) }));
+
+            const freshMap = { FRESH: 0, WARNING: 0, EXPIRED: 0 };
+            docs.forEach(([, d]) => {
+              freshMap[calcFreshness(d).status]++;
+            });
+            const freshnessDist = Object.entries(freshMap).map(([name, count]) => ({ name, count, pct: pct(count) }));
+
+            const tierMap = { HOT: 0, WARM: 0, COLD: 0 };
+            docs.forEach(([, d]) => {
+              if (tierMap[d.tier] !== undefined) tierMap[d.tier]++;
+            });
+            const tierDist = Object.entries(tierMap).map(([name, count]) => ({ name, count, pct: pct(count) }));
+
+            const issues = [];
+            const dupes = domainDuplicateGroups.value;
+            if (dupes.length > 0) issues.push({ severity: 'error', message: `SSOT 위반 ${dupes.length}건` });
+
+            const orphans = docs.filter(([, d]) => {
+              const r = d.relations || {};
+              return (
+                !r.parent &&
+                (r.children || []).length === 0 &&
+                (r.siblings || []).length === 0 &&
+                (r.references || []).length === 0
+              );
+            });
+            if (orphans.length > total * 0.5)
+              issues.push({ severity: 'warning', message: `고아 문서 ${orphans.length}건 (${pct(orphans.length)}%)` });
+
+            let score = 100;
+            score -= dupes.length * 10;
+            score -= Math.max(0, pct(orphans.length) - 80);
+            score = Math.max(0, Math.min(100, Math.round(score)));
+
+            return { score, lifecycleDist, freshnessDist, tierDist, issues };
+          });
+
+          // === Global Stats ===
+          const globalHealthScore = computed(() => {
+            const total = totalDocCount.value;
+            if (total === 0) return 100;
+            const activeGroups = {};
+            Object.entries(store.documents).forEach(([id, d]) => {
+              if ((d.lifecycle || 'ACTIVE') !== 'ACTIVE') return;
+              const key = `${d.domain}|${getDocCarrier(d)}|${getDocProduct(d)}|${getDocDocType(d)}`;
+              if (!activeGroups[key]) activeGroups[key] = 0;
+              activeGroups[key]++;
+            });
+            const dupes = Object.values(activeGroups).filter((c) => c > 1).length;
+            let score = 100 - dupes * 10;
+            return Math.max(0, Math.min(100, Math.round(score)));
+          });
+
+          const globalLifecycleCounts = computed(() => {
+            const counts = {};
+            Object.values(store.documents).forEach((d) => {
+              const s = d.lifecycle || 'ACTIVE';
+              counts[s] = (counts[s] || 0) + 1;
+            });
+            return counts;
+          });
+          const domainLifecycleCounts = computed(() => {
+            const counts = {};
+            domainDocs.value.forEach(([, d]) => {
+              const s = d.lifecycle || 'ACTIVE';
+              counts[s] = (counts[s] || 0) + 1;
+            });
+            return counts;
+          });
+
+          // === Selected Doc ===
+          const selectedDoc = computed(() => (selectedDocId.value ? store.documents[selectedDocId.value] : null));
+
+          const samePathDocuments = computed(() => {
+            if (!selectedDoc.value || !navDomain.value) return {};
+            const docs = {};
+            domainDocs.value.forEach(([id, doc]) => {
+              if (id !== selectedDocId.value) docs[id] = doc;
+            });
+            return docs;
+          });
+          const availableParents = computed(() => {
+            if (!selectedDoc.value) return {};
+            const children = selectedDoc.value.relations?.children || [];
+            const docs = {};
+            Object.entries(samePathDocuments.value).forEach(([id, doc]) => {
+              if (!children.includes(id)) docs[id] = doc;
+            });
+            return docs;
+          });
+          const availableChildren = computed(() => {
+            if (!selectedDoc.value) return {};
+            const existing = selectedDoc.value.relations?.children || [];
+            const parentId = selectedDoc.value.relations?.parent;
+            const docs = {};
+            Object.entries(samePathDocuments.value).forEach(([id, doc]) => {
+              if (!existing.includes(id) && id !== parentId) docs[id] = doc;
+            });
+            return docs;
+          });
+          const availableSiblings = computed(() => {
+            if (!selectedDoc.value) return {};
+            const existing = selectedDoc.value.relations?.siblings || [];
+            const docs = {};
+            Object.entries(samePathDocuments.value).forEach(([id, doc]) => {
+              if (!existing.includes(id)) docs[id] = doc;
+            });
+            return docs;
+          });
+          const availableReferences = computed(() => {
+            if (!selectedDoc.value) return {};
+            const existing = selectedDoc.value.relations?.references || [];
+            const docs = {};
+            Object.entries(store.documents).forEach(([id, doc]) => {
+              if (id !== selectedDocId.value && !existing.includes(id)) docs[id] = doc;
+            });
+            return docs;
+          });
+
+          // === Data Management ===
+          function loadStore() {
+            const saved = localStorage.getItem('kms_data_v2');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (!parsed.system) parsed.system = DEFAULT_DATA.system;
+              if (!parsed.businesses) parsed.businesses = DEFAULT_DATA.businesses;
+              if (!parsed.domains) parsed.domains = DEFAULT_DATA.domains;
+              if (!parsed.docTypeDomainMap) parsed.docTypeDomainMap = DEFAULT_DATA.docTypeDomainMap;
+              Object.assign(store, parsed);
+              let migrated = false;
+              Object.entries(store.documents).forEach(([id, doc]) => {
+                if (!doc.classification) {
+                  store.documents[id] = migrateDocToV3(doc, store.docTypeDomainMap);
+                  migrated = true;
+                }
+              });
+              if (migrated) saveStore();
+            } else {
+              Promise.all([
+                fetch('../data/taxonomy.json')
+                  .then((r) => (r.ok ? r.json() : null))
+                  .catch(() => null),
+                fetch('../data/knowledge-graph.json')
+                  .then((r) => (r.ok ? r.json() : null))
+                  .catch(() => null),
+              ]).then(([taxData, graphData]) => {
+                if (taxData) Object.assign(store, migrateFromTaxonomyV21(taxData));
+                if (graphData) {
+                  const gm = migrateFromKnowledgeGraphV21(graphData);
+                  Object.assign(store.documents, gm.documents);
+                }
+                saveStore();
+              });
+            }
+          }
+          function saveStore() {
+            store.lastModified = new Date().toISOString();
+            localStorage.setItem('kms_data_v2', JSON.stringify(store));
+            if (navLevel.value === 'domain' && domainView.value === 'graph') rebuildGraph();
+          }
+          function showToast(message, type = 'success') {
+            toasts.value.push({ message, type });
+            setTimeout(() => toasts.value.shift(), 3000);
+          }
+          function removeToast(idx) {
+            toasts.value.splice(idx, 1);
+          }
+
+          // === Helpers ===
+          function getCarrierName(id) {
+            return store.taxonomy.carriers[id]?.name || id;
+          }
+          function getProductName(id) {
+            return store.taxonomy.products[id]?.name || id;
+          }
+          function getDocTypeName(id) {
+            return store.taxonomy.docTypes[id]?.name || id;
+          }
+          function getDocName(id) {
+            return store.documents[id]?.name || id;
+          }
+          function formatDate(iso) {
+            if (!iso) return '-';
+            return new Date(iso).toLocaleString('ko-KR', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          }
+
+          // === Document Operations ===
+          function selectDocument(id) {
+            selectedDocId.value = id;
+          }
+
+          function deleteDocument(id) {
+            if (!confirm(`"${store.documents[id]?.name}" 문서를 삭제하시겠습니까?`)) return;
+            Object.values(store.documents).forEach((doc) => {
+              if (doc.relations?.parent === id) doc.relations.parent = null;
+              if (doc.relations?.children) doc.relations.children = doc.relations.children.filter((c) => c !== id);
+              if (doc.relations?.siblings) doc.relations.siblings = doc.relations.siblings.filter((s) => s !== id);
+              if (doc.relations?.references)
+                doc.relations.references = doc.relations.references.filter((r) => r !== id);
+            });
+            delete store.documents[id];
+            if (selectedDocId.value === id) {
+              selectedDocId.value = null;
+              highlightedDocs.value = [];
+            }
+            saveStore();
+            showToast('문서가 삭제되었습니다');
+          }
+
+          // === Relation Operations ===
+          function setParent(event) {
+            const parentId = event.target.value;
+            if (!parentId || !selectedDoc.value) return;
+            if (selectedDoc.value.relations?.parent) {
+              const oldP = store.documents[selectedDoc.value.relations.parent];
+              if (oldP?.relations?.children)
+                oldP.relations.children = oldP.relations.children.filter((c) => c !== selectedDocId.value);
+            }
+            if (!selectedDoc.value.relations)
+              selectedDoc.value.relations = { parent: null, children: [], siblings: [], references: [] };
+            selectedDoc.value.relations.parent = parentId;
+            const np = store.documents[parentId];
+            if (np) {
+              if (!np.relations) np.relations = { parent: null, children: [], siblings: [], references: [] };
+              if (!np.relations.children) np.relations.children = [];
+              if (!np.relations.children.includes(selectedDocId.value)) np.relations.children.push(selectedDocId.value);
+            }
+            event.target.value = '';
+            saveStore();
+            showToast('부모 관계 설정됨');
+          }
+          function removeParent() {
+            if (!selectedDoc.value?.relations?.parent) return;
+            const p = store.documents[selectedDoc.value.relations.parent];
+            if (p?.relations?.children)
+              p.relations.children = p.relations.children.filter((c) => c !== selectedDocId.value);
+            selectedDoc.value.relations.parent = null;
+            saveStore();
+          }
+          function addChild(event) {
+            const childId = event.target.value;
+            if (!childId || !selectedDoc.value) return;
+            if (!selectedDoc.value.relations)
+              selectedDoc.value.relations = { parent: null, children: [], siblings: [], references: [] };
+            if (!selectedDoc.value.relations.children) selectedDoc.value.relations.children = [];
+            if (!selectedDoc.value.relations.children.includes(childId))
+              selectedDoc.value.relations.children.push(childId);
+            const child = store.documents[childId];
+            if (child) {
+              if (!child.relations) child.relations = { parent: null, children: [], siblings: [], references: [] };
+              child.relations.parent = selectedDocId.value;
+            }
+            event.target.value = '';
+            saveStore();
+            showToast('자식 관계 추가됨');
+          }
+          function removeChild(childId) {
+            if (!selectedDoc.value?.relations?.children) return;
+            selectedDoc.value.relations.children = selectedDoc.value.relations.children.filter((c) => c !== childId);
+            const child = store.documents[childId];
+            if (child?.relations?.parent === selectedDocId.value) child.relations.parent = null;
+            saveStore();
+          }
+          function addSiblingRelation(event) {
+            const sibId = event.target.value;
+            if (!sibId || !selectedDoc.value) return;
+            if (!selectedDoc.value.relations) selectedDoc.value.relations = { siblings: [], references: [] };
+            if (!selectedDoc.value.relations.siblings) selectedDoc.value.relations.siblings = [];
+            if (!selectedDoc.value.relations.siblings.includes(sibId)) selectedDoc.value.relations.siblings.push(sibId);
+            if (store.documents[sibId]) {
+              if (!store.documents[sibId].relations)
+                store.documents[sibId].relations = { siblings: [], references: [] };
+              if (!store.documents[sibId].relations.siblings) store.documents[sibId].relations.siblings = [];
+              if (!store.documents[sibId].relations.siblings.includes(selectedDocId.value))
+                store.documents[sibId].relations.siblings.push(selectedDocId.value);
+            }
+            event.target.value = '';
+            saveStore();
+            showToast('형제 관계 추가됨');
+          }
+          function removeSiblingRelation(sibId) {
+            if (!selectedDoc.value?.relations?.siblings) return;
+            selectedDoc.value.relations.siblings = selectedDoc.value.relations.siblings.filter((s) => s !== sibId);
+            if (store.documents[sibId]?.relations?.siblings)
+              store.documents[sibId].relations.siblings = store.documents[sibId].relations.siblings.filter(
+                (s) => s !== selectedDocId.value,
+              );
+            saveStore();
+          }
+          function addReference(event) {
+            const refId = event.target.value;
+            if (!refId || !selectedDoc.value) return;
+            if (!selectedDoc.value.relations) selectedDoc.value.relations = { siblings: [], references: [] };
+            if (!selectedDoc.value.relations.references) selectedDoc.value.relations.references = [];
+            if (!selectedDoc.value.relations.references.includes(refId))
+              selectedDoc.value.relations.references.push(refId);
+            event.target.value = '';
+            saveStore();
+            showToast('참조 추가됨');
+          }
+          function removeReference(refId) {
+            if (!selectedDoc.value?.relations?.references) return;
+            selectedDoc.value.relations.references = selectedDoc.value.relations.references.filter((r) => r !== refId);
+            saveStore();
+          }
+
+          function getRelatedDocIds(docId, visited = new Set()) {
+            if (visited.has(docId)) return [];
+            visited.add(docId);
+            const doc = store.documents[docId];
+            if (!doc) return [];
+            let related = [];
+            if (doc.relations?.parent && !visited.has(doc.relations.parent)) {
+              related.push(doc.relations.parent);
+              visited.add(doc.relations.parent);
+            }
+            (doc.relations?.children || []).forEach((c) => {
+              if (!visited.has(c)) {
+                related.push(c);
+                visited.add(c);
+              }
+            });
+            (doc.relations?.siblings || []).forEach((s) => {
+              if (!visited.has(s)) {
+                related.push(s);
+                related = related.concat(getRelatedDocIds(s, visited));
+              }
+            });
+            (doc.relations?.references || []).forEach((r) => {
+              if (!visited.has(r)) related.push(r);
+            });
+            return [...new Set(related)];
+          }
+
+          function highlightRelatedDocs() {
+            if (!selectedDocId.value) return;
+            const ids = getRelatedDocIds(selectedDocId.value);
+            highlightedDocs.value = [selectedDocId.value, ...ids];
+            if (domainView.value === 'graph') rebuildGraph();
+            showToast(`${ids.length}개 연관 문서 전파됨`);
+          }
+
+          // === Search ===
+          function applySearch() {
+            appliedSearch.value = searchQuery.value.trim();
+          }
+          function clearSearch() {
+            searchQuery.value = '';
+            appliedSearch.value = '';
+          }
+
+          // === CRUD: Business ===
+          function createBusiness() {
+            if (!bizModalData.id || !bizModalData.name) return showToast('코드와 이름을 입력하세요', 'error');
+            store.businesses[bizModalData.id] = { name: bizModalData.name, description: bizModalData.description };
+            saveStore();
+            showBizModal.value = false;
+            bizModalData.id = '';
+            bizModalData.name = '';
+            bizModalData.description = '';
+            showToast('사업이 추가되었습니다');
+          }
+
+          // === CRUD: Domain ===
+          function openDomainModal() {
+            domainModalData.business = navBusiness.value;
+            domainModalData.func = '';
+            domainModalData.name = '';
+            domainModalData.ssotKey = ['carrier', 'product', 'docType'];
+            showDomainModal.value = true;
+          }
+          function createDomain() {
+            if (!domainModalData.func || !domainModalData.name)
+              return showToast('기능 코드와 이름을 입력하세요', 'error');
+            const domId = `${domainModalData.business}-${domainModalData.func}`;
+            store.domains[domId] = {
+              business: domainModalData.business,
+              function: domainModalData.func,
+              name: domainModalData.name,
+              ssotKey: [...domainModalData.ssotKey],
+            };
+            saveStore();
+            showDomainModal.value = false;
+            showToast('도메인이 추가되었습니다');
+          }
+
+          // === CRUD: Document ===
+          function showAddDocModal() {
+            const data = { name: '' };
+            (currentDomainConfig.value?.ssotKey || []).forEach((k) => {
+              data[k] = '';
+            });
+            docModal.show = true;
+            docModal.data = data;
+            docModal.duplicateWarning = null;
+          }
+          function checkDocModalDuplicate() {
+            if (!currentDomainConfig.value) return;
+            const ssotKey = currentDomainConfig.value.ssotKey || [];
+            const allFilled = ssotKey.every((k) => docModal.data[k]);
+            if (!allFilled) {
+              docModal.duplicateWarning = null;
+              return;
+            }
+            const dup = Object.entries(store.documents).find(([, d]) => {
+              if (d.domain !== navDomain.value || (d.lifecycle || 'ACTIVE') !== 'ACTIVE') return false;
+              return ssotKey.every((k) => getDocFacetValue(d, k) === docModal.data[k]);
+            });
+            docModal.duplicateWarning = dup ? `이미 존재: ${dup[1].name}` : null;
+          }
+          function createDocument() {
+            const ssotKey = currentDomainConfig.value?.ssotKey || [];
+            const allFilled = ssotKey.every((k) => docModal.data[k]);
+            if (!allFilled) return showToast('필수 분류를 선택하세요', 'error');
+            if (docModal.duplicateWarning) return;
+
+            const count = Object.keys(store.documents).length + 1;
+            const dtVal = docModal.data.docType || docModal.data[ssotKey[ssotKey.length - 1]] || 'DOC';
+            const id = `${dtVal}-${navDomain.value}-${String(count).padStart(3, '0')}`;
+            const classification = {};
+            ssotKey.forEach((k) => {
+              classification[k] = docModal.data[k];
+            });
+            const dtObj = store.taxonomy.docTypes[classification.docType];
+            const nameParts = ssotKey.map((k) => getFacetValueName(k, docModal.data[k]));
+            const docName = docModal.data.name || nameParts.join(' ');
+
+            store.documents[id] = {
+              id,
+              name: docName,
+              domain: navDomain.value,
+              lifecycle: 'DRAFT',
+              version: { major: 1, minor: 0 },
+              classification,
+              meta: {},
+              carrier: classification.carrier || '',
+              product: classification.product || '',
+              docType: classification.docType || '',
+              tier: dtObj?.tier || 'COLD',
+              content: '',
+              relations: {
+                parent: null,
+                children: [],
+                siblings: [],
+                references: [],
+                supersedes: null,
+                supersededBy: null,
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              reviewedAt: null,
+            };
+            saveStore();
+            selectDocument(id);
+            docModal.show = false;
+            showToast('문서가 생성되었습니다');
+          }
+
+          // === File Upload ===
+          const DOC_TYPE_KEYWORDS = {
+            'DOC-TERMS': ['약관', '보통약관'],
+            'DOC-GUIDE': ['상품설명서', '설명서'],
+            'DOC-PRODUCT-SUMMARY': ['상품요약', '요약서', '요약'],
+            'DOC-SCRIPT': ['스크립트', '화법'],
+            'DOC-INCENTIVE': ['시책', '인센티브'],
+            'DOC-COMMISSION': ['수수료'],
+            'DOC-TRAINING': ['교육자료', '교육'],
+            'DOC-FAQ': ['faq', '자주묻는'],
+          };
+          function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const filename = file.name;
+            const normalized = filename
+              .toLowerCase()
+              .replace(/[_\-\.]/g, ' ')
+              .replace(/\s+/g, ' ');
+            let carrier = '',
+              product = '',
+              docType = '';
+            for (const [id, c] of Object.entries(store.taxonomy.carriers)) {
+              if (id === 'INS-COMMON') continue;
+              const names = [c.name.toLowerCase(), ...(c.alias || []).map((a) => a.toLowerCase())];
+              for (const name of names) {
+                if (name && normalized.includes(name)) {
+                  carrier = id;
+                  break;
+                }
+              }
+              if (carrier) break;
+            }
+            for (const [id, p] of Object.entries(store.taxonomy.products)) {
+              if (id === 'PRD-COMMON') continue;
+              const names = [p.name.toLowerCase(), ...(p.alias || []).map((a) => a.toLowerCase())];
+              for (const name of names) {
+                if (name && name.length > 1 && normalized.includes(name)) {
+                  product = id;
+                  break;
+                }
+              }
+              if (product) break;
+            }
+            for (const [dtId, keywords] of Object.entries(DOC_TYPE_KEYWORDS)) {
+              for (const kw of keywords) {
+                if (normalized.includes(kw.toLowerCase())) {
+                  docType = dtId;
+                  break;
+                }
+              }
+              if (docType) break;
+            }
+            let dupWarning = null;
+            if (carrier && product && docType) {
+              const dup = Object.entries(store.documents).find(
+                ([, d]) => getDocCarrier(d) === carrier && getDocProduct(d) === product && getDocDocType(d) === docType,
+              );
+              if (dup) dupWarning = `이미 존재: ${dup[1].name}`;
+            }
+            uploadPreview.show = true;
+            uploadPreview.filename = filename;
+            uploadPreview.data = { carrier, product, docType };
+            uploadPreview.duplicateWarning = dupWarning;
+            event.target.value = '';
+          }
+          function checkUploadDuplicate() {
+            const { carrier, product, docType } = uploadPreview.data;
+            if (!carrier || !product || !docType) {
+              uploadPreview.duplicateWarning = null;
+              return;
+            }
+            const dup = Object.entries(store.documents).find(
+              ([, d]) => getDocCarrier(d) === carrier && getDocProduct(d) === product && getDocDocType(d) === docType,
+            );
+            uploadPreview.duplicateWarning = dup ? `이미 존재: ${dup[1].name}` : null;
+          }
+          function createFromUpload() {
+            const { carrier, product, docType } = uploadPreview.data;
+            if (!carrier || !product || !docType || uploadPreview.duplicateWarning) return;
+            const count = Object.keys(store.documents).length + 1;
+            const id = `${docType}-${carrier}-${product}-${String(count).padStart(3, '0')}`;
+            const domain = store.docTypeDomainMap?.[docType] || navDomain.value || 'GA-SALES';
+            const docName = `${getCarrierName(carrier)} ${getProductName(product)} ${getDocTypeName(docType)}`;
+            store.documents[id] = {
+              id,
+              name: docName,
+              domain,
+              lifecycle: 'DRAFT',
+              version: { major: 1, minor: 0 },
+              classification: { carrier, product, docType },
+              meta: {},
+              carrier,
+              product,
+              docType,
+              tier: store.taxonomy.docTypes[docType]?.tier || 'COLD',
+              content: '',
+              relations: {
+                parent: null,
+                children: [],
+                siblings: [],
+                references: [],
+                supersedes: null,
+                supersededBy: null,
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              reviewedAt: null,
+            };
+            saveStore();
+            selectDocument(id);
+            uploadPreview.show = false;
+            showToast(`문서 생성: ${docName}`);
+          }
+
+          // === Export/Import ===
+          function exportData() {
+            const blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kms_data_v3.0_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+          function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              try {
+                const data = JSON.parse(e.target.result);
+                if (data.graph_data) Object.assign(store, migrateFromKnowledgeGraphV21(data));
+                else if (data.carriers && data.doc_types) Object.assign(store, migrateFromTaxonomyV21(data));
+                else if (data.taxonomy && data.documents) Object.assign(store, data);
+                else throw new Error('알 수 없는 형식');
+                saveStore();
+                showToast('데이터를 가져왔습니다');
+              } catch (err) {
+                showToast('데이터 형식 오류: ' + err.message, 'error');
+              }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+          }
+
+          // === Graph ===
+          function initGraph() {
+            const container = document.getElementById('network');
+            if (!container) return;
+            const options = {
+              layout: {
+                hierarchical: {
+                  enabled: true,
+                  direction: 'LR',
+                  sortMethod: 'directed',
+                  nodeSpacing: 80,
+                  levelSeparation: 200,
+                },
+              },
+              physics: { enabled: false },
+              interaction: { hover: false, zoomView: true, dragView: true },
+              nodes: { font: { size: 12 } },
+              edges: {
+                arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+                smooth: { type: 'cubicBezier', forceDirection: 'horizontal' },
+              },
+            };
+            network = new vis.Network(container, { nodes: [], edges: [] }, options);
+            network.on('click', (params) => {
+              if (params.nodes.length === 0) return;
+              const nodeId = params.nodes[0];
+              // 문서 노드 클릭 → 문서 선택
+              if (store.documents[nodeId]) {
+                selectDocument(nodeId);
+                return;
+              }
+              // 그룹 노드 클릭 (G-xxx) → 해당 facet 필터 적용
+              if (typeof nodeId === 'string' && nodeId.startsWith('G-')) {
+                const facetVal = nodeId.substring(2);
+                const domCfg = currentDomainConfig.value;
+                const ssotKey = domCfg?.ssotKey || [];
+                if (ssotKey.length > 0) {
+                  activeFacet.value = ssotKey[0];
+                  selectedFacetId.value = selectedFacetId.value === facetVal ? null : facetVal;
+                  rebuildGraph();
+                }
+              }
+            });
+            rebuildGraph();
+          }
+
+          function rebuildGraph() {
+            if (!network) return;
+            const nodes = [];
+            const edges = [];
+            const tierColors = { HOT: '#e74c3c', WARM: '#f39c12', COLD: '#95a5a6' };
+            const docs = domainFilteredDocs.value;
+
+            if (docs.length === 0) {
+              nodes.push({
+                id: 'EMPTY',
+                label: '문서 없음',
+                shape: 'box',
+                color: { background: '#f3f4f6', border: '#d1d5db' },
+                font: { color: '#9ca3af' },
+              });
+              network.setData({ nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) });
+              return;
+            }
+
+            const domCfg = currentDomainConfig.value;
+            const ssotKey = domCfg?.ssotKey || ['carrier', 'product', 'docType'];
+            const rootLabel = store.domains[navDomain.value]?.name || navDomain.value;
+
+            nodes.push({
+              id: 'DOM-ROOT',
+              label: `${rootLabel}\n(${docs.length}건)`,
+              level: 0,
+              shape: 'dot',
+              size: 35,
+              borderWidth: 3,
+              color: { background: '#e8eaf6', border: '#3949ab' },
+              font: { color: '#1a1a2e', size: 14, bold: true },
+            });
+
+            // Group by first ssotKey
+            if (ssotKey.length > 0) {
+              const groupKey = ssotKey[0];
+              const groups = {};
+              docs.forEach(([docId, doc]) => {
+                const k = getDocFacetValue(doc, groupKey);
+                if (!groups[k]) groups[k] = [];
+                groups[k].push([docId, doc]);
+              });
+              const colorPalette = ['#8e44ad', '#1976d2', '#27ae60', '#e67e22', '#00bcd4'];
+              let ci = 0;
+              Object.entries(groups).forEach(([gId, gDocs]) => {
+                const gName = getFacetValueName(groupKey, gId);
+                const clr = colorPalette[ci++ % colorPalette.length];
+                nodes.push({
+                  id: `G-${gId}`,
+                  label: `${gName}\n(${gDocs.length}건)`,
+                  level: 1,
+                  shape: 'dot',
+                  size: Math.max(12, Math.min(25, 10 + gDocs.length * 0.5)),
+                  borderWidth: 2,
+                  color: { background: '#f5f5f5', border: clr },
+                  font: { color: clr, size: 11 },
+                });
+                edges.push({ from: 'DOM-ROOT', to: `G-${gId}`, color: '#bdc3c7', width: 2 });
+                gDocs.forEach(([docId, doc]) => {
+                  const isSelected = docId === selectedDocId.value;
+                  const isHighlighted = highlightedDocs.value.includes(docId);
+                  nodes.push({
+                    id: docId,
+                    label: doc.name.length > 20 ? doc.name.substring(0, 18) + '...' : doc.name,
+                    level: 2,
+                    color: isSelected ? '#2563eb' : isHighlighted ? '#3b82f6' : tierColors[doc.tier] || '#95a5a6',
+                    shape: 'dot',
+                    size: isSelected ? 18 : 12,
+                    borderWidth: isSelected ? 4 : 1,
+                    font: { size: 9 },
+                  });
+                  edges.push({ from: `G-${gId}`, to: docId, color: '#bdc3c7' });
+                });
+              });
+            }
+
+            network.setData({ nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) });
+            network.fit();
+          }
+
+          function fitGraph() {
+            network?.fit({ animation: true });
+          }
+
+          // === Init ===
+          onMounted(() => {
+            loadStore();
+            // 기본적으로 domain view에서만 graph init
+          });
+
+          // Domain 진입 시 graph 초기화
+          watch([navLevel, navDomain, domainView], () => {
+            if (navLevel.value === 'domain' && domainView.value === 'graph') {
+              nextTick(() => initGraph());
+            }
+          });
+
+          return {
+            store,
+            navLevel,
+            navBusiness,
+            navDomain,
+            domainView,
+            selectedDocId,
+            selectedDoc,
+            searchQuery,
+            appliedSearch,
+            filterLifecycle,
+            activeFacet,
+            selectedFacetId,
+            highlightedDocs,
+            toasts,
+            showBizModal,
+            bizModalData,
+            showDomainModal,
+            domainModalData,
+            docModal,
+            uploadPreview,
+            totalDocCount,
+            globalHealthScore,
+            globalLifecycleCounts,
+            domainLifecycleCounts,
+            currentDomainConfig,
+            domainDocs,
+            domainFilteredDocs,
+            facetItems,
+            domainDuplicateGroups,
+            domainDashboard,
+            availableParents,
+            availableChildren,
+            availableSiblings,
+            availableReferences,
+            navigateTo,
+            getDomainsForBusiness,
+            getDomainCountByBusiness,
+            getDocCountByBusiness,
+            getDocCountByDomain,
+            getBizLifecyclePct,
+            getDomainLifecyclePct,
+            facetLabel,
+            getFacetOptions,
+            getFacetValueName,
+            getDocFacetValue,
+            selectFacetItem,
+            getDocCarrier,
+            getDocProduct,
+            getDocDocType,
+            getDocMeta,
+            setDocClassification,
+            setDocMeta,
+            calcFreshness,
+            getNextLifecycleStates,
+            transitionLifecycle,
+            getLifecycleClass,
+            getFreshnessClass,
+            getTierClass,
+            selectDocument,
+            deleteDocument,
+            getDocName,
+            getRelatedDocIds,
+            highlightRelatedDocs,
+            setParent,
+            removeParent,
+            addChild,
+            removeChild,
+            addSiblingRelation,
+            removeSiblingRelation,
+            addReference,
+            removeReference,
+            applySearch,
+            clearSearch,
+            createBusiness,
+            openDomainModal,
+            createDomain,
+            showAddDocModal,
+            checkDocModalDuplicate,
+            createDocument,
+            handleFileUpload,
+            checkUploadDuplicate,
+            createFromUpload,
+            exportData,
+            importData,
+            saveStore,
+            removeToast,
+            showToast,
+            formatDate,
+            fitGraph,
+            getCarrierName,
+            getProductName,
+            getDocTypeName,
+          };
+        },
+      }).mount('#app');
+    </script>
+  </body>
+</html>

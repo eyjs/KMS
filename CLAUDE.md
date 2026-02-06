@@ -1,10 +1,11 @@
-# KMS 지식관리체계 프로젝트
+# KMS 문서관리 프레임워크 v3.0
 
 ## 프로젝트 목표
 
-**AI RAG 구축 전, 전사 지식체계 관리 시스템 구축**
+**도메인 무관한 문서관리 프레임워크 구축**
 
-보험 GA(법인보험대리점)의 문서/지식을 체계적으로 분류하고 관리하여,
+시스템 프레임워크(불변 규칙)와 도메인 설정(가변)을 분리하여,
+GA 보험영업을 첫 번째 도메인으로 검증한 뒤 다른 사업(메디코드 등)에도 확장 가능한 구조.
 향후 RAG(Retrieval-Augmented Generation) 시스템의 기반 데이터를 준비한다.
 
 ## 프로젝트 단계
@@ -91,7 +92,7 @@
 
 | 영역 | 기술 | 비고 |
 |------|------|------|
-| 경량 Vue | Petite-Vue | 단일 HTML 파일용 |
+| 프레임워크 | Vue 3 CDN | 단일 HTML 파일용 |
 | 스타일링 | Tailwind CSS | CDN |
 | 그래프 | vis-network | CDN |
 | 데이터 | localStorage + JSON | 서버 불필요 |
@@ -142,9 +143,95 @@
     └── changelog.md                 # 변경 이력
 ```
 
-## 핵심 도메인 개념
+## 프레임워크 구조 (v3.0)
 
-### 3-Axis Taxonomy
+### 시스템 vs 도메인 분리
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  SYSTEM FRAMEWORK (불변)                  │
+│  채번 │ 라이프사이클 │ 신선도 │ 관계 │ SSOT │ 버전      │
+├─────────────────────────────────────────────────────────┤
+│  Domain A (GA영업)  │  Domain B (메디코드)  │  ...      │
+│  carrier, product,  │  service, stage,      │           │
+│  docType            │  docType              │           │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 시스템이 강제하는 것
+- 모든 문서에 고유 ID (채번)
+- 라이프사이클 상태 머신 (DRAFT → REVIEW → ACTIVE → STALE → DEPRECATED → ARCHIVED)
+- 신선도 자동 계산 (HOT: 30일, WARM: 90일, COLD: 365일)
+- 관계 타입 제한 (PARENT_OF, CHILD_OF, SIBLING, REFERENCE, SUPERSEDES)
+- SSOT: 동일 분류 경로에 ACTIVE 문서 1개만 허용
+- 버전: Major.Minor 규칙
+
+### 시스템이 강제하지 않는 것
+- 분류 축(facet) 구성: 도메인마다 다름
+- 분류 값 (보험사 목록, 상품 목록 등)
+- 문서 본문 형식
+- 내부 관계 구조
+
+### 도메인 코드
+
+`{BIZ}-{FUNC}` 형식 (예: GA-SALES, GA-COMM, MEDI-SVC, COMMON-COMP)
+
+| 도메인 | facets (SSOT 키) | 설명 |
+|--------|-----------------|------|
+| GA-SALES | carrier × product × docType | 보험사별 상품별 영업 문서 |
+| GA-COMM | carrier × product × docType | 수수료/정산 문서 |
+| GA-CONTRACT | carrier × product × docType | 계약관리 문서 |
+| GA-COMP | carrier × docType | 컴플라이언스 (상품 무관) |
+| GA-EDU | docType | 교육/역량 (보험사/상품 무관) |
+| COMMON-COMP | docType | 전사 공통 규제/법률 |
+
+### 라이프사이클 상태 머신
+
+```
+DRAFT ──► REVIEW ──► ACTIVE ──► STALE ──► DEPRECATED ──► ARCHIVED
+            │                     ▲          │
+            └── REJECTED          │          └── (수동 복원 가능)
+                            (신선도 만료 시 자동)
+```
+
+### 신선도 (Freshness)
+
+```
+경과일 = 현재일 - max(updatedAt, reviewedAt)
+FRESH:   경과일 < maxAgeDays × 0.7
+WARNING: 경과일 < maxAgeDays
+EXPIRED: 경과일 ≥ maxAgeDays → 자동 STALE 전환
+```
+
+### 문서 데이터 모델 (v3)
+
+```javascript
+{
+  // 시스템 필드 (불변)
+  id: string,                       // 채번된 고유 ID
+  domain: string,                   // GA-SALES, GA-COMM, ...
+  lifecycle: string,                // DRAFT | REVIEW | ACTIVE | ...
+  version: { major: 1, minor: 0 },
+  createdAt, updatedAt, reviewedAt,
+
+  // 도메인 필드 (가변)
+  classification: {                 // facet 값
+    carrier: "INS-SAMSUNG",
+    product: "PRD-LIFE-WHOLE",
+    docType: "DOC-TERMS",
+  },
+  meta: {                           // 선택적 메타
+    process: "BIZ-CONSULT",
+    audience: "AUD-AGENT",
+  },
+
+  // 관계
+  relations: { parent, children, siblings, references, supersedes, supersededBy },
+  name, content, tier,
+}
+```
+
+### 3-Axis Taxonomy (GA 도메인)
 
 - **WHO**: 보험사 (Carrier) - `INS-SAMSUNG`, `INS-HANWHA`, `INS-KYOBO`
 - **WHAT**: 상품군 (Product) - `PRD-LIFE-WHOLE`, `PRD-CHILD`
@@ -152,40 +239,34 @@
 
 ### Hot-Warm-Cold 티어
 
-| Tier | 문서유형 | 변경빈도 |
-|------|----------|----------|
-| HOT | 시책, 수수료 | 수시 |
-| WARM | 상품설명서, 스크립트 | 분기 |
-| COLD | 약관, 교육자료 | 연간 |
-
-### 문서 ID 규칙
-
-```
-{DOC-TYPE}-{CARRIER}-{PRODUCT}-{SEQ}
-예: DOC-TERMS-INS-SAMSUNG-PRD-LIFE-WHOLE-001
-```
+| Tier | 문서유형 | 변경빈도 | 기본 maxAge |
+|------|----------|----------|-------------|
+| HOT | 시책, 수수료 | 수시 | 30일 |
+| WARM | 상품설명서, 스크립트 | 분기 | 90일 |
+| COLD | 약관, 교육자료 | 연간 | 365일 |
 
 ### 관계 유형
 
-| 관계 | 설명 | 양방향 |
-|------|------|--------|
-| parent/children | 부모-자식 | O |
-| siblings | 형제 | O |
-| references | 참조 | X |
-| supersedes | 상품 개편 (신→구) | X |
+| 관계 | 설명 | 양방향 | 크로스 도메인 |
+|------|------|--------|--------------|
+| PARENT_OF / CHILD_OF | 부모-자식 | O | X |
+| SIBLING | 형제 | O | X |
+| REFERENCE | 참조 | X | O |
+| SUPERSEDES | 버전 대체 | X | X |
 
-### 유니크 제약 조건
+### SSOT (Single Source of Truth)
 
-**문서 유니크 키**: `보험사 + 상품 + 문서유형 + 버전`
+**유니크 키**: `도메인 + 분류 경로 내 ACTIVE 상태 문서 1개`
 
 ```
-[유효한 경로 - 모두 유니크]
-KB손해보험 > 든든 어린이보험 > 상품요약본 v1.0
-KB손해보험 > 든든 어린이보험 > 판매강의자료 v1.0
-KB손해보험 > 든든 어린이보험 리뉴얼(2026-02) > 상품요약본 v1.0
+[유효 - 모두 유니크]
+GA-SALES: KB손해보험 > 든든 어린이보험 > 상품요약본 (ACTIVE)
+GA-SALES: KB손해보험 > 든든 어린이보험 > 판매강의자료 (ACTIVE)
+GA-SALES: KB손해보험 > 든든 어린이보험 리뉴얼(2026-02) > 상품요약본 (ACTIVE)
 
-[중복 오류]
-KB손해보험 > 든든 어린이보험 > 상품요약본 v1.0  (이미 존재)
+[SSOT 위반]
+GA-SALES: KB손해보험 > 든든 어린이보험 > 상품요약본 (ACTIVE) ← 이미 존재
+→ 새 문서를 ACTIVE로 전환하면 기존 문서 자동 DEPRECATED
 ```
 
 ### 자동 분류 규칙
@@ -194,20 +275,9 @@ KB손해보험 > 든든 어린이보험 > 상품요약본 v1.0  (이미 존재)
 
 1. **보험사 매칭**: 파일명에서 보험사 코드/별칭 검색
    - "KB손해", "KB", "케이비" → KB손해보험
-   - "삼성생명", "삼성", "SL" → 삼성생명
-
-2. **상품 매칭**: 기존 등록된 상품명과 유사도 비교
-   - "든든어린이", "든든 어린이" → 든든 어린이보험
-   - 새 상품이면 신규 등록 제안
-
-3. **문서유형 매칭**: 키워드 기반
-   - "요약", "요약본" → 상품요약본
-   - "강의", "교육" → 교육자료
-   - "스크립트", "화법" → 판매스크립트
-
-4. **날짜/버전 추출**: 정규식
-   - "202602", "2026-02" → 2026년 2월
-   - "v2", "Ver.2" → 버전 2.0
+2. **상품 매칭**: 기존 등록 상품명과 유사도 비교
+3. **문서유형 매칭**: 키워드 기반 ("요약" → 상품요약본, "스크립트" → 판매스크립트)
+4. **날짜/버전 추출**: 정규식 ("202602" → 2026년 2월, "v2" → 버전 2.0)
 
 ## 코딩 컨벤션
 
@@ -242,12 +312,21 @@ npx serve . -p 8080
 # http://localhost:8080/ui/viewer.html
 ```
 
+## 새 도메인 추가 방법
+
+1. `src/taxonomy.py`의 `BUSINESSES`에 사업 등록
+2. `DOMAINS`에 도메인 정의 (facets, optionalMeta, freshnessOverrides, ssotKey)
+3. `DOC_TYPE_DOMAIN_MAP`에 문서유형→도메인 매핑 추가
+4. `src/simulator.py`에서 해당 도메인 문서 생성 로직 추가
+5. `ui/admin.html`의 DEFAULT_DATA에 도메인 정보 반영
+
 ## 참고 문서
 
 - `docs/core/project-goal.md` - 프로젝트 목표 및 단계별 계획
 - `docs/core/domain-knowledge.md` - GA 산업 도메인 지식
 - `docs/architecture/architecture-guide.md` - 전체 아키텍처
 - `docs/architecture/document-pipeline.md` - 문서 파이프라인
+- `docs/framework-guide.md` - 문서관리 프레임워크 기획서+매뉴얼 (비기술)
 
 ## 주의사항
 
@@ -255,3 +334,4 @@ npx serve . -p 8080
 2. **Phase 1 집중**: 현재는 JSON 기반 검증에만 집중
 3. **과설계 금지**: 동작하는 코드 우선, 설계는 최소화
 4. **도메인 용어**: 보험 업계 용어 정확히 사용
+5. **프레임워크 vs 도메인**: 시스템 규칙은 모든 도메인 공통, 도메인 내부 체계는 해당 전문가가 결정

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KMS Admin v2.1 - 지식관리체계 검증</title>
+    <title>KMS Admin v3.0 - 문서관리 프레임워크</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
@@ -67,9 +67,9 @@
           <div class="flex items-center justify-between">
             <div>
               <h1 class="text-lg font-bold text-gray-800">KMS Admin</h1>
-              <p class="text-xs text-gray-500">v2.1 - 6-Facet Taxonomy</p>
+              <p class="text-xs text-gray-500">v3.0 - Document Framework</p>
             </div>
-            <span class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded">확장판</span>
+            <span class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded">프레임워크</span>
           </div>
         </div>
 
@@ -423,6 +423,14 @@
             >
               📅
             </button>
+            <button
+              @click="viewMode = 'dashboard'"
+              :class="viewMode === 'dashboard' ? 'bg-gray-200' : 'hover:bg-gray-100'"
+              class="p-2 rounded-lg transition"
+              title="데이터 품질 대시보드"
+            >
+              🩺
+            </button>
           </div>
           <div class="h-6 w-px bg-gray-200"></div>
           <input
@@ -441,6 +449,14 @@
             &times;
           </button>
           <!-- 필터 드롭다운 -->
+          <select v-model="filterLifecycle" class="px-2 py-1.5 text-xs border rounded-lg">
+            <option value="">상태 전체</option>
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="STALE">STALE</option>
+            <option value="DRAFT">DRAFT</option>
+            <option value="REVIEW">REVIEW</option>
+            <option value="DEPRECATED">DEPRECATED</option>
+          </select>
           <select v-model="filterProcess" class="px-2 py-1.5 text-xs border rounded-lg">
             <option value="">프로세스 전체</option>
             <option v-for="(p, id) in store.taxonomy.processes" :key="id" :value="id">{{ p.name }}</option>
@@ -713,7 +729,8 @@
                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">보험사</th>
                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">상품</th>
                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">유형</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tier</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">신선도</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -724,11 +741,14 @@
                     class="cursor-pointer hover:bg-gray-50 transition"
                   >
                     <td class="px-4 py-2.5 text-sm font-medium text-gray-800">{{ doc.name }}</td>
-                    <td class="px-4 py-2.5 text-sm text-gray-600">{{ getCarrierName(doc.carrier) }}</td>
-                    <td class="px-4 py-2.5 text-sm text-gray-600">{{ getProductName(doc.product) }}</td>
-                    <td class="px-4 py-2.5 text-sm text-gray-600">{{ getDocTypeName(doc.docType) }}</td>
+                    <td class="px-4 py-2.5 text-sm text-gray-600">{{ getCarrierName(getDocCarrier(doc)) }}</td>
+                    <td class="px-4 py-2.5 text-sm text-gray-600">{{ getProductName(getDocProduct(doc)) }}</td>
+                    <td class="px-4 py-2.5 text-sm text-gray-600">{{ getDocTypeName(getDocDocType(doc)) }}</td>
                     <td class="px-4 py-2.5">
-                      <span :class="getTierClass(doc.tier)" class="text-xs px-2 py-0.5 rounded">{{ doc.tier }}</span>
+                      <span :class="getLifecycleClass(doc.lifecycle || 'ACTIVE')" class="text-xs px-2 py-0.5 rounded">{{ doc.lifecycle || 'ACTIVE' }}</span>
+                    </td>
+                    <td class="px-4 py-2.5">
+                      <span :class="getFreshnessClass(calcFreshness(doc).status)" class="text-xs px-2 py-0.5 rounded">{{ calcFreshness(doc).status }}</span>
                     </td>
                   </tr>
                 </tbody>
@@ -911,9 +931,267 @@
           </div>
         </div>
 
+        <!-- Dashboard View -->
+        <div v-show="viewMode === 'dashboard'" class="flex-1 overflow-auto p-4">
+          <div class="max-w-6xl mx-auto space-y-4">
+
+            <!-- 건강 점수 헤더 -->
+            <div class="bg-white rounded-lg shadow-sm p-5">
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-gray-800">데이터 품질 대시보드</h2>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs text-gray-400">마지막 갱신: {{ formatDate(store.lastModified) }}</span>
+                  <span class="text-sm font-bold px-3 py-1 rounded-full"
+                    :class="dashboard.score >= 90 ? 'bg-green-100 text-green-700' : dashboard.score >= 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'">
+                    {{ dashboard.score }}점
+                  </span>
+                </div>
+              </div>
+              <!-- 점수 바 -->
+              <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="h-3 rounded-full transition-all duration-500"
+                  :class="dashboard.score >= 90 ? 'bg-green-500' : dashboard.score >= 70 ? 'bg-yellow-500' : 'bg-red-500'"
+                  :style="{ width: dashboard.score + '%' }"></div>
+              </div>
+              <div class="flex justify-between text-xs text-gray-400 mt-1">
+                <span>0</span><span>50</span><span>100</span>
+              </div>
+            </div>
+
+            <!-- 핵심 지표 4개 -->
+            <div class="grid grid-cols-4 gap-3">
+              <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+                <div class="text-3xl font-bold text-indigo-600">{{ dashboard.totalDocs }}</div>
+                <div class="text-xs text-gray-500 mt-1">전체 문서</div>
+              </div>
+              <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+                <div class="text-3xl font-bold" :class="dashboard.orphanCount === 0 ? 'text-green-600' : 'text-red-600'">
+                  {{ dashboard.orphanCount }}
+                </div>
+                <div class="text-xs text-gray-500 mt-1">고아 문서 (관계 없음)</div>
+              </div>
+              <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+                <div class="text-3xl font-bold" :class="dashboard.duplicateCount === 0 ? 'text-green-600' : 'text-red-600'">
+                  {{ dashboard.duplicateCount }}
+                </div>
+                <div class="text-xs text-gray-500 mt-1">유니크 위반</div>
+              </div>
+              <div class="bg-white rounded-lg shadow-sm p-4 text-center">
+                <div class="text-3xl font-bold" :class="dashboard.brokenRefCount === 0 ? 'text-green-600' : 'text-orange-600'">
+                  {{ dashboard.brokenRefCount }}
+                </div>
+                <div class="text-xs text-gray-500 mt-1">끊어진 참조</div>
+              </div>
+            </div>
+
+            <!-- 라이프사이클 + 신선도 + 도메인 분포 -->
+            <div class="grid grid-cols-3 gap-3">
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">라이프사이클 분포</h3>
+                <div class="space-y-2">
+                  <div v-for="lc in dashboard.lifecycleDist" :key="lc.name">
+                    <div class="flex justify-between text-xs mb-1">
+                      <span :class="getLifecycleClass(lc.name)" class="px-1.5 py-0.5 rounded font-medium">{{ lc.name }}</span>
+                      <span class="text-gray-600">{{ lc.count }}건 ({{ lc.pct }}%)</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2">
+                      <div class="h-2 rounded-full bg-indigo-400" :style="{ width: lc.pct + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">신선도 분포</h3>
+                <div class="space-y-2">
+                  <div v-for="f in dashboard.freshnessDist" :key="f.name">
+                    <div class="flex justify-between text-xs mb-1">
+                      <span :class="getFreshnessClass(f.name)" class="font-medium">{{ f.name }}</span>
+                      <span class="text-gray-600">{{ f.count }}건 ({{ f.pct }}%)</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2">
+                      <div class="h-2 rounded-full"
+                        :class="f.name === 'FRESH' ? 'bg-green-400' : f.name === 'WARNING' ? 'bg-yellow-400' : 'bg-red-400'"
+                        :style="{ width: f.pct + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+                <!-- 만료 임박 -->
+                <div v-if="dashboard.expiringDocs.length > 0" class="mt-3 pt-3 border-t border-gray-100">
+                  <div class="text-xs font-medium text-red-600 mb-1">만료 임박 (7일 내)</div>
+                  <div v-for="ed in dashboard.expiringDocs" :key="ed.id" class="text-xs text-gray-600 py-0.5">
+                    {{ ed.name }} <span class="text-red-500 font-bold">D-{{ ed.daysLeft }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">도메인별 문서 수</h3>
+                <div class="space-y-2">
+                  <div v-for="dm in dashboard.domainDist" :key="dm.name">
+                    <div class="flex justify-between text-xs mb-1">
+                      <span class="text-gray-700 font-medium">{{ dm.name }}</span>
+                      <span class="text-gray-600">{{ dm.count }}건</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2">
+                      <div class="h-2 rounded-full bg-purple-400" :style="{ width: dm.pct + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+                  SSOT 위반: <span class="font-bold" :class="dashboard.ssotViolations > 0 ? 'text-red-600' : 'text-green-600'">{{ dashboard.ssotViolations }}건</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 관계 건강도 + Tier 분포 -->
+            <div class="grid grid-cols-2 gap-3">
+              <!-- 관계 건강도 -->
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">관계 건강도</h3>
+                <div class="space-y-2">
+                  <div v-for="rel in dashboard.relationHealth" :key="rel.label">
+                    <div class="flex justify-between text-xs mb-1">
+                      <span class="text-gray-600">{{ rel.label }}</span>
+                      <span class="font-medium" :class="rel.pct >= 50 ? 'text-green-600' : rel.pct >= 20 ? 'text-yellow-600' : 'text-red-600'">
+                        {{ rel.count }}건 ({{ rel.pct }}%)
+                      </span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2">
+                      <div class="h-2 rounded-full transition-all"
+                        :class="rel.pct >= 50 ? 'bg-green-400' : rel.pct >= 20 ? 'bg-yellow-400' : 'bg-red-400'"
+                        :style="{ width: rel.pct + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+                  평균 관계 수: <span class="font-bold text-gray-700">{{ dashboard.avgRelations }}</span>개/문서
+                </div>
+              </div>
+
+              <!-- Tier 분포 -->
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">Tier 분포</h3>
+                <div class="space-y-3">
+                  <div v-for="tier in dashboard.tierDist" :key="tier.name">
+                    <div class="flex justify-between text-xs mb-1">
+                      <span :class="tier.name === 'HOT' ? 'text-red-600 font-bold' : tier.name === 'WARM' ? 'text-orange-600 font-bold' : 'text-blue-600 font-bold'">
+                        {{ tier.name }}
+                      </span>
+                      <span class="text-gray-600">{{ tier.count }}건 ({{ tier.pct }}%)</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2.5">
+                      <div class="h-2.5 rounded-full"
+                        :class="tier.name === 'HOT' ? 'bg-red-400' : tier.name === 'WARM' ? 'bg-orange-400' : 'bg-blue-400'"
+                        :style="{ width: tier.pct + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+                <!-- 메타데이터 완성도 -->
+                <h3 class="font-bold text-gray-800 mb-2 mt-4 text-sm">메타데이터 완성도</h3>
+                <div class="space-y-1.5">
+                  <div v-for="m in dashboard.metaCompleteness" :key="m.label" class="flex items-center gap-2">
+                    <span class="w-16 text-xs text-gray-600">{{ m.label }}</span>
+                    <div class="flex-1 bg-gray-100 rounded-full h-2">
+                      <div class="h-2 rounded-full bg-indigo-400" :style="{ width: m.pct + '%' }"></div>
+                    </div>
+                    <span class="text-xs text-gray-500 w-10 text-right">{{ m.pct }}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 보험사별 문서 분포 -->
+            <div class="bg-white rounded-lg shadow-sm p-4">
+              <h3 class="font-bold text-gray-800 mb-3 text-sm">보험사별 문서 분포</h3>
+              <div class="space-y-1.5">
+                <div v-for="item in dashboard.carrierDist" :key="item.id" class="flex items-center gap-2">
+                  <span class="w-28 text-xs text-gray-700 truncate" :title="item.name">{{ item.name }}</span>
+                  <div class="flex-1 bg-gray-100 rounded-full h-4 relative">
+                    <div class="h-4 rounded-full bg-purple-400 flex items-center justify-end pr-1.5"
+                      :style="{ width: Math.max(item.pct, 2) + '%' }">
+                      <span v-if="item.pct > 8" class="text-white text-xs font-medium">{{ item.count }}</span>
+                    </div>
+                    <span v-if="item.pct <= 8" class="absolute right-1 top-0.5 text-xs text-gray-500">{{ item.count }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 문서유형별 분포 + SUPERSEDES 체인 -->
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">문서유형별 분포</h3>
+                <div class="space-y-1">
+                  <div v-for="item in dashboard.docTypeDist" :key="item.id" class="flex items-center gap-2">
+                    <span class="w-24 text-xs text-gray-700 truncate" :title="item.name">{{ item.name }}</span>
+                    <div class="flex-1 bg-gray-100 rounded-full h-3">
+                      <div class="h-3 rounded-full bg-green-400" :style="{ width: Math.max(item.pct, 1) + '%' }"></div>
+                    </div>
+                    <span class="text-xs text-gray-500 w-12 text-right">{{ item.count }}건</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-lg shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm">상품 개편 (SUPERSEDES) 체인</h3>
+                <div v-if="dashboard.supersedesChains.length === 0" class="text-sm text-gray-400">개편 관계 없음</div>
+                <div v-else class="space-y-2">
+                  <div v-for="(chain, idx) in dashboard.supersedesChains" :key="idx"
+                    class="p-2 bg-amber-50 rounded border border-amber-200">
+                    <div class="flex items-center gap-1 flex-wrap">
+                      <template v-for="(pid, ci) in chain" :key="pid">
+                        <span class="text-xs px-1.5 py-0.5 bg-white rounded border"
+                          :class="ci === 0 ? 'border-amber-400 font-bold' : 'border-gray-200'">
+                          {{ getProductName(pid) }}
+                        </span>
+                        <span v-if="ci < chain.length - 1" class="text-gray-400 text-xs">&rarr;</span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                <!-- 본문 채움률 -->
+                <h3 class="font-bold text-gray-800 mb-2 mt-4 text-sm">본문 채움률</h3>
+                <div class="flex items-center gap-3">
+                  <div class="flex-1 bg-gray-100 rounded-full h-3">
+                    <div class="h-3 rounded-full bg-teal-400" :style="{ width: dashboard.contentFillPct + '%' }"></div>
+                  </div>
+                  <span class="text-sm font-bold" :class="dashboard.contentFillPct > 50 ? 'text-teal-600' : 'text-red-600'">
+                    {{ dashboard.contentFillPct }}%
+                  </span>
+                </div>
+                <div class="text-xs text-gray-400 mt-1">
+                  {{ dashboard.contentFilledCount }} / {{ dashboard.totalDocs }}개 문서에 본문 있음
+                </div>
+              </div>
+            </div>
+
+            <!-- 문제 목록 -->
+            <div v-if="dashboard.issues.length > 0" class="bg-white rounded-lg shadow-sm p-4">
+              <h3 class="font-bold text-gray-800 mb-3 text-sm">발견된 문제 ({{ dashboard.issues.length }}건)</h3>
+              <div class="space-y-1.5 max-h-60 overflow-auto scrollbar-thin">
+                <div v-for="(issue, idx) in dashboard.issues" :key="idx"
+                  class="flex items-start gap-2 text-xs p-2 rounded"
+                  :class="issue.severity === 'error' ? 'bg-red-50' : issue.severity === 'warning' ? 'bg-yellow-50' : 'bg-blue-50'">
+                  <span :class="issue.severity === 'error' ? 'text-red-500' : issue.severity === 'warning' ? 'text-orange-500' : 'text-blue-500'">
+                    {{ issue.severity === 'error' ? '!!!' : issue.severity === 'warning' ? '!!' : 'i' }}
+                  </span>
+                  <span class="text-gray-700">{{ issue.message }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="bg-green-50 rounded-lg shadow-sm p-4 text-center">
+              <span class="text-green-600 font-medium text-sm">모든 검증 통과 - 데이터 품질 양호</span>
+            </div>
+
+          </div>
+        </div>
+
         <!-- Status Bar -->
         <div class="h-8 bg-gray-100 border-t border-gray-200 flex items-center px-4 text-xs text-gray-600">
           <span>문서: {{ Object.keys(store.documents).length }}개</span>
+          <span class="mx-2">|</span>
+          <span class="text-green-600">ACTIVE: {{ lifecycleCounts.ACTIVE || 0 }}</span>
+          <span class="mx-1 text-orange-600">STALE: {{ lifecycleCounts.STALE || 0 }}</span>
+          <span class="mx-1 text-gray-500">DRAFT: {{ lifecycleCounts.DRAFT || 0 }}</span>
           <span class="mx-2">|</span>
           <span :class="duplicateGroups.length > 0 ? 'text-red-600 font-medium' : 'text-green-600'">
             중복: {{ duplicateGroups.length }}건
@@ -1312,6 +1590,53 @@
               </div>
             </div>
 
+            <!-- 라이프사이클 상태 -->
+            <div>
+              <label class="text-xs font-medium text-gray-500">라이프사이클</label>
+              <div class="mt-1 flex items-center gap-2">
+                <span :class="getLifecycleClass(selectedDoc.lifecycle || 'ACTIVE')" class="text-xs px-3 py-1.5 rounded-lg font-bold">
+                  {{ selectedDoc.lifecycle || 'ACTIVE' }}
+                </span>
+                <button v-for="next in getNextLifecycleStates(selectedDoc.lifecycle || 'ACTIVE')" :key="next"
+                  @click="transitionLifecycle(selectedDocId, next)"
+                  class="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 transition">
+                  &rarr; {{ next }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 신선도 바 -->
+            <div>
+              <label class="text-xs font-medium text-gray-500">신선도</label>
+              <div class="mt-1">
+                <div class="flex justify-between text-xs mb-1">
+                  <span :class="getFreshnessClass(calcFreshness(selectedDoc).status)" class="font-medium">{{ calcFreshness(selectedDoc).status }}</span>
+                  <span class="text-gray-500">{{ calcFreshness(selectedDoc).daysSince }}일 / {{ calcFreshness(selectedDoc).maxDays }}일</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="h-2 rounded-full transition-all"
+                    :class="calcFreshness(selectedDoc).status === 'FRESH' ? 'bg-green-500' : calcFreshness(selectedDoc).status === 'WARNING' ? 'bg-yellow-500' : 'bg-red-500'"
+                    :style="{ width: Math.min(100, calcFreshness(selectedDoc).pct) + '%' }"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 도메인 + 버전 -->
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-medium text-gray-500">도메인</label>
+                <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700">
+                  {{ selectedDoc.domain || 'GA-SALES' }}
+                </div>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-500">버전</label>
+                <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700">
+                  v{{ typeof selectedDoc.version === 'object' ? selectedDoc.version.major + '.' + selectedDoc.version.minor : selectedDoc.version || '1.0' }}
+                </div>
+              </div>
+            </div>
+
             <div>
               <label class="text-xs font-medium text-gray-500">문서명</label>
               <input
@@ -1326,8 +1651,8 @@
               <div>
                 <label class="text-xs font-medium text-gray-500">보험사</label>
                 <select
-                  v-model="selectedDoc.carrier"
-                  @change="saveStore"
+                  :value="getDocCarrier(selectedDoc)"
+                  @change="setDocClassification(selectedDoc, 'carrier', $event.target.value); saveStore()"
                   class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
                 >
                   <option v-for="(c, id) in store.taxonomy.carriers" :key="id" :value="id">{{ c.name }}</option>
@@ -1336,8 +1661,8 @@
               <div>
                 <label class="text-xs font-medium text-gray-500">상품</label>
                 <select
-                  v-model="selectedDoc.product"
-                  @change="saveStore"
+                  :value="getDocProduct(selectedDoc)"
+                  @change="setDocClassification(selectedDoc, 'product', $event.target.value); saveStore()"
                   class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
                 >
                   <option v-for="(p, id) in store.taxonomy.products" :key="id" :value="id">{{ p.name }}</option>
@@ -1348,21 +1673,20 @@
             <div>
               <label class="text-xs font-medium text-gray-500">문서유형</label>
               <select
-                v-model="selectedDoc.docType"
-                @change="saveStore"
+                :value="getDocDocType(selectedDoc)"
+                @change="setDocClassification(selectedDoc, 'docType', $event.target.value); saveStore()"
                 class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
               >
                 <option v-for="(dt, id) in store.taxonomy.docTypes" :key="id" :value="id">{{ dt.name }}</option>
               </select>
             </div>
 
-            <!-- v2.1 신규 필드 -->
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-xs font-medium text-gray-500">프로세스</label>
                 <select
-                  v-model="selectedDoc.process"
-                  @change="saveStore"
+                  :value="getDocMeta(selectedDoc, 'process')"
+                  @change="setDocMeta(selectedDoc, 'process', $event.target.value); saveStore()"
                   class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
                 >
                   <option value="">미지정</option>
@@ -1372,8 +1696,8 @@
               <div>
                 <label class="text-xs font-medium text-gray-500">대상역할</label>
                 <select
-                  v-model="selectedDoc.audience"
-                  @change="saveStore"
+                  :value="getDocMeta(selectedDoc, 'audience')"
+                  @change="setDocMeta(selectedDoc, 'audience', $event.target.value); saveStore()"
                   class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
                 >
                   <option value="">미지정</option>
@@ -1382,13 +1706,18 @@
               </div>
             </div>
 
-            <div>
-              <label class="text-xs font-medium text-gray-500">Tier</label>
-              <div
-                :class="getTierClass(selectedDoc.tier)"
-                class="mt-1 px-3 py-2 rounded-lg text-sm text-center font-medium"
-              >
-                {{ selectedDoc.tier }}
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-medium text-gray-500">Tier</label>
+                <div :class="getTierClass(selectedDoc.tier)" class="mt-1 px-3 py-2 rounded-lg text-sm text-center font-medium">
+                  {{ selectedDoc.tier }}
+                </div>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-500">리뷰일</label>
+                <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-600">
+                  {{ selectedDoc.reviewedAt ? formatDate(selectedDoc.reviewedAt) : '미리뷰' }}
+                </div>
               </div>
             </div>
 
@@ -1799,10 +2128,49 @@
     <script>
       const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue;
 
-      // 기본 데이터 구조 v2.1
+      // 기본 데이터 구조 v3.0
       const DEFAULT_DATA = {
-        version: '2.1',
+        version: '3.0',
         lastModified: new Date().toISOString(),
+        system: {
+          lifecycleStates: ['DRAFT', 'REVIEW', 'ACTIVE', 'STALE', 'DEPRECATED', 'ARCHIVED'],
+          lifecycleTransitions: {
+            DRAFT: ['REVIEW'],
+            REVIEW: ['ACTIVE', 'REJECTED'],
+            REJECTED: ['DRAFT'],
+            ACTIVE: ['STALE', 'DEPRECATED'],
+            STALE: ['ACTIVE', 'DEPRECATED'],
+            DEPRECATED: ['ARCHIVED'],
+            ARCHIVED: [],
+          },
+          freshnessDefaults: { HOT: 30, WARM: 90, COLD: 365 },
+          freshnessThresholds: { FRESH: 0.7, WARNING: 1.0 },
+          relationshipTypes: ['PARENT_OF', 'CHILD_OF', 'SIBLING', 'REFERENCE', 'SUPERSEDES'],
+        },
+        businesses: {
+          GA: { name: 'GA 보험영업', description: '보험대리점 영업/계약/정산' },
+          MEDI: { name: '메디코드', description: 'AI 보험설계 서비스' },
+          COMMON: { name: '공통', description: '전사 공통 규제/시스템' },
+        },
+        domains: {
+          'GA-SALES': { business: 'GA', function: 'SALES', name: 'GA 영업/상담', ssotKey: ['carrier', 'product', 'docType'] },
+          'GA-COMM': { business: 'GA', function: 'COMM', name: 'GA 수수료/정산', ssotKey: ['carrier', 'product', 'docType'] },
+          'GA-CONTRACT': { business: 'GA', function: 'CONTRACT', name: 'GA 계약관리', ssotKey: ['carrier', 'product', 'docType'] },
+          'GA-COMP': { business: 'GA', function: 'COMP', name: 'GA 컴플라이언스', ssotKey: ['carrier', 'docType'] },
+          'GA-EDU': { business: 'GA', function: 'EDU', name: 'GA 교육/역량', ssotKey: ['docType'] },
+          'COMMON-COMP': { business: 'COMMON', function: 'COMP', name: '공통 규제/법률', ssotKey: ['docType'] },
+        },
+        docTypeDomainMap: {
+          'DOC-TERMS': 'GA-SALES', 'DOC-TERMS-SPECIAL': 'GA-SALES', 'DOC-GUIDE': 'GA-SALES',
+          'DOC-RATE-TABLE': 'GA-SALES', 'DOC-BROCHURE': 'GA-SALES', 'DOC-PRODUCT-SUMMARY': 'GA-SALES',
+          'DOC-SCRIPT': 'GA-SALES', 'DOC-COMPARISON': 'GA-SALES', 'DOC-PROPOSAL': 'GA-SALES',
+          'DOC-INCENTIVE': 'GA-COMM', 'DOC-COMMISSION': 'GA-COMM', 'DOC-COMMISSION-CALC': 'GA-COMM',
+          'DOC-SETTLEMENT': 'GA-COMM', 'DOC-PERFORMANCE': 'GA-COMM', 'DOC-CHARGEBACK': 'GA-COMM',
+          'DOC-APPLICATION': 'GA-CONTRACT', 'DOC-DISCLOSURE': 'GA-CONTRACT', 'DOC-CONFIRMATION': 'GA-CONTRACT',
+          'DOC-COMPLIANCE-GUIDE': 'GA-COMP',
+          'DOC-TRAINING': 'GA-EDU', 'DOC-ONBOARDING': 'GA-EDU', 'DOC-COMPLIANCE': 'GA-EDU', 'DOC-CERTIFICATION': 'GA-EDU',
+          'DOC-LAW-INSURANCE': 'COMMON-COMP', 'DOC-LAW-CONSUMER': 'COMMON-COMP', 'DOC-REGULATION': 'COMMON-COMP',
+        },
         taxonomy: {
           carriers: {
             'INS-COMMON': { name: '공통', alias: ['전체', 'ALL'], type: 'common', tier: 'common' },
@@ -1831,7 +2199,7 @@
         documents: {},
       };
 
-      // v2.1 JSON 마이그레이션
+      // v2.1/v3.0 JSON 마이그레이션
       function migrateFromTaxonomyV21(taxData) {
         const data = JSON.parse(JSON.stringify(DEFAULT_DATA));
 
@@ -1844,6 +2212,11 @@
         if (taxData.certifications) data.taxonomy.certifications = taxData.certifications;
         if (taxData.regulation_timeline) data.taxonomy.regulationTimeline = taxData.regulation_timeline;
         if (taxData.default_relations) data.taxonomy.defaultRelations = taxData.default_relations;
+        // v3.0 시스템 필드
+        if (taxData.system) data.system = { ...data.system, ...taxData.system };
+        if (taxData.businesses) data.businesses = { ...data.businesses, ...taxData.businesses };
+        if (taxData.domains) data.domains = { ...data.domains, ...taxData.domains };
+        if (taxData.doc_type_domain_map) data.docTypeDomainMap = { ...data.docTypeDomainMap, ...taxData.doc_type_domain_map };
 
         return data;
       }
@@ -1885,29 +2258,40 @@
         nodes.forEach((n) => {
           if (!n.labels.includes('Document')) return;
           const props = n.properties;
-          const docType = n.labels.find((l) => l.startsWith('DOC-'));
-          const tier = n.labels.find((l) => ['HOT', 'WARM', 'COLD'].includes(l)) || 'COLD';
+          const docType = props.doc_type || n.labels.find((l) => l.startsWith('DOC-'));
+          const tier = n.labels.find((l) => ['HOT', 'WARM', 'COLD'].includes(l)) || props.tier || 'COLD';
+
+          // v3.0 classification/meta 구조 지원
+          const carrier = props.classification?.carrier || props.carrier;
+          const product = props.classification?.product || props.product;
+          const dt = props.classification?.docType || docType;
+          const process = props.meta?.process || (props.processes && props.processes[0]) || props.process || '';
+          const audience = props.meta?.audience || (props.audiences && props.audiences[0]) || props.audience || '';
+          const lifecycle = props.lifecycle || 'ACTIVE';
+          const version = props.version || { major: 1, minor: 0 };
+          const domain = props.domain || data.docTypeDomainMap?.[dt] || 'GA-SALES';
 
           data.documents[n.id] = {
             id: n.id,
             name: props.name,
-            carrier: props.carrier,
-            product: props.product,
-            docType: docType,
+            domain: domain,
+            lifecycle: lifecycle,
+            version: typeof version === 'object' ? version : { major: parseInt(version) || 1, minor: 0 },
+            classification: { carrier: carrier, product: product, docType: dt },
+            meta: { process: process, audience: audience },
             tier: tier,
-            process: (props.processes && props.processes[0]) || props.process || '',
-            audience: (props.audiences && props.audiences[0]) || props.audience || '',
-            status: 'ACTIVE',
-            version: '1.0',
-            content: '',
+            content: props.content || '',
             relations: {
               parent: childOf[n.id] || null,
               children: parentOf[n.id] || [],
               siblings: relatedTo[n.id] || [],
               references: references[n.id] || [],
+              supersedes: props.relations?.supersedes || null,
+              supersededBy: props.relations?.supersededBy || null,
             },
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: props.createdAt || new Date().toISOString(),
+            updatedAt: props.updatedAt || new Date().toISOString(),
+            reviewedAt: props.reviewedAt || null,
           };
         });
 
@@ -1938,6 +2322,9 @@
           const highlightedDocs = ref([]);
           const toasts = ref([]);
 
+          // 라이프사이클 필터
+          const filterLifecycle = ref('');
+
           // 시작 축 선택 (다면 분류)
           const startAxis = ref('carrier');
           const AXIS_OPTIONS = [
@@ -1947,6 +2334,117 @@
             { id: 'process', label: '프로세스' },
             { id: 'audience', label: '역할' },
           ];
+
+          // === v3.0 호환 헬퍼: classification/meta 또는 flat 필드 읽기 ===
+          function getDocCarrier(doc) { return doc?.classification?.carrier || doc?.carrier || ''; }
+          function getDocProduct(doc) { return doc?.classification?.product || doc?.product || ''; }
+          function getDocDocType(doc) { return doc?.classification?.docType || doc?.docType || ''; }
+          function getDocMeta(doc, key) { return doc?.meta?.[key] || doc?.[key] || ''; }
+          function setDocClassification(doc, key, val) {
+            if (!doc.classification) doc.classification = {};
+            doc.classification[key] = val;
+            // 하위호환을 위해 flat 필드도 유지
+            doc[key] = val;
+          }
+          function setDocMeta(doc, key, val) {
+            if (!doc.meta) doc.meta = {};
+            doc.meta[key] = val;
+            doc[key] = val;
+          }
+
+          // === 신선도 계산 ===
+          function calcFreshness(doc) {
+            if (!doc) return { daysSince: 0, maxDays: 90, pct: 0, status: 'FRESH' };
+            const lastDate = new Date(Math.max(
+              new Date(doc.updatedAt || doc.createdAt || Date.now()).getTime(),
+              new Date(doc.reviewedAt || 0).getTime()
+            ));
+            const daysSince = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / 86400000));
+            const tier = doc.tier || 'WARM';
+            const defaults = store.system?.freshnessDefaults || { HOT: 30, WARM: 90, COLD: 365 };
+            const maxDays = defaults[tier] || 90;
+            const pct = Math.round((daysSince / maxDays) * 100);
+            let status = 'FRESH';
+            if (daysSince >= maxDays) status = 'EXPIRED';
+            else if (daysSince >= maxDays * 0.7) status = 'WARNING';
+            return { daysSince, maxDays, pct, status };
+          }
+
+          // === 라이프사이클 전환 ===
+          function getNextLifecycleStates(current) {
+            const transitions = store.system?.lifecycleTransitions || DEFAULT_DATA.system.lifecycleTransitions;
+            return transitions[current] || [];
+          }
+          function transitionLifecycle(docId, nextState) {
+            const doc = store.documents[docId];
+            if (!doc) return;
+            const oldState = doc.lifecycle || 'ACTIVE';
+            doc.lifecycle = nextState;
+            if (nextState === 'ACTIVE') doc.reviewedAt = new Date().toISOString();
+            doc.updatedAt = new Date().toISOString();
+            // SSOT: ACTIVE 전환 시 동일 경로의 다른 ACTIVE → DEPRECATED
+            if (nextState === 'ACTIVE') {
+              const carrier = getDocCarrier(doc);
+              const product = getDocProduct(doc);
+              const docType = getDocDocType(doc);
+              Object.entries(store.documents).forEach(([id, d]) => {
+                if (id === docId) return;
+                if (getDocCarrier(d) === carrier && getDocProduct(d) === product && getDocDocType(d) === docType && d.lifecycle === 'ACTIVE') {
+                  d.lifecycle = 'DEPRECATED';
+                  d.updatedAt = new Date().toISOString();
+                }
+              });
+            }
+            saveStore();
+            showToast(`${oldState} → ${nextState}`, 'success');
+          }
+
+          function getLifecycleClass(state) {
+            const map = {
+              DRAFT: 'bg-gray-200 text-gray-700',
+              REVIEW: 'bg-blue-100 text-blue-700',
+              ACTIVE: 'bg-green-100 text-green-700',
+              STALE: 'bg-orange-100 text-orange-700',
+              DEPRECATED: 'bg-red-100 text-red-700',
+              ARCHIVED: 'bg-gray-300 text-gray-600',
+              REJECTED: 'bg-red-200 text-red-800',
+            };
+            return map[state] || 'bg-gray-100 text-gray-600';
+          }
+          function getFreshnessClass(status) {
+            const map = { FRESH: 'text-green-600', WARNING: 'text-orange-600', EXPIRED: 'text-red-600' };
+            return map[status] || 'text-gray-600';
+          }
+
+          // 라이프사이클 카운트
+          const lifecycleCounts = computed(() => {
+            const counts = {};
+            Object.values(store.documents).forEach(d => {
+              const s = d.lifecycle || 'ACTIVE';
+              counts[s] = (counts[s] || 0) + 1;
+            });
+            return counts;
+          });
+
+          // v2.1 → v3.0 마이그레이션 (localStorage 데이터)
+          function migrateDocToV3(doc) {
+            if (doc.classification) return doc; // 이미 v3
+            const docType = doc.docType || '';
+            return {
+              ...doc,
+              domain: doc.domain || store.docTypeDomainMap?.[docType] || DEFAULT_DATA.docTypeDomainMap[docType] || 'GA-SALES',
+              lifecycle: doc.lifecycle || doc.status || 'ACTIVE',
+              version: typeof doc.version === 'object' ? doc.version : { major: parseInt(doc.version) || 1, minor: 0 },
+              classification: { carrier: doc.carrier || '', product: doc.product || '', docType: docType },
+              meta: { process: doc.process || '', audience: doc.audience || '' },
+              reviewedAt: doc.reviewedAt || doc.updatedAt || null,
+              relations: {
+                ...doc.relations,
+                supersedes: doc.relations?.supersedes || null,
+                supersededBy: doc.relations?.supersededBy || null,
+              },
+            };
+          }
 
           function getDrillOrder() {
             const base = ['carrier', 'product', 'docType'];
@@ -2028,17 +2526,20 @@
             if (!q) return true;
             if (doc.name.toLowerCase().includes(q)) return true;
             if (id.toLowerCase().includes(q)) return true;
-            const carrier = store.taxonomy.carriers[doc.carrier];
+            const carrierId = getDocCarrier(doc);
+            const carrier = store.taxonomy.carriers[carrierId];
             if (carrier) {
               if (carrier.name.toLowerCase().includes(q)) return true;
               if ((carrier.alias || []).some((a) => a.toLowerCase().includes(q))) return true;
             }
-            const product = store.taxonomy.products[doc.product];
+            const productId = getDocProduct(doc);
+            const product = store.taxonomy.products[productId];
             if (product) {
               if (product.name.toLowerCase().includes(q)) return true;
               if ((product.alias || []).some((a) => a.toLowerCase().includes(q))) return true;
             }
-            const docType = store.taxonomy.docTypes[doc.docType];
+            const dtId = getDocDocType(doc);
+            const docType = store.taxonomy.docTypes[dtId];
             if (docType && docType.name.toLowerCase().includes(q)) return true;
             return false;
           }
@@ -2049,8 +2550,9 @@
             const docs = {};
             Object.entries(store.documents).forEach(([id, doc]) => {
               if (!matchesSearch(doc, id, q)) return;
-              if (filterProcess.value && doc.process !== filterProcess.value) return;
-              if (filterAudience.value && doc.audience !== filterAudience.value) return;
+              if (filterLifecycle.value && (doc.lifecycle || 'ACTIVE') !== filterLifecycle.value) return;
+              if (filterProcess.value && getDocMeta(doc, 'process') !== filterProcess.value) return;
+              if (filterAudience.value && getDocMeta(doc, 'audience') !== filterAudience.value) return;
               docs[id] = doc;
             });
             return docs;
@@ -2059,10 +2561,11 @@
           // 같은 보험사+상품 문서 (부모/자식/형제 후보)
           const samePathDocuments = computed(() => {
             if (!selectedDoc.value) return {};
-            const { carrier, product } = selectedDoc.value;
+            const carrier = getDocCarrier(selectedDoc.value);
+            const product = getDocProduct(selectedDoc.value);
             const docs = {};
             Object.entries(store.documents).forEach(([id, doc]) => {
-              if (id !== selectedDocId.value && doc.carrier === carrier && doc.product === product) {
+              if (id !== selectedDocId.value && getDocCarrier(doc) === carrier && getDocProduct(doc) === product) {
                 docs[id] = doc;
               }
             });
@@ -2117,7 +2620,9 @@
           const duplicateGroups = computed(() => {
             const groups = {};
             Object.entries(store.documents).forEach(([id, doc]) => {
-              const key = `${doc.carrier}|${doc.product}|${doc.docType}`;
+              // SSOT: 동일 경로에 ACTIVE 2개 이상 → 위반
+              if ((doc.lifecycle || 'ACTIVE') !== 'ACTIVE') return;
+              const key = `${getDocCarrier(doc)}|${getDocProduct(doc)}|${getDocDocType(doc)}`;
               if (!groups[key]) groups[key] = [];
               groups[key].push({ id, name: doc.name });
             });
@@ -2130,6 +2635,173 @@
                   docs,
                 };
               });
+          });
+
+          // 대시보드 데이터
+          const dashboard = computed(() => {
+            const docs = Object.entries(store.documents);
+            const totalDocs = docs.length;
+            if (totalDocs === 0) return {
+              score: 0, totalDocs: 0, orphanCount: 0, duplicateCount: 0, brokenRefCount: 0,
+              relationHealth: [], tierDist: [], carrierDist: [], docTypeDist: [],
+              supersedesChains: [], metaCompleteness: [], contentFillPct: 0, contentFilledCount: 0,
+              avgRelations: '0', issues: [], lifecycleDist: [], freshnessDist: [], ssotViolations: 0,
+              expiringDocs: [], domainDist: [],
+            };
+
+            const issues = [];
+
+            // 고아 문서
+            const orphans = docs.filter(([, d]) => {
+              const r = d.relations || {};
+              return !r.parent && (r.children || []).length === 0 && (r.siblings || []).length === 0 && (r.references || []).length === 0;
+            });
+
+            // SSOT 위반 (동일 경로에 ACTIVE 2개 이상)
+            const uniqueMap = {};
+            docs.forEach(([id, d]) => {
+              if ((d.lifecycle || 'ACTIVE') !== 'ACTIVE') return;
+              const key = `${getDocCarrier(d)}|${getDocProduct(d)}|${getDocDocType(d)}`;
+              if (!uniqueMap[key]) uniqueMap[key] = [];
+              uniqueMap[key].push(id);
+            });
+            const dupes = Object.entries(uniqueMap).filter(([, ids]) => ids.length > 1);
+
+            // 끊어진 참조
+            let brokenRefs = 0;
+            docs.forEach(([, d]) => {
+              const r = d.relations || {};
+              if (r.parent && !store.documents[r.parent]) { brokenRefs++; issues.push({ severity: 'error', message: `"${d.name}" 부모 참조 끊김: ${r.parent}` }); }
+              (r.children || []).forEach(c => { if (!store.documents[c]) { brokenRefs++; issues.push({ severity: 'error', message: `"${d.name}" 자식 참조 끊김: ${c}` }); } });
+              (r.siblings || []).forEach(s => { if (!store.documents[s]) { brokenRefs++; issues.push({ severity: 'error', message: `"${d.name}" 형제 참조 끊김: ${s}` }); } });
+              (r.references || []).forEach(ref => { if (!store.documents[ref]) { brokenRefs++; issues.push({ severity: 'error', message: `"${d.name}" 참조 끊김: ${ref}` }); } });
+            });
+
+            // 관계 건강도
+            const withParent = docs.filter(([, d]) => d.relations?.parent).length;
+            const withChildren = docs.filter(([, d]) => (d.relations?.children || []).length > 0).length;
+            const withSiblings = docs.filter(([, d]) => (d.relations?.siblings || []).length > 0).length;
+            const withRefs = docs.filter(([, d]) => (d.relations?.references || []).length > 0).length;
+            const pct = (n) => totalDocs > 0 ? Math.round(n / totalDocs * 100) : 0;
+            const relationHealth = [
+              { label: '부모 있음', count: withParent, pct: pct(withParent) },
+              { label: '자식 있음', count: withChildren, pct: pct(withChildren) },
+              { label: '형제 있음', count: withSiblings, pct: pct(withSiblings) },
+              { label: '참조 있음', count: withRefs, pct: pct(withRefs) },
+            ];
+
+            // 평균 관계 수
+            let totalRels = 0;
+            docs.forEach(([, d]) => {
+              const r = d.relations || {};
+              totalRels += (r.parent ? 1 : 0) + (r.children || []).length + (r.siblings || []).length + (r.references || []).length;
+            });
+
+            // Tier 분포
+            const tierMap = { HOT: 0, WARM: 0, COLD: 0 };
+            docs.forEach(([, d]) => { if (tierMap[d.tier] !== undefined) tierMap[d.tier]++; });
+            const tierDist = Object.entries(tierMap).map(([name, count]) => ({ name, count, pct: pct(count) }));
+
+            // 라이프사이클 분포
+            const lcMap = {};
+            docs.forEach(([, d]) => { const s = d.lifecycle || 'ACTIVE'; lcMap[s] = (lcMap[s] || 0) + 1; });
+            const lifecycleDist = Object.entries(lcMap).sort((a, b) => b[1] - a[1])
+              .map(([name, count]) => ({ name, count, pct: pct(count) }));
+
+            // 신선도 분포
+            const freshMap = { FRESH: 0, WARNING: 0, EXPIRED: 0 };
+            docs.forEach(([, d]) => { const f = calcFreshness(d); freshMap[f.status]++; });
+            const freshnessDist = Object.entries(freshMap).map(([name, count]) => ({ name, count, pct: pct(count) }));
+
+            // 만료 임박 문서 (7일 내)
+            const expiringDocs = docs.filter(([, d]) => {
+              const f = calcFreshness(d);
+              return f.status === 'WARNING' && (f.maxDays - f.daysSince) <= 7;
+            }).map(([id, d]) => ({ id, name: d.name, daysLeft: calcFreshness(d).maxDays - calcFreshness(d).daysSince }))
+              .sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 10);
+
+            // 도메인별 문서 수
+            const domainMap = {};
+            docs.forEach(([, d]) => { const dm = d.domain || 'GA-SALES'; domainMap[dm] = (domainMap[dm] || 0) + 1; });
+            const domainDist = Object.entries(domainMap).sort((a, b) => b[1] - a[1])
+              .map(([name, count]) => ({ name, count, pct: pct(count) }));
+
+            // 보험사별 분포
+            const carrierMap = {};
+            docs.forEach(([, d]) => { const c = getDocCarrier(d); carrierMap[c] = (carrierMap[c] || 0) + 1; });
+            const maxCarrier = Math.max(...Object.values(carrierMap));
+            const carrierDist = Object.entries(carrierMap)
+              .sort((a, b) => b[1] - a[1])
+              .map(([id, count]) => ({ id, name: store.taxonomy.carriers[id]?.name || id, count, pct: Math.round(count / maxCarrier * 100) }));
+
+            // 문서유형별 분포
+            const dtMap = {};
+            docs.forEach(([, d]) => { const dt = getDocDocType(d); dtMap[dt] = (dtMap[dt] || 0) + 1; });
+            const maxDt = Math.max(...Object.values(dtMap));
+            const docTypeDist = Object.entries(dtMap)
+              .sort((a, b) => b[1] - a[1])
+              .map(([id, count]) => ({ id, name: store.taxonomy.docTypes[id]?.name || id, count, pct: Math.round(count / maxDt * 100) }));
+
+            // SUPERSEDES 체인
+            const supersedesChains = [];
+            const visited = new Set();
+            Object.entries(store.taxonomy.products).forEach(([pid, p]) => {
+              if (visited.has(pid) || !p.supersedes) return;
+              const chain = [pid];
+              let cur = p.supersedes;
+              while (cur && !visited.has(cur)) {
+                chain.push(cur);
+                visited.add(cur);
+                cur = store.taxonomy.products[cur]?.supersedes;
+              }
+              visited.add(pid);
+              supersedesChains.push(chain);
+            });
+
+            // 메타데이터 완성도
+            const withProcess = docs.filter(([, d]) => { const p = getDocMeta(d, 'process'); return p && p !== 'BIZ-COMMON'; }).length;
+            const withAudience = docs.filter(([, d]) => { const a = getDocMeta(d, 'audience'); return a && a !== 'AUD-ALL'; }).length;
+            const withContent = docs.filter(([, d]) => d.content && d.content.trim().length > 0).length;
+            const metaCompleteness = [
+              { label: '프로세스', pct: pct(withProcess) },
+              { label: '역할', pct: pct(withAudience) },
+              { label: '본문', pct: pct(withContent) },
+            ];
+
+            // 이슈 추가
+            if (dupes.length > 0) issues.push({ severity: 'error', message: `유니크 위반 ${dupes.length}건 (동일 보험사+상품+문서유형)` });
+            if (orphans.length > totalDocs * 0.5) issues.push({ severity: 'warning', message: `고아 문서 ${orphans.length}건 (${pct(orphans.length)}%) - 관계 설정 필요` });
+            if (withContent < totalDocs * 0.1) issues.push({ severity: 'warning', message: `본문 있는 문서 ${withContent}건 (${pct(withContent)}%) - 본문 입력 필요` });
+
+            // 보험사 균형 검사
+            if (carrierDist.length > 1) {
+              const minC = carrierDist[carrierDist.length - 1];
+              const maxC = carrierDist[0];
+              if (maxC.count > minC.count * 5) issues.push({ severity: 'info', message: `보험사 불균형: ${maxC.name}(${maxC.count}건) vs ${minC.name}(${minC.count}건)` });
+            }
+
+            // 점수 계산 (100점 만점)
+            let score = 100;
+            score -= dupes.length * 10;                      // 유니크 위반 -10점/건
+            score -= brokenRefs * 5;                          // 끊어진 참조 -5점/건
+            score -= Math.max(0, pct(orphans.length) - 80);   // 고아 80% 초과 시 감점
+            if (withContent < totalDocs * 0.05) score -= 10;  // 본문 5% 미만 -10점
+            score = Math.max(0, Math.min(100, Math.round(score)));
+
+            return {
+              score, totalDocs,
+              orphanCount: orphans.length,
+              duplicateCount: dupes.length,
+              brokenRefCount: brokenRefs,
+              ssotViolations: dupes.length,
+              relationHealth, tierDist, carrierDist, docTypeDist,
+              lifecycleDist, freshnessDist, expiringDocs, domainDist,
+              supersedesChains, metaCompleteness,
+              avgRelations: (totalRels / totalDocs).toFixed(1),
+              contentFillPct: pct(withContent),
+              contentFilledCount: withContent,
+              issues,
+            };
           });
 
           // 다가오는 규제
@@ -2151,7 +2823,22 @@
           function loadStore() {
             const saved = localStorage.getItem('kms_data_v2');
             if (saved) {
-              Object.assign(store, JSON.parse(saved));
+              const parsed = JSON.parse(saved);
+              // v3 시스템 필드가 없으면 추가
+              if (!parsed.system) parsed.system = DEFAULT_DATA.system;
+              if (!parsed.businesses) parsed.businesses = DEFAULT_DATA.businesses;
+              if (!parsed.domains) parsed.domains = DEFAULT_DATA.domains;
+              if (!parsed.docTypeDomainMap) parsed.docTypeDomainMap = DEFAULT_DATA.docTypeDomainMap;
+              Object.assign(store, parsed);
+              // 문서 v2.1→v3 마이그레이션
+              let migrated = false;
+              Object.entries(store.documents).forEach(([id, doc]) => {
+                if (!doc.classification) {
+                  store.documents[id] = migrateDocToV3(doc);
+                  migrated = true;
+                }
+              });
+              if (migrated) saveStore();
             } else {
               // data/taxonomy.json 또는 data/knowledge-graph.json 로드 시도
               Promise.all([
@@ -2259,19 +2946,19 @@
           function getDocsByTaxonomySelection() {
             if (listDrillPath.length === 0) return null;
 
-            const fieldMap = {
-              carrier: 'carrier',
-              product: 'product',
-              docType: 'docType',
-              process: 'process',
-              audience: 'audience',
+            const getterMap = {
+              carrier: getDocCarrier,
+              product: getDocProduct,
+              docType: getDocDocType,
+              process: (d) => getDocMeta(d, 'process'),
+              audience: (d) => getDocMeta(d, 'audience'),
             };
 
             return Object.entries(store.documents)
               .filter(([_, doc]) => {
                 return listDrillPath.every((step) => {
-                  const field = fieldMap[step.type];
-                  return field ? doc[field] === step.id : true;
+                  const getter = getterMap[step.type];
+                  return getter ? getter(doc) === step.id : true;
                 });
               })
               .map(([docId]) => docId);
@@ -2324,10 +3011,11 @@
               // 문서 라벨 생성 (이미 사용한 축 제외)
               const usedTypes = new Set(listDrillPath.map((p) => p.type));
               const nameGetters = { carrier: getCarrierName, product: getProductName, docType: getDocTypeName, process: getProcessName, audience: getAudienceName };
+              const docGetters = { carrier: getDocCarrier, product: getDocProduct, docType: getDocDocType, process: (d) => getDocMeta(d, 'process'), audience: (d) => getDocMeta(d, 'audience') };
               function docLabel(doc) {
                 const parts = [];
                 ['carrier', 'product', 'docType'].forEach(t => {
-                  if (!usedTypes.has(t)) parts.push(nameGetters[t](doc[t]));
+                  if (!usedTypes.has(t)) parts.push(nameGetters[t](docGetters[t](doc)));
                 });
                 return (parts.length > 0 ? parts.join(' / ') + '\n' : '') + '[' + doc.tier + ']';
               }
@@ -2345,13 +3033,12 @@
               };
 
               if (nextGroupAxis) {
-                const fieldMap = { carrier: 'carrier', product: 'product', docType: 'docType', process: 'process', audience: 'audience' };
-                const field = fieldMap[nextGroupAxis];
+                const getter = docGetters[nextGroupAxis];
                 const groups = {};
                 selectedDocs.forEach((docId) => {
                   const doc = store.documents[docId];
                   if (!doc) return;
-                  const key = doc[field];
+                  const key = getter(doc);
                   if (!groups[key]) groups[key] = [];
                   groups[key].push({ docId, doc });
                 });
@@ -2412,10 +3099,13 @@
             if (selectedDocId.value) {
               const doc = store.documents[selectedDocId.value];
               if (doc) {
+                const _carrier = getDocCarrier(doc);
+                const _product = getDocProduct(doc);
+                const _docType = getDocDocType(doc);
                 // 보험사 (level 0)
                 nodes.push({
-                  id: doc.carrier,
-                  label: getCarrierName(doc.carrier),
+                  id: _carrier,
+                  label: getCarrierName(_carrier),
                   level: 0,
                   shape: 'dot',
                   size: 30,
@@ -2426,8 +3116,8 @@
 
                 // 상품 (level 1)
                 nodes.push({
-                  id: doc.product,
-                  label: getProductName(doc.product),
+                  id: _product,
+                  label: getProductName(_product),
                   level: 1,
                   color: { background: '#bbdefb', border: '#1976d2' },
                   shape: 'dot',
@@ -2435,13 +3125,13 @@
                   font: { color: '#0d47a1', size: 12 },
                   borderWidth: 2,
                 });
-                edges.push({ from: doc.carrier, to: doc.product, color: '#85c1e9', width: 2 });
+                edges.push({ from: _carrier, to: _product, color: '#85c1e9', width: 2 });
 
                 // 문서유형 (level 2)
-                const dt = store.taxonomy.docTypes[doc.docType];
+                const dt = store.taxonomy.docTypes[_docType];
                 nodes.push({
-                  id: doc.docType,
-                  label: getDocTypeName(doc.docType),
+                  id: _docType,
+                  label: getDocTypeName(_docType),
                   level: 2,
                   color: { background: '#c8e6c9', border: '#27ae60' },
                   shape: 'dot',
@@ -2449,7 +3139,7 @@
                   font: { color: '#1b5e20', size: 11 },
                   borderWidth: 2,
                 });
-                edges.push({ from: doc.product, to: doc.docType, color: '#a9dfbf', width: 2 });
+                edges.push({ from: _product, to: _docType, color: '#a9dfbf', width: 2 });
 
                 // 선택된 문서 (level 3, 강조)
                 nodes.push({
@@ -2462,13 +3152,14 @@
                   borderWidth: 4,
                   font: { color: '#1e3a5f', size: 11, bold: true },
                 });
-                edges.push({ from: doc.docType, to: selectedDocId.value, color: '#2563eb', width: 2 });
+                edges.push({ from: _docType, to: selectedDocId.value, color: '#2563eb', width: 2 });
 
                 // 프로세스 (level 4, 문서에서 분기)
-                if (doc.process && store.taxonomy.processes[doc.process]) {
+                const _process = getDocMeta(doc, 'process');
+                if (_process && store.taxonomy.processes[_process]) {
                   nodes.push({
-                    id: doc.process,
-                    label: getProcessName(doc.process),
+                    id: _process,
+                    label: getProcessName(_process),
                     level: 4,
                     color: { background: '#ffe0b2', border: '#e67e22' },
                     shape: 'dot',
@@ -2476,14 +3167,15 @@
                     font: { color: '#e65100', size: 10 },
                     borderWidth: 2,
                   });
-                  edges.push({ from: selectedDocId.value, to: doc.process, color: '#f5cba7', width: 1, dashes: true });
+                  edges.push({ from: selectedDocId.value, to: _process, color: '#f5cba7', width: 1, dashes: true });
                 }
 
                 // 역할 (level 4, 문서에서 분기)
-                if (doc.audience && store.taxonomy.audiences[doc.audience]) {
+                const _audience = getDocMeta(doc, 'audience');
+                if (_audience && store.taxonomy.audiences[_audience]) {
                   nodes.push({
-                    id: doc.audience,
-                    label: getAudienceName(doc.audience),
+                    id: _audience,
+                    label: getAudienceName(_audience),
                     level: 4,
                     color: { background: '#b2ebf2', border: '#00bcd4' },
                     shape: 'dot',
@@ -2491,7 +3183,7 @@
                     font: { color: '#006064', size: 10 },
                     borderWidth: 2,
                   });
-                  edges.push({ from: selectedDocId.value, to: doc.audience, color: '#80deea', width: 1, dashes: true });
+                  edges.push({ from: selectedDocId.value, to: _audience, color: '#80deea', width: 1, dashes: true });
                 }
 
                 // 연관 문서 (relations)
@@ -2536,8 +3228,9 @@
               // 보험사별 그룹
               const carrierGroups = {};
               matchedDocs.forEach(([docId, doc]) => {
-                if (!carrierGroups[doc.carrier]) carrierGroups[doc.carrier] = [];
-                carrierGroups[doc.carrier].push({ docId, doc });
+                const c = getDocCarrier(doc);
+                if (!carrierGroups[c]) carrierGroups[c] = [];
+                carrierGroups[c].push({ docId, doc });
               });
 
               Object.entries(carrierGroups).forEach(([cId, docs]) => {
@@ -2557,8 +3250,9 @@
                 // 상품별 하위 그룹
                 const prodGroups = {};
                 docs.forEach(({ docId, doc }) => {
-                  if (!prodGroups[doc.product]) prodGroups[doc.product] = [];
-                  prodGroups[doc.product].push({ docId, doc });
+                  const p = getDocProduct(doc);
+                  if (!prodGroups[p]) prodGroups[p] = [];
+                  prodGroups[p].push({ docId, doc });
                 });
 
                 Object.entries(prodGroups).forEach(([pId, pDocs]) => {
@@ -2578,7 +3272,7 @@
                   pDocs.forEach(({ docId, doc }) => {
                     nodes.push({
                       id: docId,
-                      label: `${getDocTypeName(doc.docType)}\n[${doc.tier}]`,
+                      label: `${getDocTypeName(getDocDocType(doc))}\n[${doc.tier}]`,
                       level: 3,
                       color: tierColors[doc.tier] || '#95a5a6',
                       shape: 'dot',
@@ -2611,7 +3305,7 @@
             // 보험사 (level 1)
             Object.entries(store.taxonomy.carriers || {}).forEach(([id, c]) => {
               if (id === 'INS-COMMON') return;
-              const docCount = Object.values(store.documents).filter((d) => d.carrier === id).length;
+              const docCount = Object.values(store.documents).filter((d) => getDocCarrier(d) === id).length;
               nodes.push({
                 id,
                 label: `${c.name}\n(${docCount})`,
@@ -2643,7 +3337,7 @@
 
               Object.entries(store.taxonomy.products || {}).forEach(([prdId, prd]) => {
                 if (prdId === 'PRD-COMMON' || prd.category !== catId) return;
-                const prdDocCount = Object.values(store.documents).filter((d) => d.product === prdId).length;
+                const prdDocCount = Object.values(store.documents).filter((d) => getDocProduct(d) === prdId).length;
                 nodes.push({
                   id: prdId,
                   label: `${prd.name}\n(${prdDocCount})`,
@@ -2671,7 +3365,7 @@
             edges.push({ from: 'ROOT', to: dtGroupId, color: '#bdc3c7' });
 
             Object.entries(store.taxonomy.docTypes || {}).forEach(([dtId, dt]) => {
-              const dtDocCount = Object.values(store.documents).filter((d) => d.docType === dtId).length;
+              const dtDocCount = Object.values(store.documents).filter((d) => getDocDocType(d) === dtId).length;
               if (dtDocCount === 0) return;
               nodes.push({
                 id: dtId,
@@ -2785,7 +3479,8 @@
             const usedCarriers = new Set();
             docIdsToShow.forEach((docId) => {
               const doc = store.documents[docId];
-              if (doc?.carrier) usedCarriers.add(doc.carrier);
+              const c = doc ? getDocCarrier(doc) : '';
+              if (c) usedCarriers.add(c);
             });
 
             usedCarriers.forEach((carrierId) => {
@@ -2814,7 +3509,7 @@
 
               nodes.push({
                 id,
-                label: getDocTypeName(doc.docType),
+                label: getDocTypeName(getDocDocType(doc)),
                 level: 2,
                 color: isSelected ? '#2563eb' : isHighlighted ? '#3b82f6' : tierColors[doc.tier] || '#95a5a6',
                 shape: 'dot',
@@ -2823,8 +3518,9 @@
               });
               addedNodes.add(id);
 
-              if (doc.carrier && addedNodes.has(doc.carrier)) {
-                edges.push({ from: doc.carrier, to: id, color: '#bdc3c7' });
+              const docC = getDocCarrier(doc);
+              if (docC && addedNodes.has(docC)) {
+                edges.push({ from: docC, to: id, color: '#bdc3c7' });
               }
 
               if (doc.relations?.parent && addedNodes.has(doc.relations.parent)) {
@@ -2932,8 +3628,8 @@
             const doc = store.documents[id];
             if (doc) {
               listDrillPath.splice(0);
-              listDrillPath.push({ type: 'carrier', id: doc.carrier });
-              listDrillPath.push({ type: 'product', id: doc.product });
+              listDrillPath.push({ type: 'carrier', id: getDocCarrier(doc) });
+              listDrillPath.push({ type: 'product', id: getDocProduct(doc) });
             }
             setTimeout(() => rebuildGraph(), 0);
           }
@@ -2970,17 +3666,17 @@
           // 리스트뷰에서 현재 필터 조건에 맞는 문서 가져오기
           function getFilteredDocsForDrill() {
             let docs = Object.entries(store.documents);
+            const getterMap = {
+              carrier: getDocCarrier,
+              product: getDocProduct,
+              docType: getDocDocType,
+              process: (d) => getDocMeta(d, 'process'),
+              audience: (d) => getDocMeta(d, 'audience'),
+            };
             listDrillPath.forEach((step) => {
-              const fieldMap = {
-                carrier: 'carrier',
-                product: 'product',
-                docType: 'docType',
-                process: 'process',
-                audience: 'audience',
-              };
-              const field = fieldMap[step.type];
-              if (field) {
-                docs = docs.filter(([_, d]) => d[field] === step.id);
+              const getter = getterMap[step.type];
+              if (getter) {
+                docs = docs.filter(([_, d]) => getter(d) === step.id);
               }
             });
             return docs;
@@ -2998,13 +3694,19 @@
             if (nextTypes.length === 0) return [];
 
             const nextType = nextTypes[0];
-            const fieldMap = { carrier: 'carrier', product: 'product', docType: 'docType', process: 'process', audience: 'audience' };
-            const field = fieldMap[nextType];
-            if (!field) return [];
+            const getterMap = {
+              carrier: getDocCarrier,
+              product: getDocProduct,
+              docType: getDocDocType,
+              process: (d) => getDocMeta(d, 'process'),
+              audience: (d) => getDocMeta(d, 'audience'),
+            };
+            const getter = getterMap[nextType];
+            if (!getter) return [];
 
             const groups = {};
             docs.forEach(([docId, doc]) => {
-              const key = doc[field];
+              const key = getter(doc);
               if (!key) return;
               if (!groups[key]) groups[key] = { id: key, type: nextType, count: 0 };
               groups[key].count++;
@@ -3057,7 +3759,7 @@
           function checkDuplicate(carrier, product, docType, excludeId = null) {
             const found = Object.entries(store.documents).find(([id, doc]) => {
               if (excludeId && id === excludeId) return false;
-              return doc.carrier === carrier && doc.product === product && doc.docType === docType;
+              return getDocCarrier(doc) === carrier && getDocProduct(doc) === product && getDocDocType(doc) === docType;
             });
             return found ? found[1] : null;
           }
@@ -3202,24 +3904,25 @@
             const carrierObj = store.taxonomy.carriers[carrier];
             const productObj = store.taxonomy.products[product];
             const docTypeObj = store.taxonomy.docTypes[docType];
+            const domain = store.docTypeDomainMap?.[docType] || 'GA-SALES';
 
             const docName = `${carrierObj?.name || carrier} ${productObj?.name || product} ${docTypeObj?.name || docType}`;
 
             store.documents[id] = {
               id,
               name: docName,
-              carrier,
-              product,
-              docType,
+              domain: domain,
+              lifecycle: 'DRAFT',
+              version: { major: 1, minor: 0 },
+              classification: { carrier, product, docType },
+              meta: { process: '', audience: '' },
+              carrier, product, docType,
               tier: docTypeObj?.tier || 'COLD',
-              process: '',
-              audience: '',
-              status: 'ACTIVE',
-              version: '1.0',
               content: '',
-              relations: { parent: null, children: [], siblings: [], references: [] },
+              relations: { parent: null, children: [], siblings: [], references: [], supersedes: null, supersededBy: null },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
+              reviewedAt: null,
             };
 
             saveStore();
@@ -3285,6 +3988,7 @@
             const docTypeObj = store.taxonomy.docTypes[docType];
             const carrierObj = store.taxonomy.carriers[carrier];
             const productObj = store.taxonomy.products[product];
+            const domain = store.docTypeDomainMap?.[docType] || 'GA-SALES';
 
             const docName =
               name || `${carrierObj?.name || carrier} ${productObj?.name || product} ${docTypeObj?.name || docType}`;
@@ -3292,18 +3996,18 @@
             store.documents[id] = {
               id,
               name: docName,
-              carrier,
-              product,
-              docType,
+              domain: domain,
+              lifecycle: 'DRAFT',
+              version: { major: 1, minor: 0 },
+              classification: { carrier, product, docType },
+              meta: { process: process || '', audience: audience || '' },
+              carrier, product, docType,
               tier: docTypeObj?.tier || 'COLD',
-              process: process || '',
-              audience: audience || '',
-              status: 'ACTIVE',
-              version: '1.0',
               content: '',
-              relations: { parent: null, children: [], siblings: [], references: [] },
+              relations: { parent: null, children: [], siblings: [], references: [], supersedes: null, supersededBy: null },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
+              reviewedAt: null,
             };
 
             saveStore();
@@ -3499,13 +4203,13 @@
           }
 
           function getDocCountByProduct(productId) {
-            return Object.values(store.documents).filter((d) => d.product === productId).length;
+            return Object.values(store.documents).filter((d) => getDocProduct(d) === productId).length;
           }
 
           function getDocsByProduct(productId) {
             const docs = {};
             Object.entries(store.documents).forEach(([id, doc]) => {
-              if (doc.product === productId) docs[id] = doc;
+              if (getDocProduct(doc) === productId) docs[id] = doc;
             });
             return docs;
           }
@@ -3515,7 +4219,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `kms_data_v2.1_${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `kms_data_v3.0_${new Date().toISOString().split('T')[0]}.json`;
             a.click();
             URL.revokeObjectURL(url);
           }
@@ -3568,25 +4272,25 @@
           }
 
           function getDocCountByCarrier(carrierId) {
-            return Object.values(store.documents).filter((d) => d.carrier === carrierId).length;
+            return Object.values(store.documents).filter((d) => getDocCarrier(d) === carrierId).length;
           }
 
           function getDocCountByCarrierTier(carrierId, tier) {
-            return Object.values(store.documents).filter((d) => d.carrier === carrierId && d.tier === tier).length;
+            return Object.values(store.documents).filter((d) => getDocCarrier(d) === carrierId && d.tier === tier).length;
           }
 
           function getDocCountByProcess(processId) {
-            return Object.values(store.documents).filter((d) => d.process === processId).length;
+            return Object.values(store.documents).filter((d) => getDocMeta(d, 'process') === processId).length;
           }
 
           function getDocCountByAudience(audienceId) {
-            return Object.values(store.documents).filter((d) => d.audience === audienceId).length;
+            return Object.values(store.documents).filter((d) => getDocMeta(d, 'audience') === audienceId).length;
           }
 
           function getDocsByProcess(processId) {
             const docs = {};
             Object.entries(store.documents).forEach(([id, doc]) => {
-              if (doc.process === processId) docs[id] = doc;
+              if (getDocMeta(doc, 'process') === processId) docs[id] = doc;
             });
             return docs;
           }
@@ -3594,19 +4298,19 @@
           function getDocsByAudience(audienceId) {
             const docs = {};
             Object.entries(store.documents).forEach(([id, doc]) => {
-              if (doc.audience === audienceId) docs[id] = doc;
+              if (getDocMeta(doc, 'audience') === audienceId) docs[id] = doc;
             });
             return docs;
           }
 
           function getDocCountByDocType(docTypeId) {
-            return Object.values(store.documents).filter((d) => d.docType === docTypeId).length;
+            return Object.values(store.documents).filter((d) => getDocDocType(d) === docTypeId).length;
           }
 
           function getDocsByDocType(docTypeId) {
             const docs = {};
             Object.entries(store.documents).forEach(([id, doc]) => {
-              if (doc.docType === docTypeId) docs[id] = doc;
+              if (getDocDocType(doc) === docTypeId) docs[id] = doc;
             });
             return docs;
           }
@@ -3687,6 +4391,7 @@
             availableSiblings,
             availableReferences,
             duplicateGroups,
+            dashboard,
             upcomingRegulation,
             removeToast,
             showToast,
@@ -3748,6 +4453,19 @@
             getTaxonomyItemName,
             getTaxonomyTypeLabel,
             setTaxonomyField,
+            filterLifecycle,
+            lifecycleCounts,
+            getDocCarrier,
+            getDocProduct,
+            getDocDocType,
+            getDocMeta,
+            setDocClassification,
+            setDocMeta,
+            calcFreshness,
+            getNextLifecycleStates,
+            transitionLifecycle,
+            getLifecycleClass,
+            getFreshnessClass,
             startAxis,
             AXIS_OPTIONS,
             setStartAxis,
