@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-06T00:46:17.214202",
+  "timestamp": "2026-02-06T00:52:18.781252",
   "version": "1.0-ontology",
   "graph_stats": {
     "nodes": 840,
@@ -56,7 +56,7 @@
       "name": "시나리오1: 수수료 동의어 확장",
       "passed": true,
       "score": 1.0,
-      "details": "기대: {'DOC-INCENTIVE', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC'}, 발견: {'DOC-INCENTIVE', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC'}, 삼성매칭: True"
+      "details": "기대: {'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC', 'DOC-INCENTIVE', 'DOC-COMMISSION'}, 발견: {'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC', 'DOC-INCENTIVE', 'DOC-COMMISSION'}, 삼성매칭: True"
     },
     {
       "name": "시나리오2: UW 클래스 계층 검색",
@@ -68,7 +68,7 @@
       "name": "시나리오3: 심사 동의어+클래스",
       "passed": true,
       "score": 1.0,
-      "details": "기대: {'DOC-UW-DISEASE', 'DOC-UW-RULE', 'DOC-UW-GUIDE'}, 발견: {'DOC-UW-DISEASE', 'DOC-UW-RULE', 'DOC-UW-GUIDE'}"
+      "details": "기대: {'DOC-UW-GUIDE', 'DOC-UW-DISEASE', 'DOC-UW-RULE'}, 발견: {'DOC-UW-RULE', 'DOC-UW-DISEASE', 'DOC-UW-GUIDE'}"
     },
     {
       "name": "시나리오4: 1200%룰 규제 영향",
@@ -86,7 +86,7 @@
       "name": "시나리오6: 정산 프로세스 문서",
       "passed": true,
       "score": 1.0,
-      "details": "기대: {'DOC-CHARGEBACK', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC'}, 발견: {'DOC-CHARGEBACK', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC'}"
+      "details": "기대: {'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC', 'DOC-CHARGEBACK', 'DOC-COMMISSION'}, 발견: {'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC', 'DOC-CHARGEBACK', 'DOC-COMMISSION'}"
     },
     {
       "name": "시나리오7: 보험료 개념 그래프",
@@ -98,19 +98,19 @@
       "name": "시나리오8: 상품비교 검색",
       "passed": true,
       "score": 0.667,
-      "details": "기대: {'DOC-COMPARISON', 'DOC-GUIDE', 'DOC-TERMS'}, 발견: {'DOC-COMPARISON', 'DOC-GUIDE'}"
+      "details": "기대: {'DOC-TERMS', 'DOC-GUIDE', 'DOC-COMPARISON'}, 발견: {'DOC-GUIDE', 'DOC-COMPARISON'}"
     },
     {
       "name": "시나리오9: 규제 자연어 질문",
       "passed": true,
       "score": 0.5,
-      "details": "기대: {'DOC-REGULATION', 'DOC-COMMISSION-CALC'}, 발견: {'DOC-COMMISSION-CALC'}"
+      "details": "기대: {'DOC-COMMISSION-CALC', 'DOC-REGULATION'}, 발견: {'DOC-COMMISSION-CALC'}"
     },
     {
       "name": "시나리오10: 교육 검색",
       "passed": true,
       "score": 1.0,
-      "details": "기대: {'DOC-TRAINING', 'DOC-ONBOARDING'}, 발견: {'DOC-TRAINING', 'DOC-ONBOARDING'}"
+      "details": "기대: {'DOC-ONBOARDING', 'DOC-TRAINING'}, 발견: {'DOC-ONBOARDING', 'DOC-TRAINING'}"
     }
   ]
 }

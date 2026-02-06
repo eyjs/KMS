@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-06T00:46:09.700040",
+  "timestamp": "2026-02-06T00:52:14.647790",
   "version": "phase2-v1.0",
   "summary": {
     "total": 10,
@@ -11,7 +11,7 @@
       "question": "삼성생명 종신보험 수수료가 어떻게 되나요?",
       "intent": "settlement",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-INCENTIVE', 'DOC-COMMISSION', 'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT'}",
+      "detail": "문서유형 전수 확인: {'DOC-SETTLEMENT', 'DOC-COMMISSION', 'DOC-INCENTIVE', 'DOC-COMMISSION-CALC'}",
       "steps": [
         {
           "action": "fetch_documents",
@@ -25,10 +25,10 @@
           "action": "fetch_neighbors",
           "doc_count": 5,
           "doc_types": [
-            "DOC-COMMISSION-CALC",
-            "DOC-INCENTIVE",
             "DOC-RATE-TABLE",
+            "DOC-INCENTIVE",
             "DOC-SETTLEMENT",
+            "DOC-COMMISSION-CALC",
             "DOC-COMMISSION"
           ]
         }
@@ -45,13 +45,13 @@
           "action": "fetch_process_documents",
           "doc_count": 161,
           "doc_types": [
+            "DOC-SETTLEMENT",
             "DOC-COMMISSION",
             "DOC-RATE-TABLE",
             "DOC-CHARGEBACK",
-            "DOC-SETTLEMENT",
             "DOC-PERFORMANCE",
-            "DOC-INCENTIVE",
-            "DOC-COMMISSION-CALC"
+            "DOC-COMMISSION-CALC",
+            "DOC-INCENTIVE"
           ]
         }
       ]
@@ -61,7 +61,7 @@
       "question": "당뇨 환자 심사 가능한가요?",
       "intent": "underwriting",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-UW-GUIDE', 'DOC-UW-RULE', 'DOC-UW-DISEASE'}",
+      "detail": "문서유형 전수 확인: {'DOC-UW-DISEASE', 'DOC-UW-RULE', 'DOC-UW-GUIDE'}",
       "steps": [
         {
           "action": "fetch_documents",
@@ -90,8 +90,8 @@
           "action": "fetch_documents",
           "doc_count": 24,
           "doc_types": [
-            "DOC-COMMISSION-CALC",
-            "DOC-REGULATION"
+            "DOC-REGULATION",
+            "DOC-COMMISSION-CALC"
           ]
         }
       ]
@@ -123,7 +123,7 @@
       "question": "어린이보험 상품 비교해주세요",
       "intent": "sales_support",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-GUIDE', 'DOC-COMPARISON'}",
+      "detail": "문서유형 전수 확인: {'DOC-COMPARISON', 'DOC-GUIDE'}",
       "steps": [
         {
           "action": "fetch_documents",
@@ -154,14 +154,14 @@
       "question": "신입 설계사 교육자료 어디있나요?",
       "intent": "training",
       "passed": true,
-      "detail": "문서유형 전수 확인: {'DOC-ONBOARDING', 'DOC-TRAINING'}",
+      "detail": "문서유형 전수 확인: {'DOC-TRAINING', 'DOC-ONBOARDING'}",
       "steps": [
         {
           "action": "fetch_documents",
           "doc_count": 24,
           "doc_types": [
-            "DOC-ONBOARDING",
-            "DOC-TRAINING"
+            "DOC-TRAINING",
+            "DOC-ONBOARDING"
           ]
         }
       ]
@@ -186,10 +186,10 @@
           "doc_types": [
             "DOC-BEST-PRACTICE",
             "DOC-CONFIRMATION",
-            "DOC-SCRIPT",
+            "DOC-TRAINING",
             "DOC-TERMS-SPECIAL",
             "DOC-TERMS",
-            "DOC-TRAINING"
+            "DOC-SCRIPT"
           ]
         }
       ]
@@ -248,11 +248,11 @@
         }
       ],
       "found_doc_types": [
+        "DOC-SETTLEMENT",
         "DOC-COMMISSION",
         "DOC-RATE-TABLE",
-        "DOC-SETTLEMENT",
-        "DOC-INCENTIVE",
-        "DOC-COMMISSION-CALC"
+        "DOC-COMMISSION-CALC",
+        "DOC-INCENTIVE"
       ],
       "passed": true
     },
@@ -269,13 +269,13 @@
         }
       ],
       "found_doc_types": [
-        "DOC-COMMISSION",
-        "DOC-INCENTIVE",
-        "DOC-RATE-TABLE",
-        "DOC-COMMISSION-CALC",
-        "DOC-CHARGEBACK",
         "DOC-SETTLEMENT",
-        "DOC-PERFORMANCE"
+        "DOC-COMMISSION",
+        "DOC-RATE-TABLE",
+        "DOC-CHARGEBACK",
+        "DOC-PERFORMANCE",
+        "DOC-COMMISSION-CALC",
+        "DOC-INCENTIVE"
       ],
       "passed": true
     },
@@ -296,9 +296,9 @@
         }
       ],
       "found_doc_types": [
-        "DOC-UW-GUIDE",
+        "DOC-UW-DISEASE",
         "DOC-UW-RULE",
-        "DOC-UW-DISEASE"
+        "DOC-UW-GUIDE"
       ],
       "passed": true
     },
@@ -344,12 +344,12 @@
       ],
       "found_doc_types": [
         "BIZ-UW",
-        "BIZ-ISSUE",
         "BIZ-HAPPYCALL",
-        "BIZ-PROSPECT",
         "BIZ-CONSULT",
         "BIZ-MAINTAIN",
-        "BIZ-CLAIM"
+        "BIZ-CLAIM",
+        "BIZ-ISSUE",
+        "BIZ-PROSPECT"
       ],
       "passed": true
     },
@@ -406,8 +406,8 @@
         }
       ],
       "found_doc_types": [
-        "DOC-ONBOARDING",
-        "DOC-TRAINING"
+        "DOC-TRAINING",
+        "DOC-ONBOARDING"
       ],
       "passed": true
     },
@@ -439,13 +439,13 @@
         }
       ],
       "found_doc_types": [
-        "DOC-GUIDE",
-        "DOC-TRAINING",
-        "DOC-BEST-PRACTICE",
-        "DOC-TERMS-SPECIAL",
         "DOC-TERMS",
+        "DOC-BEST-PRACTICE",
+        "DOC-GUIDE",
         "DOC-SCRIPT",
-        "DOC-CONFIRMATION"
+        "DOC-CONFIRMATION",
+        "DOC-TERMS-SPECIAL",
+        "DOC-TRAINING"
       ],
       "passed": true
     },
