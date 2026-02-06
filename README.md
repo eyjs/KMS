@@ -18,9 +18,9 @@ AI RAG 시스템 구축 전, 전사 지식체계를 수립하고 검증하기 �
 
 | 단계 | 목표 | 상태 |
 |------|------|------|
-| **Phase A** | 보험상품 도메인으로 분류체계 검증 | 진행중 |
-| **Phase B** | 전체 도메인 확장 + Vue 앱 구축 | 예정 |
-| **Phase C** | AI RAG 시스템 연동 | 예정 |
+| **Phase 1** | 보험상품 도메인으로 분류체계 검증 | 진행중 |
+| **Phase 2** | 전체 도메인 확장 + Vue 앱 구축 | 예정 |
+| **Phase 3** | AI RAG 시스템 연동 | 예정 |
 
 ## 핵심 기능
 
@@ -57,7 +57,7 @@ AI RAG 시스템 구축 전, 전사 지식체계를 수립하고 검증하기 �
     └── 자격증 교육
 ```
 
-**Phase A (현재)**: 보험상품 도메인으로 핵심 로직 검증
+**Phase 1 (현재)**: 보험상품 도메인으로 핵심 로직 검증
 ```
 보험사 → 상품 → 문서유형
 ```
@@ -80,15 +80,23 @@ AI RAG 시스템 구축 전, 전사 지식체계를 수립하고 검증하기 �
 
 ## 실행 방법
 
-### Admin 페이지 (Phase A)
+### 데이터 생성 + 검증
 
 ```bash
-# 방법 1: 직접 열기
-start kms-admin.html
+python taxonomy.py              # 분류체계 JSON 내보내기
+python simulator.py             # 지식 그래프 + 샘플 문서 생성
+python simulator_ontology.py    # 온톨로지 그래프 생성
+python verifier.py              # 데이터 검증
+python ontology_validator.py    # 온톨로지 검증
+python simulator_golden.py      # Golden Set 검증
+python rag_simulator.py         # RAG 시뮬레이션
+```
 
-# 방법 2: 로컬 서버
+### Admin 페이지 (Phase 1)
+
+```bash
 npx serve . -p 8080
-# http://localhost:8080/kms-admin.html 접속
+# http://localhost:8080/ui/admin.html 접속
 ```
 
 ### 테스트 실행
@@ -96,7 +104,7 @@ npx serve . -p 8080
 ```bash
 npm install
 npx serve . -p 8080 &
-node test-scenarios.js
+node tests/scenarios.js
 ```
 
 ## 화면 구성
@@ -107,7 +115,7 @@ node test-scenarios.js
 - 노드 클릭 시 상세 정보 표시
 
 ### 목록 뷰
-- 문서 테이블 (36개 샘플)
+- 문서 테이블 (260+ 샘플)
 - 문서 클릭 → 중앙에 내용 편집, 오른쪽에 메타데이터
 - CRUD 지원 (생성/조회/수정/삭제)
 
@@ -135,17 +143,32 @@ node test-scenarios.js
 
 ```
 KMS/
-├── kms-admin.html      # 메인 Admin 페이지
-├── viewer.html         # 그래프 뷰어
-├── knowledge_graph.json # 그래프 데이터
-├── CLAUDE.md           # 프로젝트 규칙
-├── test-scenarios.js   # Playwright 테스트
-├── taxonomy.py         # 마스터 데이터 정의
-├── simulator.py        # 샘플 데이터 생성
-└── docs/
-    ├── core/           # 핵심 문서
-    ├── architecture/   # 설계 문서
-    └── samples/        # 샘플 보험 문서 (36개)
+├── taxonomy.py              # 마스터 데이터 정의
+├── ontology.py              # 온톨로지 클래스/관계
+├── simulator.py             # 데이터 시뮬레이터
+├── simulator_ontology.py    # 온톨로지 그래프 생성
+├── simulator_golden.py      # Golden Set 검증
+├── verifier.py              # 데이터 검증기
+├── ontology_validator.py    # 온톨로지 검증기
+├── rag_simulator.py         # RAG 시뮬레이터
+├── warehouse_api.py         # Warehouse API
+├── golden_set.py            # Golden Set 정의
+├── doc_templates.py         # 문서 템플릿
+├── data/                    # 생성 데이터
+│   ├── taxonomy.json
+│   ├── knowledge-graph.json
+│   ├── knowledge-graph-ontology.json
+│   └── samples/             # 샘플 보험 문서 (260개)
+├── ui/                      # 프론트엔드
+│   ├── admin.html
+│   └── viewer.html
+├── tests/                   # 테스트
+│   └── scenarios.js
+└── docs/                    # 문서
+    ├── core/
+    ├── architecture/
+    ├── results/             # 검증 결과
+    └── changelog.md
 ```
 
 ## 라이선스

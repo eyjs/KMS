@@ -57,7 +57,7 @@ class WarehouseAPI:
     판단하지 않는다. 조건에 맞는 것을 꺼내줄 뿐이다.
     """
 
-    def __init__(self, graph_path: str = "knowledge_graph_ontology.json"):
+    def __init__(self, graph_path: str = "data/knowledge-graph-ontology.json"):
         self.nodes: Dict[str, Document] = {}
         self.edges: List[Edge] = []
         self.adj: Dict[str, List[Edge]] = {}       # source → edges
@@ -275,7 +275,7 @@ class WarehouseAPI:
 
     def fetch_thesaurus(self, keyword: str) -> List[str]:
         """키워드에 매핑된 문서유형 코드를 반환. 사전 조회일 뿐, 검색이 아님."""
-        from taxonomy_ontology import SYNONYM_MAP
+        from ontology import SYNONYM_MAP
         return SYNONYM_MAP.get(keyword, [])
 
     # ── 규제 영향: 규제 노드에 연결된 관계를 그대로 반환 ──

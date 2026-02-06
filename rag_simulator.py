@@ -55,7 +55,7 @@ class RAGResponse:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class RAGSimulator:
-    def __init__(self, graph_path: str = "knowledge_graph_v2.1.json"):
+    def __init__(self, graph_path: str = "data/knowledge-graph.json"):
         self.documents: Dict[str, Document] = {}
         self.taxonomy = {}
         self.edges = []
@@ -385,14 +385,14 @@ def main():
             }
         }
         
-        with open('docs/rag_simulation_results.json', 'w', encoding='utf-8') as f:
+        with open('docs/results/rag-simulation.json', 'w', encoding='utf-8') as f:
             json.dump(output, f, ensure_ascii=False, indent=2)
         
-        print(f"\n✓ 결과 저장: docs/rag_simulation_results.json")
+        print(f"\n✓ 결과 저장: docs/results/rag-simulation.json")
         
     except FileNotFoundError:
-        print("❌ knowledge_graph_v2.1.json 파일을 찾을 수 없습니다.")
-        print("   먼저 simulator_v2_extended.py를 실행하세요.")
+        print("❌ data/knowledge-graph.json 파일을 찾을 수 없습니다.")
+        print("   먼저 simulator.py를 실행하세요.")
         return 1
     
     return 0

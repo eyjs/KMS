@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Set, Optional
 from datetime import datetime
 
-from taxonomy_ontology import (
+from ontology import (
     SYNONYM_MAP, CONCEPTS, RELATION_TYPES,
     DOC_TYPE_CLASS_MAP, PROCESS_CLASS_MAP,
     get_class_hierarchy, get_all_subclasses,
@@ -65,7 +65,7 @@ class ValidationResult:
 class OntologyGraph:
     """온톨로지 메타데이터를 포함하는 그래프"""
 
-    def __init__(self, path: str = "knowledge_graph_ontology.json"):
+    def __init__(self, path: str = "data/knowledge-graph-ontology.json"):
         self.nodes: Dict[str, Node] = {}
         self.edges: List[Edge] = []
         self.adj: Dict[str, List[Edge]] = {}       # source → edges
@@ -666,9 +666,9 @@ def main():
     # 그래프 로드
     print("\n[1/3] 온톨로지 그래프 로드")
     try:
-        g = OntologyGraph("knowledge_graph_ontology.json")
+        g = OntologyGraph("data/knowledge-graph-ontology.json")
     except FileNotFoundError:
-        print("  knowledge_graph_ontology.json을 찾을 수 없습니다.")
+        print("  data/knowledge-graph-ontology.json을 찾을 수 없습니다.")
         print("  먼저 simulator_ontology.py를 실행하세요.")
         return 1
 
@@ -734,7 +734,7 @@ def main():
         ],
     }
 
-    output_path = "docs/ontology_validation_results.json"
+    output_path = "docs/results/ontology-validation.json"
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 

@@ -11,11 +11,11 @@
 
 | 단계 | 목표 | 상태 |
 |------|------|------|
-| **Phase A** | 문서 분류체계 검증 (Admin 페이지) | 현재 |
-| **Phase B** | 전사 지식관리 시스템 구축 (Vue 앱) | 예정 |
-| **Phase C** | AI RAG 시스템 연동 | 예정 |
+| **Phase 1** | 문서 분류체계 검증 (Admin 페이지) | 현재 |
+| **Phase 2** | 전사 지식관리 시스템 구축 (Vue 앱) | 예정 |
+| **Phase 3** | AI RAG 시스템 연동 | 예정 |
 
-### 현재: Phase A - 분류체계 검증
+### 현재: Phase 1 - 분류체계 검증
 
 **목표: 문서관리 체계 도입 전 시뮬레이션 및 검증**
 
@@ -87,7 +87,7 @@
 | 차트 | ECharts + vue-echarts | 선택 |
 | 알림 | Vue-Toastification | 선택 |
 
-### Phase A 검증용 (현재)
+### Phase 1 검증용 (현재)
 
 | 영역 | 기술 | 비고 |
 |------|------|------|
@@ -100,18 +100,51 @@
 
 ```
 /
-├── docs/
-│   ├── core/                # 핵심 문서 (프로젝트 목표 + 도메인)
-│   │   ├── project_goal.md
-│   │   └── domain_knowledge.md
-│   ├── architecture/        # 설계 문서
-│   └── samples/             # 샘플 보험 문서 (36개)
-├── CLAUDE.md                # 프로젝트 규칙
-├── kms-admin.html           # Admin 페이지 (메인)
-├── viewer.html              # 그래프 뷰어
-├── knowledge_graph.json     # 그래프 데이터
-├── taxonomy.py              # 마스터 데이터 정의
-└── simulator.py             # 데이터 시뮬레이터
+├── CLAUDE.md                        # 프로젝트 규칙
+├── README.md                        # 프로젝트 소개
+├── .gitignore
+├── package.json
+│
+├── taxonomy.py                      # 마스터 데이터 정의
+├── ontology.py                      # 온톨로지 클래스/관계/동의어
+├── simulator.py                     # 데이터 시뮬레이터
+├── simulator_ontology.py            # 온톨로지 그래프 생성
+├── simulator_golden.py              # Golden Set 검증 시뮬레이터
+├── verifier.py                      # 데이터 검증기
+├── ontology_validator.py            # 온톨로지 검증기
+├── rag_simulator.py                 # RAG 시뮬레이터
+├── warehouse_api.py                 # Warehouse API (데이터 접근 계층)
+├── golden_set.py                    # Golden Set 정의
+├── doc_templates.py                 # 문서 템플릿
+│
+├── data/                            # 생성 데이터
+│   ├── taxonomy.json                # 분류체계 JSON
+│   ├── knowledge-graph.json         # 지식 그래프
+│   ├── knowledge-graph-ontology.json # 온톨로지 그래프
+│   └── samples/                     # 샘플 보험 문서 (260개)
+│
+├── ui/                              # 프론트엔드
+│   ├── admin.html                   # Admin 페이지
+│   └── viewer.html                  # 그래프 뷰어
+│
+├── tests/                           # 테스트
+│   └── scenarios.js                 # Playwright 시나리오
+│
+└── docs/                            # 문서
+    ├── core/                        # 핵심 문서
+    │   ├── project-goal.md
+    │   ├── domain-knowledge.md
+    │   └── AI_Knowledge_Architecture_Strategy.pdf
+    ├── architecture/                # 설계 문서
+    │   ├── architecture-guide.md
+    │   ├── document-pipeline.md
+    │   ├── ontology-design.md
+    │   └── strategy-alignment.md
+    ├── results/                     # 검증 결과
+    │   ├── ontology-validation.json
+    │   ├── golden-set-validation.json
+    │   └── rag-simulation.json
+    └── changelog.md                 # 변경 이력
 ```
 
 ## 핵심 도메인 개념
@@ -199,23 +232,33 @@ KB손해보험 > 든든 어린이보험 > 상품요약본 v1.0  (이미 존재)
 ## 주요 명령어
 
 ```bash
-# 브라우저에서 Admin 페이지 열기
-start kms-admin.html
+# 데이터 생성
+python taxonomy.py         # 분류체계 JSON 내보내기
+python simulator.py        # 지식 그래프 + 샘플 문서 생성
+python simulator_ontology.py  # 온톨로지 그래프 생성
 
-# 그래프 뷰어 열기
-start viewer.html
+# 검증
+python verifier.py         # 데이터 검증
+python ontology_validator.py  # 온톨로지 검증
+python simulator_golden.py    # Golden Set 검증
+python rag_simulator.py       # RAG 시뮬레이션
+
+# UI 확인
+npx serve . -p 8080
+# http://localhost:8080/ui/admin.html
+# http://localhost:8080/ui/viewer.html
 ```
 
 ## 참고 문서
 
-- `docs/core/project_goal.md` - 프로젝트 목표 및 단계별 계획
-- `docs/core/domain_knowledge.md` - GA 산업 도메인 지식
+- `docs/core/project-goal.md` - 프로젝트 목표 및 단계별 계획
+- `docs/core/domain-knowledge.md` - GA 산업 도메인 지식
 - `docs/architecture/architecture-guide.md` - 전체 아키텍처
 - `docs/architecture/document-pipeline.md` - 문서 파이프라인
 
 ## 주의사항
 
 1. **Vue 필수**: 프론트엔드는 반드시 Vue 사용 (회사 정책)
-2. **Phase A 집중**: 현재는 JSON 기반 검증에만 집중
+2. **Phase 1 집중**: 현재는 JSON 기반 검증에만 집중
 3. **과설계 금지**: 동작하는 코드 우선, 설계는 최소화
 4. **도메인 용어**: 보험 업계 용어 정확히 사용

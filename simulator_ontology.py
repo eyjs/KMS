@@ -12,15 +12,15 @@ import json
 import os
 from datetime import datetime, timedelta
 
-from taxonomy_v2_extended import (
+from taxonomy import (
     CARRIERS, PRODUCTS, DOC_TYPES, PROCESSES, AUDIENCES,
     DEFAULT_RELATIONS, DATA_TIERS, REGULATION_TIMELINE,
 )
-from taxonomy_ontology import (
+from ontology import (
     CARRIER_CLASS_MAP, PRODUCT_CLASS_MAP, DOC_TYPE_CLASS_MAP,
     PROCESS_CLASS_MAP, CONCEPTS, SYNONYM_MAP, RELATION_TYPES,
 )
-from simulator_v2_extended import (
+from simulator import (
     SAMPLE_CARRIERS, SAMPLE_PRODUCTS, COMMON_DOC_TYPES,
     DOC_PROCESS_MAP, DOC_AUDIENCE_MAP, DOC_TEMPLATES,
     get_tier, get_source, generate_doc_id, generate_doc_content,
@@ -302,7 +302,7 @@ def main():
 
     graph_data = generate_ontology_graph()
 
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge_graph_ontology.json")
+    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "knowledge-graph-ontology.json")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(graph_data, f, ensure_ascii=False, indent=2)
 
