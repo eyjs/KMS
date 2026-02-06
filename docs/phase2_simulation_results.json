@@ -1,0 +1,489 @@
+{
+  "timestamp": "2026-02-06T00:46:09.700040",
+  "version": "phase2-v1.0",
+  "summary": {
+    "total": 10,
+    "passed": 10
+  },
+  "results": [
+    {
+      "id": "GS-001",
+      "question": "삼성생명 종신보험 수수료가 어떻게 되나요?",
+      "intent": "settlement",
+      "passed": true,
+      "detail": "문서유형 전수 확인: {'DOC-INCENTIVE', 'DOC-COMMISSION', 'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT'}",
+      "steps": [
+        {
+          "action": "fetch_documents",
+          "doc_count": 2,
+          "doc_types": [
+            "DOC-COMMISSION",
+            "DOC-COMMISSION-CALC"
+          ]
+        },
+        {
+          "action": "fetch_neighbors",
+          "doc_count": 5,
+          "doc_types": [
+            "DOC-COMMISSION-CALC",
+            "DOC-INCENTIVE",
+            "DOC-RATE-TABLE",
+            "DOC-SETTLEMENT",
+            "DOC-COMMISSION"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GS-002",
+      "question": "정산 프로세스에서 쓰는 문서가 뭐가 있나요?",
+      "intent": "settlement",
+      "passed": true,
+      "detail": "문서유형 전수 확인: {'DOC-SETTLEMENT', 'DOC-COMMISSION', 'DOC-COMMISSION-CALC', 'DOC-CHARGEBACK'}",
+      "steps": [
+        {
+          "action": "fetch_process_documents",
+          "doc_count": 161,
+          "doc_types": [
+            "DOC-COMMISSION",
+            "DOC-RATE-TABLE",
+            "DOC-CHARGEBACK",
+            "DOC-SETTLEMENT",
+            "DOC-PERFORMANCE",
+            "DOC-INCENTIVE",
+            "DOC-COMMISSION-CALC"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GS-003",
+      "question": "당뇨 환자 심사 가능한가요?",
+      "intent": "underwriting",
+      "passed": true,
+      "detail": "문서유형 전수 확인: {'DOC-UW-GUIDE', 'DOC-UW-RULE', 'DOC-UW-DISEASE'}",
+      "steps": [
+        {
+          "action": "fetch_documents",
+          "doc_count": 69,
+          "doc_types": [
+            "DOC-UW-DISEASE",
+            "DOC-UW-RULE",
+            "DOC-UW-GUIDE"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GS-004",
+      "question": "1200%룰 GA 적용 언제부터인가요?",
+      "intent": "regulatory",
+      "passed": true,
+      "detail": "문서유형 전수 확인: {'DOC-REGULATION', 'DOC-COMMISSION-CALC'}; GOVERNS: ['BIZ-SETTLE'], RESTRICTS: ['DOC-REGULATION-COMMON-001']",
+      "steps": [
+        {
+          "action": "fetch_regulation_impact",
+          "doc_count": 2,
+          "doc_types": []
+        },
+        {
+          "action": "fetch_documents",
+          "doc_count": 24,
+          "doc_types": [
+            "DOC-COMMISSION-CALC",
+            "DOC-REGULATION"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GS-005",
+      "question": "보험 가입 절차가 어떻게 되나요?",
+      "intent": "process",
+      "passed": true,
+      "detail": "체인 정확: BIZ-PROSPECT → BIZ-CONSULT → BIZ-UW → BIZ-ISSUE → BIZ-HAPPYCALL → BIZ-MAINTAIN → BIZ-CLAIM",
+      "steps": [
+        {
+          "action": "fetch_process_chain",
+          "doc_count": 7,
+          "doc_types": [
+            "BIZ-PROSPECT",
+            "BIZ-CONSULT",
+            "BIZ-UW",
+            "BIZ-ISSUE",
+            "BIZ-HAPPYCALL",
+            "BIZ-MAINTAIN",
+            "BIZ-CLAIM"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GS-006",
+      "question": "어린이보험 상품 비교해주세요",
+      "intent": "sales_support",
+      "passed": true,
+      "detail": "문서유형 전수 확인: {'DOC-GUIDE', 'DOC-COMPARISON'}",
+      "steps": [
+        {
+          "action": "fetch_documents",
+          "doc_count": 6,
+          "doc_types": [
+            "DOC-GUIDE",
+            "DOC-COMPARISON"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GS-007",
+      "question": "보험료 구조가 어떻게 되나요?",
+      "intent": "training",
+      "passed": true,
+      "detail": "하위개념: 4개, EXPLAINS: 2개",
+      "steps": [
+        {
+          "action": "fetch_concept",
+          "doc_count": 6,
+          "doc_types": []
+        }
+      ]
+    },
+    {
+      "id": "GS-008",
+      "question": "신입 설계사 교육자료 어디있나요?",
+      "intent": "training",
+      "passed": true,
+      "detail": "문서유형 전수 확인: {'DOC-ONBOARDING', 'DOC-TRAINING'}",
+      "steps": [
+        {
+          "action": "fetch_documents",
+          "doc_count": 24,
+          "doc_types": [
+            "DOC-ONBOARDING",
+            "DOC-TRAINING"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GS-009",
+      "question": "한화생명 CI보험 상품설명서 보여줘",
+      "intent": "sales_support",
+      "passed": true,
+      "detail": "문서유형 전수 확인: {'DOC-GUIDE'}",
+      "steps": [
+        {
+          "action": "fetch_documents",
+          "doc_count": 1,
+          "doc_types": [
+            "DOC-GUIDE"
+          ]
+        },
+        {
+          "action": "fetch_neighbors",
+          "doc_count": 6,
+          "doc_types": [
+            "DOC-BEST-PRACTICE",
+            "DOC-CONFIRMATION",
+            "DOC-SCRIPT",
+            "DOC-TERMS-SPECIAL",
+            "DOC-TERMS",
+            "DOC-TRAINING"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GS-010",
+      "question": "KB손해보험 자동차보험 수수료 규정이 어떻게 되나요?",
+      "intent": "settlement",
+      "passed": true,
+      "detail": "문서유형 전수 확인: {'DOC-COMMISSION', 'DOC-COMMISSION-CALC'}",
+      "steps": [
+        {
+          "action": "fetch_documents",
+          "doc_count": 2,
+          "doc_types": [
+            "DOC-COMMISSION",
+            "DOC-COMMISSION-CALC"
+          ]
+        },
+        {
+          "action": "fetch_neighbors",
+          "doc_count": 0,
+          "doc_types": []
+        }
+      ]
+    }
+  ],
+  "training_log": [
+    {
+      "question": "삼성생명 종신보험 수수료가 어떻게 되나요?",
+      "intent": "settlement",
+      "api_calls": [
+        {
+          "action": "fetch_documents",
+          "params": {
+            "carrier": "INS-SAMSUNG",
+            "product": "PRD-LIFE-WHOLE",
+            "doc_type": [
+              "DOC-COMMISSION",
+              "DOC-COMMISSION-CALC"
+            ]
+          },
+          "result_count": 2
+        },
+        {
+          "action": "fetch_neighbors",
+          "params": {
+            "depth": 1,
+            "edge_types": [
+              "SIBLINGS",
+              "REFERENCES"
+            ],
+            "node_label": "Document"
+          },
+          "result_count": 5
+        }
+      ],
+      "found_doc_types": [
+        "DOC-COMMISSION",
+        "DOC-RATE-TABLE",
+        "DOC-SETTLEMENT",
+        "DOC-INCENTIVE",
+        "DOC-COMMISSION-CALC"
+      ],
+      "passed": true
+    },
+    {
+      "question": "정산 프로세스에서 쓰는 문서가 뭐가 있나요?",
+      "intent": "settlement",
+      "api_calls": [
+        {
+          "action": "fetch_process_documents",
+          "params": {
+            "process_id": "BIZ-SETTLE"
+          },
+          "result_count": 161
+        }
+      ],
+      "found_doc_types": [
+        "DOC-COMMISSION",
+        "DOC-INCENTIVE",
+        "DOC-RATE-TABLE",
+        "DOC-COMMISSION-CALC",
+        "DOC-CHARGEBACK",
+        "DOC-SETTLEMENT",
+        "DOC-PERFORMANCE"
+      ],
+      "passed": true
+    },
+    {
+      "question": "당뇨 환자 심사 가능한가요?",
+      "intent": "underwriting",
+      "api_calls": [
+        {
+          "action": "fetch_documents",
+          "params": {
+            "doc_type": [
+              "DOC-UW-GUIDE",
+              "DOC-UW-DISEASE",
+              "DOC-UW-RULE"
+            ]
+          },
+          "result_count": 69
+        }
+      ],
+      "found_doc_types": [
+        "DOC-UW-GUIDE",
+        "DOC-UW-RULE",
+        "DOC-UW-DISEASE"
+      ],
+      "passed": true
+    },
+    {
+      "question": "1200%룰 GA 적용 언제부터인가요?",
+      "intent": "regulatory",
+      "api_calls": [
+        {
+          "action": "fetch_regulation_impact",
+          "params": {
+            "reg_id": "REG-20260701"
+          },
+          "result_count": 2
+        },
+        {
+          "action": "fetch_documents",
+          "params": {
+            "doc_type": [
+              "DOC-REGULATION",
+              "DOC-COMMISSION-CALC"
+            ]
+          },
+          "result_count": 24
+        }
+      ],
+      "found_doc_types": [
+        "DOC-REGULATION",
+        "DOC-COMMISSION-CALC"
+      ],
+      "passed": true
+    },
+    {
+      "question": "보험 가입 절차가 어떻게 되나요?",
+      "intent": "process",
+      "api_calls": [
+        {
+          "action": "fetch_process_chain",
+          "params": {
+            "start_id": "BIZ-PROSPECT"
+          },
+          "result_count": 7
+        }
+      ],
+      "found_doc_types": [
+        "BIZ-UW",
+        "BIZ-ISSUE",
+        "BIZ-HAPPYCALL",
+        "BIZ-PROSPECT",
+        "BIZ-CONSULT",
+        "BIZ-MAINTAIN",
+        "BIZ-CLAIM"
+      ],
+      "passed": true
+    },
+    {
+      "question": "어린이보험 상품 비교해주세요",
+      "intent": "sales_support",
+      "api_calls": [
+        {
+          "action": "fetch_documents",
+          "params": {
+            "product": "PRD-CHILD",
+            "doc_type": [
+              "DOC-COMPARISON",
+              "DOC-GUIDE"
+            ]
+          },
+          "result_count": 6
+        }
+      ],
+      "found_doc_types": [
+        "DOC-GUIDE",
+        "DOC-COMPARISON"
+      ],
+      "passed": true
+    },
+    {
+      "question": "보험료 구조가 어떻게 되나요?",
+      "intent": "training",
+      "api_calls": [
+        {
+          "action": "fetch_concept",
+          "params": {
+            "concept_id": "CONCEPT-GROSS-PREMIUM"
+          },
+          "result_count": 6
+        }
+      ],
+      "found_doc_types": [],
+      "passed": true
+    },
+    {
+      "question": "신입 설계사 교육자료 어디있나요?",
+      "intent": "training",
+      "api_calls": [
+        {
+          "action": "fetch_documents",
+          "params": {
+            "doc_type": [
+              "DOC-TRAINING",
+              "DOC-ONBOARDING"
+            ]
+          },
+          "result_count": 24
+        }
+      ],
+      "found_doc_types": [
+        "DOC-ONBOARDING",
+        "DOC-TRAINING"
+      ],
+      "passed": true
+    },
+    {
+      "question": "한화생명 CI보험 상품설명서 보여줘",
+      "intent": "sales_support",
+      "api_calls": [
+        {
+          "action": "fetch_documents",
+          "params": {
+            "carrier": "INS-HANWHA",
+            "product": "PRD-HEALTH-CI",
+            "doc_type": [
+              "DOC-GUIDE"
+            ]
+          },
+          "result_count": 1
+        },
+        {
+          "action": "fetch_neighbors",
+          "params": {
+            "depth": 1,
+            "edge_types": [
+              "REFERENCES"
+            ],
+            "node_label": "Document"
+          },
+          "result_count": 6
+        }
+      ],
+      "found_doc_types": [
+        "DOC-GUIDE",
+        "DOC-TRAINING",
+        "DOC-BEST-PRACTICE",
+        "DOC-TERMS-SPECIAL",
+        "DOC-TERMS",
+        "DOC-SCRIPT",
+        "DOC-CONFIRMATION"
+      ],
+      "passed": true
+    },
+    {
+      "question": "KB손해보험 자동차보험 수수료 규정이 어떻게 되나요?",
+      "intent": "settlement",
+      "api_calls": [
+        {
+          "action": "fetch_documents",
+          "params": {
+            "carrier": "INS-KB",
+            "product": "PRD-NONLIFE-AUTO",
+            "doc_type": [
+              "DOC-COMMISSION",
+              "DOC-COMMISSION-CALC"
+            ]
+          },
+          "result_count": 2
+        },
+        {
+          "action": "fetch_neighbors",
+          "params": {
+            "depth": 1,
+            "edge_types": [
+              "GOVERNS",
+              "RESTRICTS",
+              "SIBLINGS"
+            ],
+            "node_label": "Document"
+          },
+          "result_count": 0
+        }
+      ],
+      "found_doc_types": [
+        "DOC-COMMISSION",
+        "DOC-COMMISSION-CALC"
+      ],
+      "passed": true
+    }
+  ]
+}

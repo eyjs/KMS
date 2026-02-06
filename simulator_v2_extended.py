@@ -20,11 +20,11 @@ from taxonomy_v2_extended import (
 # 샘플 생성 대상
 SAMPLE_CARRIERS = [
     "INS-SAMSUNG", "INS-HANWHA", "INS-KYOBO",  # 생명
-    "INS-SAMSUNGF", "INS-HYUNDAI", "INS-DB",   # 손해
+    "INS-SAMSUNGF", "INS-HYUNDAI", "INS-DB", "INS-KB",  # 손해
 ]
 
 SAMPLE_PRODUCTS = {
-    "life": ["PRD-LIFE-WHOLE", "PRD-CHILD", "PRD-HEALTH-CANCER", "PRD-LIFE-VARIABLE"],
+    "life": ["PRD-LIFE-WHOLE", "PRD-CHILD", "PRD-HEALTH-CANCER", "PRD-LIFE-VARIABLE", "PRD-HEALTH-CI"],
     "non-life": ["PRD-NONLIFE-AUTO", "PRD-HEALTH-MEDICAL"],
 }
 

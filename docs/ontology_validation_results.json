@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-02-05T23:58:58.293694",
+  "timestamp": "2026-02-06T00:46:17.214202",
   "version": "1.0-ontology",
   "graph_stats": {
-    "nodes": 669,
-    "edges": 1928,
-    "documents": 602,
+    "nodes": 840,
+    "edges": 2439,
+    "documents": 767,
     "concepts": 25,
     "processes": 12,
     "regulations": 5
@@ -13,20 +13,20 @@
     "total_tests": 16,
     "passed": 16,
     "pass_rate": "100%",
-    "avg_score": "0.98"
+    "avg_score": "0.95"
   },
   "results": [
     {
       "name": "노드 @type 커버리지",
       "passed": true,
       "score": 1.0,
-      "details": "669/669 노드에 @type 존재"
+      "details": "840/840 노드에 @type 존재"
     },
     {
       "name": "문서 필수 속성 완전성",
       "passed": true,
       "score": 1.0,
-      "details": "602/602 문서에 필수 속성 존재"
+      "details": "767/767 문서에 필수 속성 존재"
     },
     {
       "name": "프로세스 순서 관계",
@@ -50,19 +50,19 @@
       "name": "문서-프로세스 연결",
       "passed": true,
       "score": 1.0,
-      "details": "638개 USED_IN 엣지"
+      "details": "813개 USED_IN 엣지"
     },
     {
       "name": "시나리오1: 수수료 동의어 확장",
       "passed": true,
       "score": 1.0,
-      "details": "기대: {'DOC-INCENTIVE', 'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT', 'DOC-COMMISSION'}, 발견: {'DOC-INCENTIVE', 'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT', 'DOC-COMMISSION'}, 삼성매칭: True"
+      "details": "기대: {'DOC-INCENTIVE', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC'}, 발견: {'DOC-INCENTIVE', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC'}, 삼성매칭: True"
     },
     {
       "name": "시나리오2: UW 클래스 계층 검색",
       "passed": true,
       "score": 1.0,
-      "details": "ga:UWDocument 하위 90개 노드"
+      "details": "ga:UWDocument 하위 115개 노드"
     },
     {
       "name": "시나리오3: 심사 동의어+클래스",
@@ -86,7 +86,7 @@
       "name": "시나리오6: 정산 프로세스 문서",
       "passed": true,
       "score": 1.0,
-      "details": "기대: {'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC', 'DOC-CHARGEBACK', 'DOC-COMMISSION'}, 발견: {'DOC-CHARGEBACK', 'DOC-COMMISSION-CALC', 'DOC-SETTLEMENT', 'DOC-COMMISSION'}"
+      "details": "기대: {'DOC-CHARGEBACK', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC'}, 발견: {'DOC-CHARGEBACK', 'DOC-COMMISSION', 'DOC-SETTLEMENT', 'DOC-COMMISSION-CALC'}"
     },
     {
       "name": "시나리오7: 보험료 개념 그래프",
@@ -103,8 +103,8 @@
     {
       "name": "시나리오9: 규제 자연어 질문",
       "passed": true,
-      "score": 1.0,
-      "details": "기대: {'DOC-COMMISSION-CALC', 'DOC-REGULATION'}, 발견: {'DOC-COMMISSION-CALC', 'DOC-REGULATION'}"
+      "score": 0.5,
+      "details": "기대: {'DOC-REGULATION', 'DOC-COMMISSION-CALC'}, 발견: {'DOC-COMMISSION-CALC'}"
     },
     {
       "name": "시나리오10: 교육 검색",

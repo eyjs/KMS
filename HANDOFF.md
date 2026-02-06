@@ -2,7 +2,7 @@
 
 > 작성일: 2026-02-05
 > 최종 리뷰: 2026-02-06
-> 버전: v2.1 + Ontology
+> 버전: v2.1 + Ontology + Warehouse API
 
 ---
 
@@ -20,9 +20,12 @@
 
 | 단계 | 목표 | 상태 |
 |------|------|------|
-| **Phase A** | 분류체계 + 온톨로지 검증 (JSON 시뮬레이션) | 진행중 ✅ 온톨로지 16/16 통과 |
-| **Phase B** | 벡터DB + Scope 필터 + REST API | 예정 |
-| **Phase C** | Neo4j + LLM 연동 + 외부 업체 API 공개 | 예정 |
+| **Phase 1** | 지식체계 수립 — 분류, 관계, SSOT, API 구조 검증 | 진행중 ✅ 온톨로지 16/16 + Golden Set 10/10 |
+| **Phase 2** | 백엔드 API + DB 구축 — REST API, Neo4j, Qdrant | 예정 |
+| **Phase 3** | 미들웨어 구축 — 자연어→API 변환, 유사도 검증, 응답 패키징 | 예정 |
+
+> **핵심 원칙**: 창고에 AI를 넣지 않는다. 창고는 기계이고, 두뇌(미들웨어)는 Phase 3에서 별도로 구축한다.
+> 상세: `docs/architecture/strategy-alignment.md`
 
 ---
 
@@ -49,7 +52,7 @@
 | Admin UI v2.1 | ✅ 완료 | `kms-admin-v2.html` |
 | RAG 시뮬레이터 edge 버그 수정 | ✅ 완료 | `rag_simulator.py` |
 
-### Phase A-2: 온톨로지 확장
+### Phase 1-2: 온톨로지 확장
 
 | 작업 | 상태 | 파일 |
 |------|------|------|
@@ -58,13 +61,21 @@
 | 개념 노드 (25개 보험 개념) | ✅ 완료 | `taxonomy_ontology.py` CONCEPTS |
 | 온톨로지 지식그래프 생성기 | ✅ 완료 | `simulator_ontology.py` |
 | 온톨로지 검증 (16/16 통과) | ✅ 완료 | `ontology_validator.py` |
-| 전략 정렬 분석서 | ✅ 완료 | `docs/architecture/strategy-alignment.md` |
+| 전략 정렬 분석서 (v3.0) | ✅ 완료 | `docs/architecture/strategy-alignment.md` |
+
+### Phase 1-3: Warehouse API 설계 검증
+
+| 작업 | 상태 | 파일 |
+|------|------|------|
+| 순수 기계적 창고 API 프로토타입 | ✅ 완료 | `warehouse_api.py` |
+| Golden Set 10개 시나리오 | ✅ 완료 | `golden_set.py` |
+| 구조 검증 시뮬레이터 (10/10 통과) | ✅ 완료 | `simulator_phase2.py` |
 
 ### 생성된 데이터
 
 ```
-v2.1 + Ontology 통계
-├── 보험사: 17개 (생보 9, 손보 8)
+v2.1 + Ontology + Warehouse API 통계
+├── 보험사: 17개 (생보 9, 손보 8), 시뮬레이션 7개
 ├── 상품: 21개 (4개 카테고리)
 ├── 문서유형: 41개 (HOT 9, WARM 15, COLD 17)
 ├── 프로세스: 12개 (7단계 판매 체인 + 5개 지원 프로세스)
@@ -72,19 +83,21 @@ v2.1 + Ontology 통계
 ├── 자격증: 7개
 ├── 규제: 5개 (2024~2029)
 ├── 개념: 25개 (보험료/수수료/심사/컴플라이언스)
-├── 문서: 602개
-├── 노드: 669개 (v2.1 대비 +37)
-├── 엣지: 1,928개 (v2.1 대비 +703)
-│   ├── SIBLINGS: 72
-│   ├── REFERENCES: 504
-│   ├── USED_IN: 638 (문서→프로세스)
+├── 문서: 767개
+├── 노드: 840개
+├── 엣지: 2,439개
+│   ├── SIBLINGS: ~90
+│   ├── REFERENCES: ~630
+│   ├── USED_IN: ~813 (문서→프로세스)
 │   ├── PRECEDES: 7 (프로세스 순서)
 │   ├── GOVERNS/RESTRICTS: 4 (규제 영향)
 │   ├── BROADER/NARROWER/EXPLAINS: 42 (개념 관계)
-│   └── 기타 (PARENT, SUPERSEDES 등): 661
+│   └── 기타 (PARENT, SUPERSEDES 등): ~853
 └── 온톨로지 클래스: 150+ (6-Layer)
 
-검증 결과: 16/16 통과, 평균 점수 98%
+검증 결과:
+  온톨로지 구조: 16/16 통과 (평균 95%)
+  API 구조 (Golden Set): 10/10 통과 (100%)
 ```
 
 ---
@@ -111,10 +124,13 @@ KMS/
 ├── verify_v2_extended.py        # ★ v2.1 검증기
 ├── rag_simulator.py             # ★ RAG 시뮬레이션 (edge 버그 수정 완료)
 ├── ontology_validator.py        # ★ 온톨로지 검증 시뮬레이터 (16/16 통과)
+├── warehouse_api.py             # ★ Phase 2 API 설계 검증 프로토타입 (순수 기계적)
+├── golden_set.py                # ★ 구조 검증 시나리오 10건 (Phase 3 학습 데이터 겸용)
+├── simulator_phase2.py          # ★ Golden Set 자동 실행기 (10/10 통과)
 │
 ├── [데이터]
 ├── knowledge_graph_v2.1.json    # ★ v2.1 지식 그래프 (632노드, 1225엣지)
-├── knowledge_graph_ontology.json # ★ 온톨로지 그래프 (669노드, 1928엣지)
+├── knowledge_graph_ontology.json # ★ 온톨로지 그래프 (840노드, 2439엣지)
 │
 ├── [Admin UI]
 ├── kms-admin-v2.html            # ★ Admin UI v2.1 (현행)
@@ -190,17 +206,30 @@ python3 rag_simulator.py
 ### 5. 온톨로지 지식그래프 생성
 ```bash
 python3 simulator_ontology.py
-# 출력: knowledge_graph_ontology.json (669노드, 1928엣지)
+# 출력: knowledge_graph_ontology.json (840노드, 2439엣지)
 ```
 
 ### 6. 온톨로지 검증 시뮬레이션
 ```bash
 python3 ontology_validator.py
-# 기대 결과: 16/16 통과, 평균 점수 98%
+# 기대 결과: 16/16 통과, 평균 점수 95%
 # 출력: docs/ontology_validation_results.json
 ```
 
-### 7. Admin UI 실행
+### 7. Warehouse API 테스트
+```bash
+python3 warehouse_api.py
+# 8가지 기계적 조회 테스트 실행
+```
+
+### 8. Golden Set 구조 검증
+```bash
+python3 simulator_phase2.py
+# 기대 결과: 10/10 통과 (100%)
+# 출력: docs/phase2_simulation_results.json
+```
+
+### 9. Admin UI 실행
 ```bash
 npx serve . -p 8080
 # http://localhost:8080/kms-admin-v2.html 접속
@@ -222,50 +251,34 @@ npx serve . -p 8080
 
 ---
 
-## 남은 과제 (컨설팅 전략 기준)
+## 남은 과제 (Phase별)
 
-### 컨설팅 "창고지기" 파이프라인 대비 현황
-
-```
-Step 1: 앵커(D0) 확보     [15%] 키워드+동의어만, 벡터 미구현
-Step 2: 그래프 확장(D1)    [90%] 9종 관계, 전파 검증 완료
-Step 3: Scope 필터링       [ 0%] 설계 완료(strategy-alignment.md), 구현 필요
-배송: JSON Payload         [30%] 내부 구조만, anchor/context 분리 필요
-배송: REST API             [ 0%] Phase B
-```
-
-### P1 - 즉시 (Phase A 마무리)
+### Phase 1 마무리 (지식체계 수립)
 
 | 작업 | 설명 | 산출물 |
 |------|------|--------|
-| Scope 필터 엔진 | regulatory/sales/uw/settlement/training 5종 | `scope_filter.py` |
-| JSON Payload 변환기 | 내부 SearchResult → 컨설팅 형식 변환 | `payload_formatter.py` |
-| Hub 노드 차단 | 연결 수 >50 노드 전파 제외 | `ontology_validator.py` 업데이트 |
+| Scope 필터 설계 | regulatory/sales/uw/settlement/training 5종 | scope 정의 문서 |
+| Hub 노드 차단 규칙 | 연결 수 >50 노드 전파 제외 규칙 정의 | 설계 문서 |
+| README.md 업데이트 | 현행 상태 반영 | `README.md` |
 
-### P2 - 단기 (Phase B 준비)
-
-| 작업 | 설명 | 산출물 |
-|------|------|--------|
-| 벡터 임베딩 파이프라인 | Qdrant + 문서 임베딩 | `embedding_pipeline.py` |
-| search_default API 스펙 | OpenAPI 스펙 작성 | `docs/api/search-api.yaml` |
-| Vue 앱 기본 구조 | Vite + Vue 3 + Pinia | `src/` 디렉토리 |
-| README.md 업데이트 | v2.1+온톨로지 현행 상태 반영 | `README.md` |
-
-### P3 - 중기 (Phase B + 컨설팅 Phase 1)
+### Phase 2 (백엔드 API + DB 구축)
 
 | 작업 | 설명 | 산출물 |
 |------|------|--------|
-| search_default API 오픈 | 벡터 Top-K + 1촌 전체 반환 | REST API |
-| scope 파라미터 API | 엣지 유형별 필터링 적용 | REST API |
-| 정합성 검증 | Hub 차단, Depth 제한, scope 필터 튜닝 | 검증 리포트 |
+| REST API 스펙 | warehouse_api.py 기반 OpenAPI 작성 | `docs/api/search-api.yaml` |
+| REST API 구현 | Express.js 서버 | `server/` |
+| Neo4j 스키마 + 마이그레이션 | JSON → 그래프 DB | Neo4j 구성 |
+| Qdrant 벡터 임베딩 | 문서 임베딩 파이프라인 | `embedding_pipeline.py` |
+| Golden Set → 통합 테스트 | Phase 1 자산을 API 테스트로 변환 | 테스트 코드 |
 
-### P4 - 장기 (Phase C + 컨설팅 Phase 2~3)
+### Phase 3 (미들웨어 구축)
 
 | 작업 | 설명 |
 |------|------|
-| Neo4j 마이그레이션 | JSON 시뮬레이션 → 그래프 DB |
-| 외부 업체 API 공개 | scope/depth 파라미터 + JSON Payload |
-| RAG 답변 품질 피드백 루프 | 외부 업체 리포팅 → 관계 유형 튜닝 |
+| NLU: 자연어 → API 파라미터 변환 | golden_set.py를 학습 데이터로 활용 |
+| 반환 문서 유사도 검증 | 관련성 판단은 미들웨어에서 수행 |
+| 응답 패키징 | anchor/context JSON 분리, 외부에 제공 |
+| 외부 업체 → UI+LLM만 | 미들웨어가 API 호출을 내부에서 관리 |
 
 ---
 
