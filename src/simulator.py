@@ -256,6 +256,15 @@ def generate_graph_data():
         is_versioned = False
         version = {"major": 1, "minor": 0}
 
+        # 공통 문서: 도메인 facets에 맞게 classification 구성
+        common_domain_def = DOMAINS.get(domain, {})
+        common_facets = {f["id"] for f in common_domain_def.get("facets", [])}
+        common_cls = {"docType": doc_type_id}
+        if "carrier" in common_facets:
+            common_cls["carrier"] = "INS-COMMON"
+        if "product" in common_facets:
+            common_cls["product"] = "PRD-COMMON"
+
         nodes.append({
             "id": doc_id,
             "labels": ["Document", doc_type_id, tier, "COMMON"],
@@ -264,11 +273,7 @@ def generate_graph_data():
                 "domain": domain,
                 "lifecycle": lifecycle,
                 "version": version,
-                "classification": {
-                    "carrier": "INS-COMMON",
-                    "product": "PRD-COMMON",
-                    "docType": doc_type_id,
-                },
+                "classification": common_cls,
                 "meta": {
                     "process": DOC_PROCESS_MAP.get(doc_type_id, ["BIZ-COMMON"])[0],
                     "audience": DOC_AUDIENCE_MAP.get(doc_type_id, ["AUD-ALL"])[0],
@@ -316,20 +321,30 @@ def generate_graph_data():
             domain = DOC_TYPE_DOMAIN_MAP.get(doc_type_id, "GA-SALES")
             domain_def = DOMAINS.get(domain, {})
             ssot_key = domain_def.get("ssotKey", [])
+            facet_ids = {f["id"] for f in domain_def.get("facets", [])}
 
-            if "product" not in ssot_key and "carrier" in ssot_key:
-                # carrier 단위 (GA-COMP): carrier당 doc_type 1건만
+            # ssotKey에 따른 중복 방지 + ID/classification 결정
+            has_carrier = "carrier" in facet_ids
+            has_product = "product" in facet_ids
+
+            if has_product:
+                # carrier×product×docType 도메인 (GA-SALES, GA-COMM, GA-CONTRACT)
+                id_carrier, id_product = carrier_id, product_id
+            elif has_carrier:
+                # carrier×docType 도메인 (GA-COMP): carrier당 1건
                 key = (carrier_id, doc_type_id)
                 if key in carrier_level_docs:
                     continue
                 carrier_level_docs.add(key)
-            elif "product" not in ssot_key and "carrier" not in ssot_key:
-                # 전역 단위 (GA-EDU, COMMON-COMP): doc_type 1건만
+                id_carrier, id_product = carrier_id, None
+            else:
+                # docType만 (GA-EDU): 전역 1건
                 if doc_type_id in global_level_docs:
                     continue
                 global_level_docs.add(doc_type_id)
+                id_carrier, id_product = None, None
 
-            doc_id = generate_doc_id(doc_type_id, carrier_id, product_id)
+            doc_id = generate_doc_id(doc_type_id, id_carrier, id_product)
             tier = doc_type.get("tier", "WARM")
             lifecycle = random_lifecycle()
             created_at, updated_at, reviewed_at = random_dates(tier, lifecycle)
@@ -337,19 +352,30 @@ def generate_graph_data():
             # 버전 상품 문서는 v2.0
             version = {"major": 2, "minor": 0} if is_versioned_product else {"major": 1, "minor": 0}
 
+            # classification: 도메인 facets에 정의된 필드만 포함
+            classification = {"docType": doc_type_id}
+            if has_carrier:
+                classification["carrier"] = carrier_id
+            if has_product:
+                classification["product"] = product_id
+
+            # name: facets에 맞게 구성
+            name_parts = []
+            if has_carrier:
+                name_parts.append(carrier.get("name", ""))
+            if has_product:
+                name_parts.append(product.get("name", ""))
+            name_parts.append(doc_type.get("name", ""))
+
             nodes.append({
                 "id": doc_id,
                 "labels": ["Document", doc_type_id, tier],
                 "properties": {
-                    "name": f"{carrier.get('name', '')} {product.get('name', '')} {doc_type.get('name', '')}",
+                    "name": " ".join(name_parts),
                     "domain": domain,
                     "lifecycle": lifecycle,
                     "version": version,
-                    "classification": {
-                        "carrier": carrier_id,
-                        "product": product_id,
-                        "docType": doc_type_id,
-                    },
+                    "classification": classification,
                     "meta": {
                         "process": DOC_PROCESS_MAP.get(doc_type_id, ["BIZ-COMMON"])[0],
                         "audience": DOC_AUDIENCE_MAP.get(doc_type_id, ["AUD-ALL"])[0],
@@ -361,23 +387,36 @@ def generate_graph_data():
                     "reviewedAt": reviewed_at,
                 }
             })
-            edges.append({"source": product_node_id, "target": doc_id, "type": "HAS_DOCUMENT"})
+
+            # 그래프 계층: 도메인 레벨에 따라 연결 위치 결정
+            if has_product:
+                edges.append({"source": product_node_id, "target": doc_id, "type": "HAS_DOCUMENT"})
+            elif has_carrier:
+                edges.append({"source": carrier_id, "target": doc_id, "type": "HAS_DOCUMENT"})
+            else:
+                edges.append({"source": "ROOT-IFA-KNOWLEDGE", "target": doc_id, "type": "HAS_DOCUMENT"})
             count += 1
 
-            # 관계 추가
+            # 관계 추가: 타겟도 도메인 facets 기반으로 ID 생성
             relations = DEFAULT_RELATIONS.get(doc_type_id, {})
             for rel_type, targets in relations.items():
                 for target_doc_type in targets:
                     if target_doc_type in COMMON_DOC_TYPES:
                         target_id = generate_doc_id(target_doc_type)
                     else:
-                        target_id = generate_doc_id(target_doc_type, carrier_id, product_id)
+                        # 타겟 문서의 도메인 facets 확인
+                        tgt_domain = DOC_TYPE_DOMAIN_MAP.get(target_doc_type, "GA-SALES")
+                        tgt_domain_def = DOMAINS.get(tgt_domain, {})
+                        tgt_facets = {f["id"] for f in tgt_domain_def.get("facets", [])}
+                        tgt_carrier = carrier_id if "carrier" in tgt_facets else None
+                        tgt_product = product_id if "product" in tgt_facets else None
+                        target_id = generate_doc_id(target_doc_type, tgt_carrier, tgt_product)
                     edges.append({"source": doc_id, "target": target_id, "type": rel_type})
                     if rel_type == "SIBLINGS":
                         edges.append({"source": target_id, "target": doc_id, "type": rel_type})
 
             # SUPERSEDES 관계: 버전 상품 문서 → 기존 상품 동일 문서유형
-            if supersedes:
+            if supersedes and has_product:
                 old_doc_id = generate_doc_id(doc_type_id, carrier_id, supersedes)
                 edges.append({"source": doc_id, "target": old_doc_id, "type": "SUPERSEDES"})
 
@@ -426,13 +465,14 @@ def generate_graph_data():
 
 
 def generate_sample_files(base_path: str):
-    """샘플 파일 생성"""
+    """샘플 파일 생성 (도메인 facets 기반 SSOT 적용)"""
     samples_path = os.path.join(base_path, "data", "samples")
     common_path = os.path.join(samples_path, "COMMON")
     os.makedirs(common_path, exist_ok=True)
 
     file_count = 0
 
+    # 공통 문서
     for doc_type_id in COMMON_DOC_TYPES:
         if doc_type_id not in DOC_TYPES:
             continue
@@ -442,15 +482,49 @@ def generate_sample_files(base_path: str):
             f.write(content)
         file_count += 1
 
+    # SSOT 중복 방지 (그래프 생성과 동일 로직)
+    sample_carrier_docs = set()
+    sample_global_docs = set()
+
     def write_product_docs(carrier_id, product_id, samples_path):
         count = 0
-        doc_dir = os.path.join(samples_path, carrier_id, product_id)
-        os.makedirs(doc_dir, exist_ok=True)
         for doc_type_id in DOC_TYPES.keys():
             if doc_type_id in COMMON_DOC_TYPES:
                 continue
-            content = generate_doc_content(doc_type_id, carrier_id, product_id)
-            fp = os.path.join(doc_dir, f"{doc_type_id}.md")
+
+            domain = DOC_TYPE_DOMAIN_MAP.get(doc_type_id, "GA-SALES")
+            domain_def = DOMAINS.get(domain, {})
+            facet_ids = {f["id"] for f in domain_def.get("facets", [])}
+
+            has_carrier = "carrier" in facet_ids
+            has_product = "product" in facet_ids
+
+            if has_product:
+                # carrier×product×docType: 상품 폴더 아래
+                doc_dir = os.path.join(samples_path, carrier_id, product_id)
+                os.makedirs(doc_dir, exist_ok=True)
+                fp = os.path.join(doc_dir, f"{doc_type_id}.md")
+                content = generate_doc_content(doc_type_id, carrier_id, product_id)
+            elif has_carrier:
+                # carrier×docType: 보험사 폴더 직하
+                key = (carrier_id, doc_type_id)
+                if key in sample_carrier_docs:
+                    continue
+                sample_carrier_docs.add(key)
+                doc_dir = os.path.join(samples_path, carrier_id)
+                os.makedirs(doc_dir, exist_ok=True)
+                fp = os.path.join(doc_dir, f"{doc_type_id}.md")
+                content = generate_doc_content(doc_type_id, carrier_id)
+            else:
+                # docType만: 전역 폴더
+                if doc_type_id in sample_global_docs:
+                    continue
+                sample_global_docs.add(doc_type_id)
+                global_dir = os.path.join(samples_path, "GLOBAL")
+                os.makedirs(global_dir, exist_ok=True)
+                fp = os.path.join(global_dir, f"{doc_type_id}.md")
+                content = generate_doc_content(doc_type_id)
+
             with open(fp, "w", encoding="utf-8") as f:
                 f.write(content)
             count += 1

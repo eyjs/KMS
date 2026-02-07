@@ -277,12 +277,19 @@ class FrameworkVerifier:
 
             # 도메인의 필수 facet이 classification에 존재
             domain_def = DOMAINS[domain]
+            allowed_facets = {f["id"] for f in domain_def.get("facets", [])}
             for facet in domain_def.get("facets", []):
                 if facet.get("required") and not cls.get(facet["id"]):
                     self.errors.append(f"{doc_id}: 도메인 {domain}의 필수 facet '{facet['id']}' 누락")
                     failed += 1
                 else:
                     passed += 1
+
+            # classification에 도메인 facets에 없는 필드가 있으면 오류
+            for field in cls:
+                if field not in allowed_facets:
+                    self.errors.append(f"{doc_id}: 도메인 {domain}에 정의되지 않은 classification 필드 '{field}'")
+                    failed += 1
 
         domain_dist = {}
         for doc in self.doc_nodes:
