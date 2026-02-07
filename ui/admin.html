@@ -2050,11 +2050,28 @@
         @click.self="uploadPreview.show = false"
       >
         <div class="bg-white rounded-xl shadow-2xl w-[520px] p-6">
-          <h3 class="text-lg font-bold mb-2">자동 분류 결과</h3>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-bold">자동 분류 결과</h3>
+            <span v-if="uploadPreview.sessionCount > 0" class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium">
+              이번 세션: {{ uploadPreview.sessionCount }}건 등록
+            </span>
+          </div>
           <div class="text-sm text-gray-500 mb-4">파일: {{ uploadPreview.filename }}</div>
 
           <div class="space-y-3">
+            <!-- 도메인 선택 -->
             <div>
+              <label class="text-xs font-medium text-gray-500">도메인</label>
+              <select
+                v-model="uploadPreview.data.domain"
+                @change="onUploadDomainChange"
+                class="w-full mt-1 px-3 py-2 border border-indigo-200 rounded-lg text-sm bg-indigo-50"
+              >
+                <option v-for="(d, id) in store.domains" :key="id" :value="id">{{ d.name }}</option>
+              </select>
+            </div>
+            <!-- 보험사 (도메인 facet에 있을 때만) -->
+            <div v-if="domainHasFacet(uploadPreview.data.domain, 'carrier')">
               <div class="flex items-center justify-between">
                 <label class="text-xs font-medium text-gray-500">보험사</label>
                 <span
@@ -2074,7 +2091,8 @@
                 <option v-for="(c, id) in store.taxonomy.carriers" :key="id" :value="id">{{ c.name }}</option>
               </select>
             </div>
-            <div>
+            <!-- 상품 (도메인 facet에 있을 때만) -->
+            <div v-if="domainHasFacet(uploadPreview.data.domain, 'product')">
               <div class="flex items-center justify-between">
                 <label class="text-xs font-medium text-gray-500">상품</label>
                 <span
@@ -2094,6 +2112,7 @@
                 <option v-for="(p, id) in store.taxonomy.products" :key="id" :value="id">{{ p.name }}</option>
               </select>
             </div>
+            <!-- 문서유형 (모든 도메인 공통) -->
             <div>
               <div class="flex items-center justify-between">
                 <label class="text-xs font-medium text-gray-500">문서유형</label>
@@ -2120,24 +2139,32 @@
 
             <!-- 중복 경고 -->
             <div v-if="uploadPreview.duplicateWarning" class="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div class="text-sm font-medium text-red-700">중복 문서 존재!</div>
+              <div class="text-sm font-medium text-red-700">SSOT 위반!</div>
               <div class="text-xs text-red-600 mt-1">{{ uploadPreview.duplicateWarning }}</div>
             </div>
           </div>
           <div class="flex gap-2 mt-6">
             <button
               @click="uploadPreview.show = false"
-              class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+              class="py-2 px-4 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
             >
               취소
             </button>
             <button
-              @click="createFromUpload"
-              :disabled="uploadPreview.duplicateWarning || !uploadPreview.data.carrier || !uploadPreview.data.product || !uploadPreview.data.docType"
-              :class="(uploadPreview.duplicateWarning || !uploadPreview.data.carrier || !uploadPreview.data.product || !uploadPreview.data.docType) ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
+              @click="createFromUpload(false)"
+              :disabled="uploadPreview.duplicateWarning || !uploadPreview.data.docType"
+              :class="(uploadPreview.duplicateWarning || !uploadPreview.data.docType) ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
               class="flex-1 py-2 text-white rounded-lg text-sm font-medium"
             >
-              문서 생성
+              등록
+            </button>
+            <button
+              @click="createFromUpload(true)"
+              :disabled="uploadPreview.duplicateWarning || !uploadPreview.data.docType"
+              :class="(uploadPreview.duplicateWarning || !uploadPreview.data.docType) ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
+              class="flex-1 py-2 text-white rounded-lg text-sm font-medium"
+            >
+              등록 + 다음 파일
             </button>
           </div>
         </div>
@@ -2505,9 +2532,15 @@
           const uploadPreview = reactive({
             show: false,
             filename: '',
-            data: {},
+            data: {},       // { domain, carrier, product, docType, version }
             confidence: {},
             duplicateWarning: null,
+            sessionCount: 0,            // 세션 내 업로드 카운터
+            stickyContext: {             // 이전 선택값 유지
+              domain: 'GA-SALES',
+              carrier: '',
+              product: '',
+            },
           });
           const highlightedDocs = ref([]);
 
@@ -4131,43 +4164,57 @@
               version = (version ? version + ', ' : '') + `버전 ${verMatch[1]}`;
             }
 
-            // 중복 체크
-            let dupWarning = null;
-            if (carrier && product && docType) {
-              const dup = checkDuplicate(carrier, product, docType);
-              if (dup) dupWarning = `이미 존재: ${dup.name}`;
-            }
+            // 스티키 컨텍스트: 파일명에서 못 잡은 항목은 이전 선택값 유지
+            const sticky = uploadPreview.stickyContext;
+            if (!carrier && sticky.carrier) { carrier = sticky.carrier; carrierConf = 0; }
+            if (!product && sticky.product) { product = sticky.product; productConf = 0; }
+
+            // 도메인 결정: docType 기반 또는 스티키
+            const domain = store.docTypeDomainMap?.[docType] || sticky.domain || 'GA-SALES';
 
             uploadPreview.show = true;
             uploadPreview.filename = filename;
-            uploadPreview.data = { carrier, product, docType, version };
+            uploadPreview.data = { domain, carrier, product, docType, version };
             uploadPreview.confidence = { carrier: carrierConf, product: productConf, docType: docTypeConf };
-            uploadPreview.duplicateWarning = dupWarning;
+            uploadPreview.duplicateWarning = null;
+
+            // 도메인별 SSOT 중복 체크
+            checkUploadDuplicate();
 
             event.target.value = '';
           }
 
+          function onUploadDomainChange() {
+            // 도메인 바뀌면 해당 도메인에 없는 facet 값 초기화
+            const d = uploadPreview.data.domain;
+            if (!domainHasFacet(d, 'carrier')) uploadPreview.data.carrier = '';
+            if (!domainHasFacet(d, 'product')) uploadPreview.data.product = '';
+            checkUploadDuplicate();
+          }
+
           function checkUploadDuplicate() {
-            const { carrier, product, docType } = uploadPreview.data;
-            if (!carrier || !product || !docType) {
+            const { domain, carrier, product, docType } = uploadPreview.data;
+            if (!docType) {
               uploadPreview.duplicateWarning = null;
               return;
             }
-            const dup = checkDuplicate(carrier, product, docType);
-            uploadPreview.duplicateWarning = dup ? `이미 존재: ${dup.name}` : null;
+            // 도메인별 SSOT 키로 중복 체크
+            const classification = { docType };
+            if (domainHasFacet(domain, 'carrier') && carrier) classification.carrier = carrier;
+            if (domainHasFacet(domain, 'product') && product) classification.product = product;
+            const dup = checkSsotViolation(domain, classification);
+            uploadPreview.duplicateWarning = dup ? `SSOT 위반 — 동일 경로에 ACTIVE 문서: ${dup.name}` : null;
           }
 
-          function createFromUpload() {
-            const { carrier, product, docType } = uploadPreview.data;
+          function createFromUpload(continueNext) {
+            const { domain, carrier, product, docType } = uploadPreview.data;
             if (!docType) return;
             if (uploadPreview.duplicateWarning) return;
 
-            // 자동 채번 + 도메인 자동 매핑
             const id = generateDocId();
             const carrierObj = store.taxonomy.carriers[carrier];
             const productObj = store.taxonomy.products[product];
             const docTypeObj = store.taxonomy.docTypes[docType];
-            const domain = store.docTypeDomainMap?.[docType] || 'GA-SALES';
             const facetIds = getDomainFacetIds(domain);
 
             // 도메인 facets에 맞는 classification만 구성
@@ -4197,10 +4244,26 @@
               reviewedAt: null,
             };
 
+            // 스티키 컨텍스트 업데이트 (다음 업로드 시 유지)
+            uploadPreview.stickyContext.domain = domain;
+            if (carrier) uploadPreview.stickyContext.carrier = carrier;
+            if (product) uploadPreview.stickyContext.product = product;
+            uploadPreview.sessionCount += 1;
+
             saveStore();
             selectDocument(id);
-            uploadPreview.show = false;
-            showToast(`문서 생성 (${id}): ${docName}`, 'success');
+            showToast(`문서 생성 (${id}): ${docName} [${uploadPreview.sessionCount}건째]`, 'success');
+
+            if (continueNext) {
+              // 모달 유지 + 파일 선택기 열기
+              uploadPreview.show = false;
+              nextTick(() => {
+                const fileInput = document.querySelector('input[type="file"]');
+                if (fileInput) fileInput.click();
+              });
+            } else {
+              uploadPreview.show = false;
+            }
           }
 
           function showAddModal(type) {
@@ -4950,6 +5013,7 @@
             getDocCountByProduct,
             getDocsByProduct,
             checkUploadDuplicate,
+            onUploadDomainChange,
             createFromUpload,
             exportData,
             importData,
