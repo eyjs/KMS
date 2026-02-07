@@ -236,10 +236,12 @@ class GraphEngine:
         2. 새 부모에 연결
         3. classification 자동 재계산 (위치에서 유도)
         4. 도메인 변경 시 facets 변환
-        5. 하위 페이지도 재귀적으로 classification 갱신
+        5. 도메인 변경 시 형제(SIBLINGS) 관계 정리 (같은 도메인만 허용)
         6. SSOT 재검증
+        7. 하위 페이지도 재귀적으로 classification 갱신
 
         핵심: ID는 안 바뀜. 참조(REFERENCE)도 안 깨짐.
+        형제는 도메인 변경 시 자동 해제됨.
         """
         assert page_id in self.nodes, f"페이지 없음: {page_id}"
         assert new_parent_id in self.nodes, f"새 부모 없음: {new_parent_id}"
@@ -278,14 +280,27 @@ class GraphEngine:
         filtered_cls = {k: v for k, v in new_cls.items() if k in allowed_facets}
         node["properties"]["classification"] = filtered_cls
 
-        # 5. SSOT 검증 (ACTIVE인 경우)
+        # 5. 도메인이 바뀌면 형제(SIBLINGS) 관계 정리 (같은 도메인만 허용)
+        if target_domain != old_domain:
+            severed = [e for e in self.edges
+                       if e["type"] == "SIBLINGS"
+                       and (e["source"] == page_id or e["target"] == page_id)]
+            self.edges = [e for e in self.edges
+                          if not (e["type"] == "SIBLINGS"
+                                  and (e["source"] == page_id or e["target"] == page_id))]
+            severed_ids = set()
+            for e in severed:
+                other = e["target"] if e["source"] == page_id else e["source"]
+                severed_ids.add(other)
+
+        # 6. SSOT 검증 (ACTIVE인 경우)
         if node["properties"]["lifecycle"] == "ACTIVE":
             self._check_ssot(target_domain, filtered_cls, exclude_id=page_id)
 
         node["properties"]["updatedAt"] = datetime.now().isoformat()
         node["properties"]["version"]["minor"] += 1
 
-        # 6. 하위 페이지도 재귀적으로 classification 갱신
+        # 7. 하위 페이지도 재귀적으로 classification 갱신
         moved_ids = [page_id]
         children = self.get_children(page_id)
         for child in children:
@@ -293,6 +308,7 @@ class GraphEngine:
             self._reclassify_recursive(child_id, target_domain)
             moved_ids.append(child_id)
 
+        severed_siblings = list(severed_ids) if target_domain != old_domain else []
         self.history.append(("MOVE", page_id, {
             "old_parent": "detached",
             "new_parent": new_parent_id,
@@ -301,6 +317,7 @@ class GraphEngine:
             "old_cls": old_cls,
             "new_cls": filtered_cls,
             "affected": moved_ids,
+            "severed_siblings": severed_siblings,
         }))
         return node
 
@@ -1642,6 +1659,24 @@ class StressTest:
             parent_id="STRUCT-STG-AUTO",
         )
 
+        # 형제 관계 추가 (이동 시 자동 해제 테스트용)
+        self.engine.create_page(
+            page_id="CROSS-SIB-01",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-AUTO", "stage": "STG-AUTO", "docType": "DOC-SIB-01"},
+            name="크로스 이동 형제",
+            lifecycle="DRAFT",
+            parent_id="STRUCT-STG-AUTO",
+        )
+        self.engine.add_sibling("CROSS-MOVE-01", "CROSS-SIB-01")
+
+        # 이동 전: 형제 확인
+        pre_siblings = self.engine.get_siblings("CROSS-MOVE-01")
+        self.assert_test(
+            "크로스 도메인 이동 전: 형제 존재",
+            len(pre_siblings) == 1 and pre_siblings[0]["id"] == "CROSS-SIB-01"
+        )
+
         # 이동: MEDI-SALES → MEDI-EDU
         self.engine.move_page("CROSS-MOVE-01", "EDU-ROOT", new_domain="MEDI-EDU")
         cross_node = self.engine.get_page("CROSS-MOVE-01")
@@ -1667,6 +1702,25 @@ class StressTest:
         self.assert_test(
             "크로스 도메인: category 유도 (구조 노드에서)",
             cross_cls.get("category") == "CAT-GENERAL"
+        )
+
+        # 형제 관계 자동 해제 검증
+        post_siblings = self.engine.get_siblings("CROSS-MOVE-01")
+        self.assert_test(
+            "크로스 도메인 이동: 형제 관계 자동 해제",
+            len(post_siblings) == 0
+        )
+        # 상대방도 형제 없음
+        sib_siblings = self.engine.get_siblings("CROSS-SIB-01")
+        self.assert_test(
+            "크로스 도메인 이동: 상대방 형제도 해제",
+            all(s["id"] != "CROSS-MOVE-01" for s in sib_siblings)
+        )
+        # 이동 이력에 severed_siblings 포함
+        last_cross_move = [h for h in self.engine.history if h[0] == "MOVE" and h[1] == "CROSS-MOVE-01"][-1]
+        self.assert_test(
+            "크로스 도메인 이동: severed_siblings 이력 기록",
+            "CROSS-SIB-01" in last_cross_move[2].get("severed_siblings", [])
         )
 
         # === 4. 이동 이력 검증 ===

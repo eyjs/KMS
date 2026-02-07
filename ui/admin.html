@@ -1619,7 +1619,7 @@
               <label class="text-xs font-medium text-gray-500">도메인</label>
               <select
                 :value="selectedDoc.domain || 'GA-SALES'"
-                @change="moveDocumentDomain(selectedDocId, $event.target.value)"
+                @change="showMoveConfirm(selectedDocId, $event.target.value); $event.target.value = selectedDoc.domain || 'GA-SALES'"
                 class="w-full mt-1 px-3 py-2 border border-indigo-200 rounded-lg text-sm bg-indigo-50"
               >
                 <option v-for="(d, id) in store.domains" :key="id" :value="id">{{ d.name }}</option>
@@ -2144,6 +2144,134 @@
       </div>
     </div>
 
+    <!-- 이동 확인 모달 (git conflict 방식) -->
+    <div
+      v-if="moveModal.show"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      @click.self="moveModal.show = false"
+    >
+      <div class="bg-white rounded-xl shadow-2xl w-[600px] max-h-[80vh] overflow-y-auto p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+            <span class="text-lg">📦</span>
+          </div>
+          <div>
+            <h3 class="text-lg font-bold text-gray-800">도메인 이동 확인</h3>
+            <p class="text-xs text-gray-500">관계 영향을 검토하고 해결 방법을 선택하세요</p>
+          </div>
+        </div>
+
+        <!-- 이동 요약 -->
+        <div class="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
+          <div class="font-medium text-gray-700">{{ moveModal.docName }}</div>
+          <div class="flex items-center gap-2 mt-1 text-xs text-gray-500">
+            <span class="px-2 py-0.5 bg-red-100 text-red-700 rounded">{{ moveModal.oldDomain }}</span>
+            <span>→</span>
+            <span class="px-2 py-0.5 bg-green-100 text-green-700 rounded">{{ moveModal.newDomain }}</span>
+          </div>
+        </div>
+
+        <!-- 자동 처리 (Auto-resolved) -->
+        <div v-if="moveModal.impact.autoResolved.length > 0" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="w-5 h-5 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
+            <span class="text-sm font-medium text-green-700">자동 처리 ({{ moveModal.impact.autoResolved.length }}건)</span>
+          </div>
+          <div class="space-y-1 ml-7">
+            <div
+              v-for="(item, idx) in moveModal.impact.autoResolved"
+              :key="'auto-'+idx"
+              class="text-xs text-gray-600 flex items-center gap-2 py-1"
+            >
+              <span>{{ item.icon }}</span>
+              <span>{{ item.message }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 보존됨 (Preserved) -->
+        <div v-if="moveModal.impact.preserved.length > 0" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">═</span>
+            <span class="text-sm font-medium text-blue-700">유지됨 ({{ moveModal.impact.preserved.length }}건)</span>
+          </div>
+          <div class="space-y-1 ml-7">
+            <div
+              v-for="(item, idx) in moveModal.impact.preserved"
+              :key="'keep-'+idx"
+              class="text-xs text-gray-600 flex items-center gap-2 py-1"
+            >
+              <span>{{ item.icon }}</span>
+              <span>{{ item.message }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 컨플릭트 (관리자 결정 필요) -->
+        <div v-if="moveModal.impact.conflicts.length > 0" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="w-5 h-5 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-xs font-bold">!</span>
+            <span class="text-sm font-medium text-orange-700">관리자 결정 필요 ({{ moveModal.impact.conflicts.length }}건)</span>
+          </div>
+          <div class="space-y-2 ml-7">
+            <div
+              v-for="(conflict, idx) in moveModal.impact.conflicts"
+              :key="'conflict-'+idx"
+              class="border rounded-lg p-3"
+              :class="moveModal.resolutions[conflict.relType+':'+conflict.targetId] === 'sever' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-xs text-gray-700">
+                  <span>{{ conflict.icon }}</span>
+                  <span>{{ conflict.message }}</span>
+                </div>
+                <div class="flex gap-1 ml-2 flex-shrink-0">
+                  <button
+                    @click="moveModal.resolutions[conflict.relType+':'+conflict.targetId] = 'keep'"
+                    :class="moveModal.resolutions[conflict.relType+':'+conflict.targetId] === 'keep' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    class="px-2 py-1 text-xs rounded font-medium transition"
+                  >
+                    유지
+                  </button>
+                  <button
+                    @click="moveModal.resolutions[conflict.relType+':'+conflict.targetId] = 'sever'"
+                    :class="moveModal.resolutions[conflict.relType+':'+conflict.targetId] === 'sever' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    class="px-2 py-1 text-xs rounded font-medium transition"
+                  >
+                    해제
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 컨플릭트 없으면 안내 -->
+        <div
+          v-if="moveModal.impact.conflicts.length === 0 && moveModal.impact.autoResolved.length === 0 && moveModal.impact.preserved.length === 0"
+          class="text-center py-6 text-sm text-gray-500"
+        >
+          이 문서에는 연결된 관계가 없습니다. 바로 이동할 수 있습니다.
+        </div>
+
+        <!-- 버튼 -->
+        <div class="flex gap-2 mt-6 pt-4 border-t border-gray-100">
+          <button
+            @click="moveModal.show = false"
+            class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition"
+          >
+            취소
+          </button>
+          <button
+            @click="executeMoveWithResolution()"
+            class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition"
+          >
+            이동 실행
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script>
       const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue;
 
@@ -2382,6 +2510,21 @@
             duplicateWarning: null,
           });
           const highlightedDocs = ref([]);
+
+          // 이동 확인 모달 (git conflict 방식)
+          const moveModal = reactive({
+            show: false,
+            docId: null,
+            docName: '',
+            oldDomain: '',
+            newDomain: '',
+            impact: {
+              autoResolved: [],  // 자동 처리됨
+              preserved: [],     // 유지됨 (ID 불변)
+              conflicts: [],     // 관리자 검토 필요
+            },
+            resolutions: {},     // { 'siblings:DOC-ID': 'keep'|'sever' }
+          });
           const toasts = ref([]);
 
           // 라이프사이클 필터
@@ -4171,17 +4314,158 @@
             showToast(`문서 생성 (${id})`, 'success');
           }
 
-          function moveDocumentDomain(docId, newDomain) {
+          // === 이동 영향 분석 (git conflict 방식) ===
+          function analyzeMoveImpact(docId, newDomain) {
+            const doc = store.documents[docId];
+            if (!doc) return null;
+            const oldDomain = doc.domain || 'GA-SALES';
+            const relations = doc.relations || {};
+            const newFacets = getDomainFacetIds(newDomain);
+            const oldFacets = getDomainFacetIds(oldDomain);
+
+            const autoResolved = [];
+            const preserved = [];
+            const conflicts = [];
+
+            // 제거될 classification 필드
+            const removedFields = [];
+            Object.keys(doc.classification || {}).forEach(k => {
+              if (!newFacets.has(k)) removedFields.push(k);
+            });
+            if (removedFields.length > 0) {
+              autoResolved.push({
+                type: 'classification',
+                icon: '🔄',
+                message: `classification 필드 제거: ${removedFields.join(', ')} (${newDomain} facets에 없음)`,
+              });
+            }
+
+            // 부모 관계
+            if (relations.parent) {
+              const parentDoc = store.documents[relations.parent];
+              const parentDomain = parentDoc?.domain || 'GA-SALES';
+              if (parentDomain !== newDomain) {
+                conflicts.push({
+                  type: 'parent',
+                  relType: 'parent',
+                  targetId: relations.parent,
+                  targetName: parentDoc?.name || relations.parent,
+                  targetDomain: parentDomain,
+                  icon: '⬆️',
+                  message: `부모 "${parentDoc?.name}" (${parentDomain}) — 도메인이 달라짐`,
+                  defaultAction: 'sever',
+                });
+              } else {
+                preserved.push({
+                  type: 'parent',
+                  icon: '⬆️',
+                  message: `부모 "${parentDoc?.name}" — 같은 도메인, 유지`,
+                });
+              }
+            }
+
+            // 자식 관계
+            const children = relations.children || [];
+            if (children.length > 0) {
+              const childNames = children.map(cid => store.documents[cid]?.name || cid).slice(0, 3);
+              const more = children.length > 3 ? ` 외 ${children.length - 3}건` : '';
+              autoResolved.push({
+                type: 'children',
+                icon: '⬇️',
+                message: `자식 ${children.length}건 함께 이동: ${childNames.join(', ')}${more}`,
+              });
+            }
+
+            // 형제 관계 → 컨플릭트
+            const siblings = relations.siblings || [];
+            siblings.forEach(sibId => {
+              const sibDoc = store.documents[sibId];
+              if (!sibDoc) return;
+              const sibDomain = sibDoc.domain || 'GA-SALES';
+              conflicts.push({
+                type: 'sibling',
+                relType: 'siblings',
+                targetId: sibId,
+                targetName: sibDoc.name || sibId,
+                targetDomain: sibDomain,
+                icon: '↔️',
+                message: `형제 "${sibDoc.name}" (${sibDomain})`,
+                defaultAction: sibDomain === newDomain ? 'keep' : 'sever',
+              });
+            });
+
+            // 나가는 참조 → 보존 (ID 불변이므로)
+            const refs = relations.references || [];
+            if (refs.length > 0) {
+              preserved.push({
+                type: 'references_out',
+                icon: '→',
+                message: `나가는 참조 ${refs.length}건 — ID 불변, 유지`,
+              });
+            }
+
+            // 들어오는 참조 → 컨플릭트 (참조자에게 알림 필요)
+            const incomingRefs = [];
+            Object.entries(store.documents).forEach(([id, d]) => {
+              if (id === docId) return;
+              if ((d.relations?.references || []).includes(docId)) {
+                incomingRefs.push({ id, name: d.name, domain: d.domain || 'GA-SALES' });
+              }
+            });
+            incomingRefs.forEach(ref => {
+              conflicts.push({
+                type: 'reference_in',
+                relType: 'reference_in',
+                targetId: ref.id,
+                targetName: ref.name,
+                targetDomain: ref.domain,
+                icon: '←',
+                message: `"${ref.name}" (${ref.domain})가 이 문서를 참조 중`,
+                defaultAction: 'keep',
+              });
+            });
+
+            // SUPERSEDES → 보존
+            if (relations.supersedes) {
+              preserved.push({
+                type: 'supersedes',
+                icon: '🔗',
+                message: `버전 이력 (SUPERSEDES) — 유지`,
+              });
+            }
+
+            return { autoResolved, preserved, conflicts };
+          }
+
+          function showMoveConfirm(docId, newDomain) {
             const doc = store.documents[docId];
             if (!doc) return;
             const oldDomain = doc.domain || 'GA-SALES';
             if (oldDomain === newDomain) return;
 
+            const impact = analyzeMoveImpact(docId, newDomain);
+            moveModal.docId = docId;
+            moveModal.docName = doc.name;
+            moveModal.oldDomain = oldDomain;
+            moveModal.newDomain = newDomain;
+            moveModal.impact = impact;
+            // 기본 해결책 설정
+            moveModal.resolutions = {};
+            impact.conflicts.forEach((c, i) => {
+              moveModal.resolutions[`${c.relType}:${c.targetId}`] = c.defaultAction;
+            });
+            moveModal.show = true;
+          }
+
+          function executeMoveWithResolution() {
+            const { docId, newDomain, resolutions, impact } = moveModal;
+            const doc = store.documents[docId];
+            if (!doc) return;
+            const oldDomain = doc.domain || 'GA-SALES';
+
+            // 1. 도메인 + classification 변경
             const newFacets = getDomainFacetIds(newDomain);
             doc.domain = newDomain;
-            doc.labels = ['Page', newDomain];
-
-            // 새 도메인 facets에 없는 classification 필드 제거
             const cls = doc.classification || {};
             const newCls = {};
             Object.entries(cls).forEach(([k, v]) => {
@@ -4191,8 +4475,64 @@
             doc.updatedAt = new Date().toISOString();
             if (typeof doc.version === 'object') doc.version.minor += 1;
 
+            // 2. 컨플릭트 해결 적용
+            let severedCount = 0;
+            let keptCount = 0;
+            impact.conflicts.forEach(c => {
+              const key = `${c.relType}:${c.targetId}`;
+              const action = resolutions[key] || c.defaultAction;
+
+              if (action === 'sever') {
+                severedCount++;
+                if (c.relType === 'parent') {
+                  // 부모 관계 해제
+                  doc.relations.parent = null;
+                  const parentDoc = store.documents[c.targetId];
+                  if (parentDoc?.relations?.children) {
+                    parentDoc.relations.children = parentDoc.relations.children.filter(id => id !== docId);
+                  }
+                } else if (c.relType === 'siblings') {
+                  // 형제 관계 양방향 해제
+                  doc.relations.siblings = (doc.relations.siblings || []).filter(id => id !== c.targetId);
+                  const sibDoc = store.documents[c.targetId];
+                  if (sibDoc?.relations?.siblings) {
+                    sibDoc.relations.siblings = sibDoc.relations.siblings.filter(id => id !== docId);
+                  }
+                } else if (c.relType === 'reference_in') {
+                  // 들어오는 참조 해제
+                  const refDoc = store.documents[c.targetId];
+                  if (refDoc?.relations?.references) {
+                    refDoc.relations.references = refDoc.relations.references.filter(id => id !== docId);
+                  }
+                }
+              } else {
+                keptCount++;
+              }
+            });
+
+            // 3. 자식 문서도 도메인 이동 (자동)
+            const children = doc.relations?.children || [];
+            children.forEach(childId => {
+              const childDoc = store.documents[childId];
+              if (childDoc) {
+                childDoc.domain = newDomain;
+                const childCls = childDoc.classification || {};
+                const childNewCls = {};
+                Object.entries(childCls).forEach(([k, v]) => {
+                  if (newFacets.has(k)) childNewCls[k] = v;
+                });
+                childDoc.classification = childNewCls;
+                childDoc.updatedAt = new Date().toISOString();
+              }
+            });
+
             saveStore();
-            showToast(`도메인 이동: ${oldDomain} → ${newDomain}`, 'success');
+            moveModal.show = false;
+
+            const msg = `이동 완료: ${oldDomain} → ${newDomain}` +
+              (severedCount > 0 ? ` (관계 해제 ${severedCount}건)` : '') +
+              (keptCount > 0 ? ` (관계 유지 ${keptCount}건)` : '');
+            showToast(msg, 'success');
           }
 
           function deleteDocument(id) {
@@ -4591,7 +4931,9 @@
             showAddDocModal,
             onDocModalDomainChange,
             createDocument,
-            moveDocumentDomain,
+            moveModal,
+            showMoveConfirm,
+            executeMoveWithResolution,
             deleteDocument,
             domainHasFacet,
             addSiblingRelation,
