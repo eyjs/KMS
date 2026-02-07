@@ -45,8 +45,16 @@ class GraphEngine:
         self.nodes = {}  # {id: node_dict}
         self.edges = []  # [{source, target, type}]
         self.domains = {}  # 등록된 도메인 정의
-        self.seq = 0
+        self._seq = 0
         self.history = []  # 변경 이력 (undo 가능)
+        # 구조 노드: 도메인의 계층 구조를 정의하는 노드 (카테고리 역할)
+        # facet_type을 가진 노드는 하위 문서의 classification에 해당 값을 전파
+        self.structure_nodes = {}  # {node_id: {"facet_type": "carrier", "facet_value": "INS-SAMSUNG"}}
+
+    def _next_id(self, prefix="PG"):
+        """위치 무관 자동 채번. ID에 분류 정보 넣지 않음."""
+        self._seq += 1
+        return f"{prefix}-{self._seq:06d}"
 
     # ── 도메인 등록 ──────────────────────────────────────────
 
@@ -62,27 +70,117 @@ class GraphEngine:
         self.domains[domain_id] = domain_def
         return True
 
+    # ── 위치 → classification 자동 유도 ────────────────────
+
+    def derive_classification(self, page_id):
+        """
+        부모 체인을 올라가며 classification을 자동 계산.
+        각 구조 노드가 facet_type/facet_value를 가지고 있으면
+        해당 값이 하위 문서의 classification에 자동 합성된다.
+
+        예) ROOT → [carrier:삼성생명] → [product:종신보험] → 문서
+            문서의 classification = {carrier: 삼성생명, product: 종신보험, docType: 자기값}
+        """
+        derived = {}
+        # 자기 자신의 구조 정보
+        if page_id in self.structure_nodes:
+            info = self.structure_nodes[page_id]
+            derived[info["facet_type"]] = info["facet_value"]
+
+        # 부모 체인 올라가며 수집
+        ancestors = self.propagate_up(page_id, max_depth=20)
+        for anc in ancestors:
+            anc_id = anc["id"]
+            if anc_id in self.structure_nodes:
+                info = self.structure_nodes[anc_id]
+                ft, fv = info["facet_type"], info["facet_value"]
+                if ft not in derived:  # 가장 가까운 조상 우선
+                    derived[ft] = fv
+
+        # 자기 노드에 docType이 있으면 추가
+        node = self.nodes.get(page_id)
+        if node:
+            cls = node["properties"].get("classification", {})
+            if "docType" in cls and "docType" not in derived:
+                derived["docType"] = cls["docType"]
+
+        return derived
+
     # ── CREATE ───────────────────────────────────────────────
 
-    def create_page(self, page_id, domain, classification, name,
-                    lifecycle="DRAFT", tier="WARM", parent_id=None,
-                    meta=None):
+    def create_page(self, page_id=None, domain=None, classification=None,
+                    name="", lifecycle="DRAFT", tier="WARM",
+                    parent_id=None, meta=None, auto_classify=False,
+                    facet_type=None, facet_value=None):
         """
         페이지(문서/카테고리) 생성.
+
+        개선된 점:
+        - page_id=None이면 자동 채번 (위치 무관 ID)
+        - auto_classify=True이면 부모 체인에서 classification 자동 유도
+        - facet_type/facet_value: 이 노드가 구조 노드(카테고리)일 때
+          하위 문서에 전파할 facet 정보
+
         프레임워크가 강제하는 것:
-        1. 고유 ID
+        1. 고유 ID (자동 채번 or 수동)
         2. 필수 필드 (domain, lifecycle, version, dates, classification)
         3. classification에 도메인 facets만 포함
         4. SSOT 검증 (같은 경로에 ACTIVE 문서 1개)
         """
-        # 1. 중복 ID 검증
+        # 1. ID: 자동 채번 또는 수동
+        if page_id is None:
+            page_id = self._next_id()
         assert page_id not in self.nodes, f"중복 ID: {page_id}"
 
         # 2. 도메인 존재 확인
         assert domain in self.domains, f"미등록 도메인: {domain}"
         domain_def = self.domains[domain]
 
-        # 3. classification 필드 검증 (도메인 facets에 정의된 것만 허용)
+        # 구조 노드 등록 (카테고리 역할)
+        if facet_type and facet_value:
+            self.structure_nodes[page_id] = {
+                "facet_type": facet_type,
+                "facet_value": facet_value,
+            }
+
+        # 부모 연결 (classification 유도 전에 먼저 연결)
+        if parent_id:
+            assert parent_id in self.nodes, f"부모 없음: {parent_id}"
+
+        # 3. classification: 자동 유도 또는 수동
+        if auto_classify and parent_id:
+            # 임시로 노드와 엣지를 먼저 등록해서 derive 가능하게
+            now = datetime.now().isoformat()
+            temp_node = {
+                "id": page_id,
+                "labels": ["Page", domain],
+                "properties": {
+                    "name": name,
+                    "domain": domain,
+                    "lifecycle": lifecycle,
+                    "version": {"major": 1, "minor": 0},
+                    "classification": classification or {},
+                    "meta": meta or {},
+                    "tier": tier,
+                    "createdAt": now,
+                    "updatedAt": now,
+                    "reviewedAt": now if lifecycle == "ACTIVE" else None,
+                }
+            }
+            self.nodes[page_id] = temp_node
+            self.edges.append({"source": parent_id, "target": page_id, "type": "PARENT_OF"})
+            self.edges.append({"source": page_id, "target": parent_id, "type": "CHILD_OF"})
+
+            derived = self.derive_classification(page_id)
+            # docType은 사용자가 직접 지정한 것 우선
+            if classification and "docType" in classification:
+                derived["docType"] = classification["docType"]
+            classification = derived
+            temp_node["properties"]["classification"] = classification
+        else:
+            classification = classification or {}
+
+        # 4. classification 필드 검증 (도메인 facets에 정의된 것만 허용)
         allowed_facets = {f["id"] for f in domain_def["facets"]}
         for field in classification:
             assert field in allowed_facets, \
@@ -93,37 +191,140 @@ class GraphEngine:
                 assert facet["id"] in classification, \
                     f"필수 facet '{facet['id']}' 누락"
 
-        # 4. SSOT 검증: ACTIVE로 생성할 경우
+        # 5. SSOT 검증: ACTIVE로 생성할 경우
         if lifecycle == "ACTIVE":
-            self._check_ssot(domain, classification, exclude_id=None)
+            self._check_ssot(domain, classification, exclude_id=page_id)
 
         now = datetime.now().isoformat()
-        node = {
-            "id": page_id,
-            "labels": ["Page", domain],
-            "properties": {
-                "name": name,
-                "domain": domain,
-                "lifecycle": lifecycle,
-                "version": {"major": 1, "minor": 0},
-                "classification": classification,
-                "meta": meta or {},
-                "tier": tier,
-                "createdAt": now,
-                "updatedAt": now,
-                "reviewedAt": now if lifecycle == "ACTIVE" else None,
+        if auto_classify and parent_id:
+            # 이미 등록됨 — 최종 classification만 갱신
+            self.nodes[page_id]["properties"]["classification"] = classification
+            node = self.nodes[page_id]
+        else:
+            node = {
+                "id": page_id,
+                "labels": ["Page", domain],
+                "properties": {
+                    "name": name,
+                    "domain": domain,
+                    "lifecycle": lifecycle,
+                    "version": {"major": 1, "minor": 0},
+                    "classification": classification,
+                    "meta": meta or {},
+                    "tier": tier,
+                    "createdAt": now,
+                    "updatedAt": now,
+                    "reviewedAt": now if lifecycle == "ACTIVE" else None,
+                }
             }
-        }
-        self.nodes[page_id] = node
+            self.nodes[page_id] = node
 
-        # 부모 연결
-        if parent_id:
-            assert parent_id in self.nodes, f"부모 없음: {parent_id}"
-            self.edges.append({"source": parent_id, "target": page_id, "type": "PARENT_OF"})
-            self.edges.append({"source": page_id, "target": parent_id, "type": "CHILD_OF"})
+            # 부모 연결
+            if parent_id:
+                self.edges.append({"source": parent_id, "target": page_id, "type": "PARENT_OF"})
+                self.edges.append({"source": page_id, "target": parent_id, "type": "CHILD_OF"})
 
         self.history.append(("CREATE", page_id, copy.deepcopy(node)))
         return node
+
+    # ── MOVE ─────────────────────────────────────────────────
+
+    def move_page(self, page_id, new_parent_id, new_domain=None):
+        """
+        페이지를 새 위치로 이동.
+        1. 기존 PARENT_OF/CHILD_OF 엣지 제거
+        2. 새 부모에 연결
+        3. classification 자동 재계산 (위치에서 유도)
+        4. 도메인 변경 시 facets 변환
+        5. 하위 페이지도 재귀적으로 classification 갱신
+        6. SSOT 재검증
+
+        핵심: ID는 안 바뀜. 참조(REFERENCE)도 안 깨짐.
+        """
+        assert page_id in self.nodes, f"페이지 없음: {page_id}"
+        assert new_parent_id in self.nodes, f"새 부모 없음: {new_parent_id}"
+
+        node = self.nodes[page_id]
+        old_domain = node["properties"]["domain"]
+        old_cls = copy.deepcopy(node["properties"]["classification"])
+
+        # 도메인 변경
+        target_domain = new_domain or old_domain
+        if target_domain not in self.domains:
+            raise AssertionError(f"미등록 도메인: {target_domain}")
+
+        # 1. 기존 부모 엣지 제거
+        self.edges = [e for e in self.edges
+                      if not (e["source"] == page_id and e["type"] == "CHILD_OF")
+                      and not (e["target"] == page_id and e["type"] == "PARENT_OF")]
+
+        # 2. 새 부모 연결
+        self.edges.append({"source": new_parent_id, "target": page_id, "type": "PARENT_OF"})
+        self.edges.append({"source": page_id, "target": new_parent_id, "type": "CHILD_OF"})
+
+        # 3. 도메인 갱신
+        node["properties"]["domain"] = target_domain
+        node["labels"] = ["Page", target_domain]
+
+        # 4. classification 자동 재계산
+        new_cls = self.derive_classification(page_id)
+        # docType은 유지 (문서 고유 속성)
+        if "docType" in old_cls:
+            new_cls["docType"] = old_cls["docType"]
+
+        # 새 도메인의 facets에 맞게 필터링
+        domain_def = self.domains[target_domain]
+        allowed_facets = {f["id"] for f in domain_def["facets"]}
+        filtered_cls = {k: v for k, v in new_cls.items() if k in allowed_facets}
+        node["properties"]["classification"] = filtered_cls
+
+        # 5. SSOT 검증 (ACTIVE인 경우)
+        if node["properties"]["lifecycle"] == "ACTIVE":
+            self._check_ssot(target_domain, filtered_cls, exclude_id=page_id)
+
+        node["properties"]["updatedAt"] = datetime.now().isoformat()
+        node["properties"]["version"]["minor"] += 1
+
+        # 6. 하위 페이지도 재귀적으로 classification 갱신
+        moved_ids = [page_id]
+        children = self.get_children(page_id)
+        for child in children:
+            child_id = child["id"]
+            self._reclassify_recursive(child_id, target_domain)
+            moved_ids.append(child_id)
+
+        self.history.append(("MOVE", page_id, {
+            "old_parent": "detached",
+            "new_parent": new_parent_id,
+            "old_domain": old_domain,
+            "new_domain": target_domain,
+            "old_cls": old_cls,
+            "new_cls": filtered_cls,
+            "affected": moved_ids,
+        }))
+        return node
+
+    def _reclassify_recursive(self, page_id, new_domain):
+        """하위 페이지의 classification을 위치 기반으로 재계산"""
+        node = self.nodes.get(page_id)
+        if not node:
+            return
+
+        old_cls = node["properties"].get("classification", {})
+        node["properties"]["domain"] = new_domain
+        node["labels"] = ["Page", new_domain]
+
+        new_cls = self.derive_classification(page_id)
+        if "docType" in old_cls:
+            new_cls["docType"] = old_cls["docType"]
+
+        domain_def = self.domains.get(new_domain, {})
+        allowed = {f["id"] for f in domain_def.get("facets", [])}
+        node["properties"]["classification"] = {k: v for k, v in new_cls.items() if k in allowed}
+        node["properties"]["updatedAt"] = datetime.now().isoformat()
+
+        for child in self.get_children(page_id):
+            self._reclassify_recursive(child["id"], new_domain)
 
     # ── READ ─────────────────────────────────────────────────
 
@@ -510,7 +711,7 @@ class StressTest:
 
     def test_01_domain_registration(self):
         """새 도메인 5개 등록 (메디코드 서비스)"""
-        print("\n[1/8] 도메인 등록...")
+        print("\n[1/10] 도메인 등록...")
 
         domains_to_register = {
             "MEDI-SALES": {
@@ -586,7 +787,7 @@ class StressTest:
 
     def test_02_massive_hierarchy(self):
         """카테고리 30 × 하위 20 × 문서 15 = 9,000+ 페이지"""
-        print("\n[2/8] 대량 계층 구조 생성...")
+        print("\n[2/10] 대량 계층 구조 생성...")
 
         services = [f"SVC-{i:03d}" for i in range(1, 31)]  # 30개 서비스
         stages = [f"STG-{i:02d}" for i in range(1, 21)]     # 20개 단계
@@ -656,7 +857,7 @@ class StressTest:
 
     def test_03_cross_references(self):
         """서비스 간, 도메인 간 대량 참조"""
-        print("\n[3/8] 크로스 참조 생성...")
+        print("\n[3/10] 크로스 참조 생성...")
 
         ref_count = 0
 
@@ -742,7 +943,7 @@ class StressTest:
 
     def test_04_crud_operations(self):
         """생성/수정/삭제/버전업 무결성"""
-        print("\n[4/8] CRUD 시뮬레이션...")
+        print("\n[4/10] CRUD 시뮬레이션...")
 
         # === CREATE: 이미 존재하는 ID로 생성 시도 → 거부 ===
         try:
@@ -882,7 +1083,7 @@ class StressTest:
 
     def test_05_integrity(self):
         """그래프 무결성 전체 검증"""
-        print("\n[5/8] 무결성 검증...")
+        print("\n[5/10] 무결성 검증...")
 
         stats = self.engine.stats()
 
@@ -965,7 +1166,7 @@ class StressTest:
 
     def test_06_propagation(self):
         """하향 전파, 상향 전파, 참조 전파"""
-        print("\n[6/8] 전파/역전파 테스트...")
+        print("\n[6/10] 전파/역전파 테스트...")
 
         # 하향 전파: SVC-001에서 모든 하위 수집
         descendants = self.engine.propagate_down("SVC-001")
@@ -1010,7 +1211,7 @@ class StressTest:
 
     def test_07_scoped_search(self):
         """도메인 / classification / lifecycle / tier 필터"""
-        print("\n[7/8] 범위 제한 검색...")
+        print("\n[7/10] 범위 제한 검색...")
 
         # 도메인 필터
         medi_sales = self.engine.search(domain="MEDI-SALES")
@@ -1068,7 +1269,7 @@ class StressTest:
 
     def test_08_agent_views(self):
         """AI 에이전트별 뷰 테스트"""
-        print("\n[8/8] AI 에이전트 권한 뷰...")
+        print("\n[8/10] AI 에이전트 권한 뷰...")
 
         # 계약 전문 에이전트
         contract_view = self.engine.agent_view("contract")
@@ -1114,6 +1315,380 @@ class StressTest:
         print(f"  ✓ 에이전트 간 중복: {len(overlap)}건")
 
     # ──────────────────────────────────────────────────────────
+    # 9. 자동 채번 + 위치 기반 자동 분류
+    # ──────────────────────────────────────────────────────────
+
+    def test_09_auto_id_and_classify(self):
+        """자동 채번 (위치 무관 ID) + 구조 노드 기반 classification 자동 유도"""
+        print("\n[9/10] 자동 채번 + 자동 분류...")
+
+        # === 자동 채번 테스트 ===
+        # page_id=None → PG-XXXXXX 형식 자동 생성
+        auto_page_1 = self.engine.create_page(
+            page_id=None,
+            domain="MEDI-EDU",
+            classification={"category": "CAT-AUTO-01", "docType": "DOC-EDU-01"},
+            name="자동 채번 테스트 1",
+            lifecycle="DRAFT",
+        )
+        auto_id_1 = auto_page_1["id"]
+        self.assert_test("자동 채번: PG- 접두사", auto_id_1.startswith("PG-"))
+        self.assert_test("자동 채번: 6자리 시퀀스", len(auto_id_1.split("-")[1]) == 6)
+
+        # 두 번째 자동 채번 → 시퀀스 단조 증가
+        auto_page_2 = self.engine.create_page(
+            page_id=None,
+            domain="MEDI-EDU",
+            classification={"category": "CAT-AUTO-02", "docType": "DOC-EDU-02"},
+            name="자동 채번 테스트 2",
+            lifecycle="DRAFT",
+        )
+        auto_id_2 = auto_page_2["id"]
+        seq_1 = int(auto_id_1.split("-")[1])
+        seq_2 = int(auto_id_2.split("-")[1])
+        self.assert_test("자동 채번: 시퀀스 단조 증가", seq_2 > seq_1)
+
+        # 자동 채번 ID로 조회 가능
+        fetched = self.engine.get_page(auto_id_1)
+        self.assert_test("자동 채번: ID로 조회 가능", fetched is not None and fetched["id"] == auto_id_1)
+
+        # === 구조 노드 + 자동 분류 테스트 ===
+        # MEDI-SALES에서 구조 트리:
+        #   ROOT-AUTO
+        #     └─ STRUCT-SVC-AUTO (facet: service=SVC-AUTO)
+        #         └─ STRUCT-STG-AUTO (facet: stage=STG-AUTO)
+        #             └─ auto_doc (auto_classify=True, docType만 직접)
+        self.engine.create_page(
+            page_id="ROOT-AUTO",
+            domain="MEDI-SALES",
+            classification={"service": "ROOT", "stage": "ROOT", "docType": "CATEGORY"},
+            name="자동분류 테스트 루트",
+            lifecycle="ACTIVE",
+            tier="COLD",
+        )
+        self.engine.create_page(
+            page_id="STRUCT-SVC-AUTO",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-AUTO", "stage": "ROOT", "docType": "CATEGORY"},
+            name="서비스: SVC-AUTO",
+            lifecycle="ACTIVE",
+            tier="COLD",
+            parent_id="ROOT-AUTO",
+            facet_type="service",
+            facet_value="SVC-AUTO",
+        )
+        self.engine.create_page(
+            page_id="STRUCT-STG-AUTO",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-AUTO", "stage": "STG-AUTO", "docType": "CATEGORY"},
+            name="단계: STG-AUTO",
+            lifecycle="ACTIVE",
+            tier="COLD",
+            parent_id="STRUCT-SVC-AUTO",
+            facet_type="stage",
+            facet_value="STG-AUTO",
+        )
+
+        # 자동 분류 문서: docType만 직접 지정, service/stage는 부모 체인에서 유도
+        auto_doc = self.engine.create_page(
+            page_id=None,  # 자동 채번
+            domain="MEDI-SALES",
+            classification={"docType": "DOC-AUTO-GUIDE"},
+            name="자동분류 가이드 문서",
+            lifecycle="DRAFT",
+            tier="WARM",
+            parent_id="STRUCT-STG-AUTO",
+            auto_classify=True,
+        )
+        auto_doc_cls = auto_doc["properties"]["classification"]
+        self.assert_test(
+            "자동 분류: service 유도",
+            auto_doc_cls.get("service") == "SVC-AUTO"
+        )
+        self.assert_test(
+            "자동 분류: stage 유도",
+            auto_doc_cls.get("stage") == "STG-AUTO"
+        )
+        self.assert_test(
+            "자동 분류: docType 유지",
+            auto_doc_cls.get("docType") == "DOC-AUTO-GUIDE"
+        )
+
+        # derive_classification 독립 검증
+        derived = self.engine.derive_classification(auto_doc["id"])
+        self.assert_test(
+            "derive_classification 일치",
+            derived.get("service") == "SVC-AUTO"
+            and derived.get("stage") == "STG-AUTO"
+            and derived.get("docType") == "DOC-AUTO-GUIDE"
+        )
+
+        # 자동 분류 두 번째 문서 (같은 부모 아래)
+        auto_doc_2 = self.engine.create_page(
+            page_id=None,
+            domain="MEDI-SALES",
+            classification={"docType": "DOC-AUTO-SCRIPT"},
+            name="자동분류 스크립트 문서",
+            lifecycle="DRAFT",
+            tier="HOT",
+            parent_id="STRUCT-STG-AUTO",
+            auto_classify=True,
+        )
+        auto_doc_2_cls = auto_doc_2["properties"]["classification"]
+        self.assert_test(
+            "자동 분류 2: 동일 부모에서 동일 service/stage",
+            auto_doc_2_cls.get("service") == "SVC-AUTO"
+            and auto_doc_2_cls.get("stage") == "STG-AUTO"
+            and auto_doc_2_cls.get("docType") == "DOC-AUTO-SCRIPT"
+        )
+
+        # 3단계 깊이 구조 노드 추가 테스트
+        self.engine.create_page(
+            page_id="STRUCT-SVC-DEEP",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-DEEP", "stage": "ROOT", "docType": "CATEGORY"},
+            name="서비스: DEEP",
+            lifecycle="ACTIVE",
+            tier="COLD",
+            parent_id="ROOT-AUTO",
+            facet_type="service",
+            facet_value="SVC-DEEP",
+        )
+        self.engine.create_page(
+            page_id="STRUCT-STG-DEEP",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-DEEP", "stage": "STG-DEEP-01", "docType": "CATEGORY"},
+            name="단계: DEEP-01",
+            lifecycle="ACTIVE",
+            tier="COLD",
+            parent_id="STRUCT-SVC-DEEP",
+            facet_type="stage",
+            facet_value="STG-DEEP-01",
+        )
+        deep_doc = self.engine.create_page(
+            page_id=None,
+            domain="MEDI-SALES",
+            classification={"docType": "DOC-DEEP-SPEC"},
+            name="딥 구조 문서",
+            lifecycle="DRAFT",
+            parent_id="STRUCT-STG-DEEP",
+            auto_classify=True,
+        )
+        deep_cls = deep_doc["properties"]["classification"]
+        self.assert_test(
+            "깊은 구조 자동 분류",
+            deep_cls.get("service") == "SVC-DEEP"
+            and deep_cls.get("stage") == "STG-DEEP-01"
+            and deep_cls.get("docType") == "DOC-DEEP-SPEC"
+        )
+
+        print(f"  ✓ 자동 채번: {auto_id_1}, {auto_id_2}, {auto_doc['id']}")
+        print(f"  ✓ 자동 분류: {auto_doc_cls}")
+        print(f"  ✓ 깊은 구조 분류: {deep_cls}")
+
+    # ──────────────────────────────────────────────────────────
+    # 10. 페이지 이동 시나리오
+    # ──────────────────────────────────────────────────────────
+
+    def test_10_move_scenarios(self):
+        """도메인 내/간 이동, 재귀적 재분류, 참조 안정성, SSOT 재검증"""
+        print("\n[10/10] 이동 시나리오...")
+
+        # === 준비: 이동 목적지 구조 노드 생성 ===
+        self.engine.create_page(
+            page_id="STRUCT-SVC-B",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-B", "stage": "ROOT", "docType": "CATEGORY"},
+            name="서비스 B",
+            lifecycle="ACTIVE",
+            parent_id="ROOT-AUTO",
+            facet_type="service",
+            facet_value="SVC-B",
+        )
+        self.engine.create_page(
+            page_id="STRUCT-STG-B",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-B", "stage": "STG-B", "docType": "CATEGORY"},
+            name="단계 B",
+            lifecycle="ACTIVE",
+            parent_id="STRUCT-SVC-B",
+            facet_type="stage",
+            facet_value="STG-B",
+        )
+
+        # === 1. 같은 도메인 내 이동 ===
+        self.engine.create_page(
+            page_id="MOVE-DOC-01",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-AUTO", "stage": "STG-AUTO", "docType": "DOC-MOVE-01"},
+            name="이동 테스트 문서",
+            lifecycle="DRAFT",
+            parent_id="STRUCT-STG-AUTO",
+        )
+        # 참조 추가 (이동 후에도 유지되어야 함)
+        self.engine.add_reference("MOVE-DOC-01", "CONTRACT-001")
+        ref_before = self.engine.get_references("MOVE-DOC-01", "outgoing")
+
+        # 이동: STG-AUTO → STG-B
+        moved = self.engine.move_page("MOVE-DOC-01", "STRUCT-STG-B")
+        moved_cls = moved["properties"]["classification"]
+
+        self.assert_test(
+            "도메인 내 이동: service 변경",
+            moved_cls.get("service") == "SVC-B"
+        )
+        self.assert_test(
+            "도메인 내 이동: stage 변경",
+            moved_cls.get("stage") == "STG-B"
+        )
+        self.assert_test(
+            "도메인 내 이동: docType 유지",
+            moved_cls.get("docType") == "DOC-MOVE-01"
+        )
+        self.assert_test(
+            "이동 후 ID 불변",
+            moved["id"] == "MOVE-DOC-01"
+        )
+
+        # 참조 안정성
+        ref_after = self.engine.get_references("MOVE-DOC-01", "outgoing")
+        self.assert_test(
+            "이동 후 참조 유지",
+            len(ref_after) == len(ref_before) and len(ref_after) > 0
+        )
+
+        # 부모 변경 확인
+        new_parent = self.engine.get_parent("MOVE-DOC-01")
+        self.assert_test(
+            "이동 후 새 부모",
+            new_parent is not None and new_parent["id"] == "STRUCT-STG-B"
+        )
+
+        # 버전 minor 증가
+        self.assert_test(
+            "이동 후 버전 minor 증가",
+            moved["properties"]["version"]["minor"] > 0
+        )
+
+        # === 2. 하위 페이지 포함 이동 (재귀적 재분류) ===
+        self.engine.create_page(
+            page_id="MOVE-PARENT",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-AUTO", "stage": "STG-AUTO", "docType": "SUBCATEGORY"},
+            name="이동할 부모",
+            lifecycle="ACTIVE",
+            parent_id="STRUCT-STG-AUTO",
+        )
+        self.engine.create_page(
+            page_id="MOVE-CHILD-01",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-AUTO", "stage": "STG-AUTO", "docType": "DOC-CHILD-01"},
+            name="자식 문서 1",
+            lifecycle="DRAFT",
+            parent_id="MOVE-PARENT",
+        )
+        self.engine.create_page(
+            page_id="MOVE-CHILD-02",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-AUTO", "stage": "STG-AUTO", "docType": "DOC-CHILD-02"},
+            name="자식 문서 2",
+            lifecycle="DRAFT",
+            parent_id="MOVE-PARENT",
+        )
+
+        # 부모를 STG-B로 이동 → 자식도 재분류
+        self.engine.move_page("MOVE-PARENT", "STRUCT-STG-B")
+
+        child_1_cls = self.engine.get_page("MOVE-CHILD-01")["properties"]["classification"]
+        child_2_cls = self.engine.get_page("MOVE-CHILD-02")["properties"]["classification"]
+        child_1_domain = self.engine.get_page("MOVE-CHILD-01")["properties"]["domain"]
+
+        self.assert_test(
+            "재귀 재분류: 자식1 service=SVC-B",
+            child_1_cls.get("service") == "SVC-B"
+        )
+        self.assert_test(
+            "재귀 재분류: 자식1 stage=STG-B",
+            child_1_cls.get("stage") == "STG-B"
+        )
+        self.assert_test(
+            "재귀 재분류: 자식2 docType 유지",
+            child_2_cls.get("docType") == "DOC-CHILD-02"
+        )
+        self.assert_test(
+            "재귀 재분류: 자식 도메인 동기화",
+            child_1_domain == "MEDI-SALES"
+        )
+
+        # === 3. 크로스 도메인 이동 (MEDI-SALES → MEDI-EDU) ===
+        # MEDI-EDU 루트 (구조 노드: category 값 제공)
+        self.engine.create_page(
+            page_id="EDU-ROOT",
+            domain="MEDI-EDU",
+            classification={"category": "CAT-GENERAL", "docType": "CATEGORY"},
+            name="교육 루트",
+            lifecycle="ACTIVE",
+            facet_type="category",
+            facet_value="CAT-GENERAL",
+        )
+
+        # 이동 대상: MEDI-SALES 문서
+        self.engine.create_page(
+            page_id="CROSS-MOVE-01",
+            domain="MEDI-SALES",
+            classification={"service": "SVC-AUTO", "stage": "STG-AUTO", "docType": "DOC-CROSS-01"},
+            name="크로스 도메인 이동 문서",
+            lifecycle="DRAFT",
+            parent_id="STRUCT-STG-AUTO",
+        )
+
+        # 이동: MEDI-SALES → MEDI-EDU
+        self.engine.move_page("CROSS-MOVE-01", "EDU-ROOT", new_domain="MEDI-EDU")
+        cross_node = self.engine.get_page("CROSS-MOVE-01")
+        cross_cls = cross_node["properties"]["classification"]
+        cross_domain = cross_node["properties"]["domain"]
+
+        self.assert_test(
+            "크로스 도메인: 도메인 변경",
+            cross_domain == "MEDI-EDU"
+        )
+        self.assert_test(
+            "크로스 도메인: service 제거 (MEDI-EDU facets에 없음)",
+            "service" not in cross_cls
+        )
+        self.assert_test(
+            "크로스 도메인: stage 제거",
+            "stage" not in cross_cls
+        )
+        self.assert_test(
+            "크로스 도메인: docType 유지",
+            cross_cls.get("docType") == "DOC-CROSS-01"
+        )
+        self.assert_test(
+            "크로스 도메인: category 유도 (구조 노드에서)",
+            cross_cls.get("category") == "CAT-GENERAL"
+        )
+
+        # === 4. 이동 이력 검증 ===
+        move_history = [h for h in self.engine.history if h[0] == "MOVE"]
+        self.assert_test(
+            f"이동 이력 기록: {len(move_history)}건",
+            len(move_history) >= 3  # DOC-01 이동 + PARENT 이동 + CROSS 이동
+        )
+
+        # 이력에 old/new 정보 포함
+        last_move = move_history[-1]
+        self.assert_test(
+            "이동 이력: old/new 도메인 기록",
+            "old_domain" in last_move[2] and "new_domain" in last_move[2]
+        )
+
+        print(f"  ✓ 도메인 내 이동: SVC-AUTO/STG-AUTO → SVC-B/STG-B")
+        print(f"  ✓ 재귀적 재분류: 자식 2개 자동 갱신")
+        print(f"  ✓ 크로스 도메인: MEDI-SALES → MEDI-EDU (facet 필터링 + category 유도)")
+        print(f"  ✓ ID 안정성 + 참조 안정성 + 이력 기록 확인")
+
+    # ──────────────────────────────────────────────────────────
     # 실행
     # ──────────────────────────────────────────────────────────
 
@@ -1133,6 +1708,8 @@ class StressTest:
         self.test_06_propagation()
         self.test_07_scoped_search()
         self.test_08_agent_views()
+        self.test_09_auto_id_and_classify()
+        self.test_10_move_scenarios()
 
         elapsed = time.time() - start
         stats = self.engine.stats()
