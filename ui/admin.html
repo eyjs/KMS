@@ -1583,13 +1583,6 @@
           </div>
 
           <div v-if="selectedDoc" class="p-4 space-y-4">
-            <div>
-              <label class="text-xs font-medium text-gray-500">문서 ID</label>
-              <div class="text-sm text-gray-800 font-mono bg-gray-50 p-2 rounded mt-1 break-all">
-                {{ selectedDocId }}
-              </div>
-            </div>
-
             <!-- 라이프사이클 상태 -->
             <div>
               <label class="text-xs font-medium text-gray-500">라이프사이클</label>
@@ -1621,12 +1614,22 @@
               </div>
             </div>
 
-            <!-- 도메인 + 버전 -->
+            <!-- 도메인 + 버전 + ID -->
+            <div>
+              <label class="text-xs font-medium text-gray-500">도메인</label>
+              <select
+                :value="selectedDoc.domain || 'GA-SALES'"
+                @change="showMoveConfirm(selectedDocId, $event.target.value); $event.target.value = selectedDoc.domain || 'GA-SALES'"
+                class="w-full mt-1 px-3 py-2 border border-indigo-200 rounded-lg text-sm bg-indigo-50"
+              >
+                <option v-for="(d, id) in store.domains" :key="id" :value="id">{{ d.name }}</option>
+              </select>
+            </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="text-xs font-medium text-gray-500">도메인</label>
-                <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700">
-                  {{ selectedDoc.domain || 'GA-SALES' }}
+                <label class="text-xs font-medium text-gray-500">문서 ID</label>
+                <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-500 font-mono">
+                  {{ selectedDocId }}
                 </div>
               </div>
               <div>
@@ -1647,8 +1650,8 @@
               />
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-              <div>
+            <div class="grid grid-cols-2 gap-3" v-if="domainHasFacet(selectedDoc.domain || 'GA-SALES', 'carrier') || domainHasFacet(selectedDoc.domain || 'GA-SALES', 'product')">
+              <div v-if="domainHasFacet(selectedDoc.domain || 'GA-SALES', 'carrier')">
                 <label class="text-xs font-medium text-gray-500">보험사</label>
                 <select
                   :value="getDocCarrier(selectedDoc)"
@@ -1658,7 +1661,7 @@
                   <option v-for="(c, id) in store.taxonomy.carriers" :key="id" :value="id">{{ c.name }}</option>
                 </select>
               </div>
-              <div>
+              <div v-if="domainHasFacet(selectedDoc.domain || 'GA-SALES', 'product')">
                 <label class="text-xs font-medium text-gray-500">상품</label>
                 <select
                   :value="getDocProduct(selectedDoc)"
@@ -1932,8 +1935,24 @@
         <div class="bg-white rounded-xl shadow-2xl w-[500px] p-6">
           <h3 class="text-lg font-bold mb-4">새 문서 생성</h3>
           <div class="space-y-3">
-            <div class="grid grid-cols-2 gap-3">
-              <div>
+            <!-- 도메인 선택 (필수 — facets 결정) -->
+            <div>
+              <label class="text-xs font-medium text-gray-500">도메인</label>
+              <select
+                v-model="docModal.data.domain"
+                @change="onDocModalDomainChange"
+                class="w-full mt-1 px-3 py-2 border border-indigo-300 rounded-lg text-sm bg-indigo-50"
+              >
+                <option v-for="(d, id) in store.domains" :key="id" :value="id">{{ d.name }}</option>
+              </select>
+              <div class="mt-1 text-xs text-gray-400">
+                SSOT: {{ (store.domains[docModal.data.domain]?.ssotKey || []).join(' × ') }}
+              </div>
+            </div>
+
+            <!-- 보험사/상품 (도메인 facets에 따라 표시) -->
+            <div class="grid grid-cols-2 gap-3" v-if="domainHasFacet(docModal.data.domain, 'carrier') || domainHasFacet(docModal.data.domain, 'product')">
+              <div v-if="domainHasFacet(docModal.data.domain, 'carrier')">
                 <label class="text-xs font-medium text-gray-500">보험사</label>
                 <select
                   v-model="docModal.data.carrier"
@@ -1944,7 +1963,7 @@
                   <option v-for="(c, id) in store.taxonomy.carriers" :key="id" :value="id">{{ c.name }}</option>
                 </select>
               </div>
-              <div>
+              <div v-if="domainHasFacet(docModal.data.domain, 'product')">
                 <label class="text-xs font-medium text-gray-500">상품</label>
                 <select
                   v-model="docModal.data.product"
@@ -2031,11 +2050,28 @@
         @click.self="uploadPreview.show = false"
       >
         <div class="bg-white rounded-xl shadow-2xl w-[520px] p-6">
-          <h3 class="text-lg font-bold mb-2">자동 분류 결과</h3>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-bold">자동 분류 결과</h3>
+            <span v-if="uploadPreview.sessionCount > 0" class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium">
+              이번 세션: {{ uploadPreview.sessionCount }}건 등록
+            </span>
+          </div>
           <div class="text-sm text-gray-500 mb-4">파일: {{ uploadPreview.filename }}</div>
 
           <div class="space-y-3">
+            <!-- 도메인 선택 -->
             <div>
+              <label class="text-xs font-medium text-gray-500">도메인</label>
+              <select
+                v-model="uploadPreview.data.domain"
+                @change="onUploadDomainChange"
+                class="w-full mt-1 px-3 py-2 border border-indigo-200 rounded-lg text-sm bg-indigo-50"
+              >
+                <option v-for="(d, id) in store.domains" :key="id" :value="id">{{ d.name }}</option>
+              </select>
+            </div>
+            <!-- 보험사 (도메인 facet에 있을 때만) -->
+            <div v-if="domainHasFacet(uploadPreview.data.domain, 'carrier')">
               <div class="flex items-center justify-between">
                 <label class="text-xs font-medium text-gray-500">보험사</label>
                 <span
@@ -2055,7 +2091,8 @@
                 <option v-for="(c, id) in store.taxonomy.carriers" :key="id" :value="id">{{ c.name }}</option>
               </select>
             </div>
-            <div>
+            <!-- 상품 (도메인 facet에 있을 때만) -->
+            <div v-if="domainHasFacet(uploadPreview.data.domain, 'product')">
               <div class="flex items-center justify-between">
                 <label class="text-xs font-medium text-gray-500">상품</label>
                 <span
@@ -2075,6 +2112,7 @@
                 <option v-for="(p, id) in store.taxonomy.products" :key="id" :value="id">{{ p.name }}</option>
               </select>
             </div>
+            <!-- 문서유형 (모든 도메인 공통) -->
             <div>
               <div class="flex items-center justify-between">
                 <label class="text-xs font-medium text-gray-500">문서유형</label>
@@ -2101,26 +2139,162 @@
 
             <!-- 중복 경고 -->
             <div v-if="uploadPreview.duplicateWarning" class="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div class="text-sm font-medium text-red-700">중복 문서 존재!</div>
+              <div class="text-sm font-medium text-red-700">SSOT 위반!</div>
               <div class="text-xs text-red-600 mt-1">{{ uploadPreview.duplicateWarning }}</div>
             </div>
           </div>
           <div class="flex gap-2 mt-6">
             <button
               @click="uploadPreview.show = false"
-              class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+              class="py-2 px-4 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
             >
               취소
             </button>
             <button
-              @click="createFromUpload"
-              :disabled="uploadPreview.duplicateWarning || !uploadPreview.data.carrier || !uploadPreview.data.product || !uploadPreview.data.docType"
-              :class="(uploadPreview.duplicateWarning || !uploadPreview.data.carrier || !uploadPreview.data.product || !uploadPreview.data.docType) ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
+              @click="createFromUpload(false)"
+              :disabled="uploadPreview.duplicateWarning || !uploadPreview.data.docType"
+              :class="(uploadPreview.duplicateWarning || !uploadPreview.data.docType) ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
               class="flex-1 py-2 text-white rounded-lg text-sm font-medium"
             >
-              문서 생성
+              등록
+            </button>
+            <button
+              @click="createFromUpload(true)"
+              :disabled="uploadPreview.duplicateWarning || !uploadPreview.data.docType"
+              :class="(uploadPreview.duplicateWarning || !uploadPreview.data.docType) ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
+              class="flex-1 py-2 text-white rounded-lg text-sm font-medium"
+            >
+              등록 + 다음 파일
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 이동 확인 모달 (git conflict 방식) -->
+    <div
+      v-if="moveModal.show"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      @click.self="moveModal.show = false"
+    >
+      <div class="bg-white rounded-xl shadow-2xl w-[600px] max-h-[80vh] overflow-y-auto p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+            <span class="text-lg">📦</span>
+          </div>
+          <div>
+            <h3 class="text-lg font-bold text-gray-800">도메인 이동 확인</h3>
+            <p class="text-xs text-gray-500">관계 영향을 검토하고 해결 방법을 선택하세요</p>
+          </div>
+        </div>
+
+        <!-- 이동 요약 -->
+        <div class="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
+          <div class="font-medium text-gray-700">{{ moveModal.docName }}</div>
+          <div class="flex items-center gap-2 mt-1 text-xs text-gray-500">
+            <span class="px-2 py-0.5 bg-red-100 text-red-700 rounded">{{ moveModal.oldDomain }}</span>
+            <span>→</span>
+            <span class="px-2 py-0.5 bg-green-100 text-green-700 rounded">{{ moveModal.newDomain }}</span>
+          </div>
+        </div>
+
+        <!-- 자동 처리 (Auto-resolved) -->
+        <div v-if="moveModal.impact.autoResolved.length > 0" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="w-5 h-5 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
+            <span class="text-sm font-medium text-green-700">자동 처리 ({{ moveModal.impact.autoResolved.length }}건)</span>
+          </div>
+          <div class="space-y-1 ml-7">
+            <div
+              v-for="(item, idx) in moveModal.impact.autoResolved"
+              :key="'auto-'+idx"
+              class="text-xs text-gray-600 flex items-center gap-2 py-1"
+            >
+              <span>{{ item.icon }}</span>
+              <span>{{ item.message }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 보존됨 (Preserved) -->
+        <div v-if="moveModal.impact.preserved.length > 0" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">═</span>
+            <span class="text-sm font-medium text-blue-700">유지됨 ({{ moveModal.impact.preserved.length }}건)</span>
+          </div>
+          <div class="space-y-1 ml-7">
+            <div
+              v-for="(item, idx) in moveModal.impact.preserved"
+              :key="'keep-'+idx"
+              class="text-xs text-gray-600 flex items-center gap-2 py-1"
+            >
+              <span>{{ item.icon }}</span>
+              <span>{{ item.message }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 컨플릭트 (관리자 결정 필요) -->
+        <div v-if="moveModal.impact.conflicts.length > 0" class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="w-5 h-5 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-xs font-bold">!</span>
+            <span class="text-sm font-medium text-orange-700">관리자 결정 필요 ({{ moveModal.impact.conflicts.length }}건)</span>
+          </div>
+          <div class="space-y-2 ml-7">
+            <div
+              v-for="(conflict, idx) in moveModal.impact.conflicts"
+              :key="'conflict-'+idx"
+              class="border rounded-lg p-3"
+              :class="moveModal.resolutions[conflict.relType+':'+conflict.targetId] === 'sever' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-xs text-gray-700">
+                  <span>{{ conflict.icon }}</span>
+                  <span>{{ conflict.message }}</span>
+                </div>
+                <div class="flex gap-1 ml-2 flex-shrink-0">
+                  <button
+                    @click="moveModal.resolutions[conflict.relType+':'+conflict.targetId] = 'keep'"
+                    :class="moveModal.resolutions[conflict.relType+':'+conflict.targetId] === 'keep' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    class="px-2 py-1 text-xs rounded font-medium transition"
+                  >
+                    유지
+                  </button>
+                  <button
+                    @click="moveModal.resolutions[conflict.relType+':'+conflict.targetId] = 'sever'"
+                    :class="moveModal.resolutions[conflict.relType+':'+conflict.targetId] === 'sever' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    class="px-2 py-1 text-xs rounded font-medium transition"
+                  >
+                    해제
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 컨플릭트 없으면 안내 -->
+        <div
+          v-if="moveModal.impact.conflicts.length === 0 && moveModal.impact.autoResolved.length === 0 && moveModal.impact.preserved.length === 0"
+          class="text-center py-6 text-sm text-gray-500"
+        >
+          이 문서에는 연결된 관계가 없습니다. 바로 이동할 수 있습니다.
+        </div>
+
+        <!-- 버튼 -->
+        <div class="flex gap-2 mt-6 pt-4 border-t border-gray-100">
+          <button
+            @click="moveModal.show = false"
+            class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition"
+          >
+            취소
+          </button>
+          <button
+            @click="executeMoveWithResolution()"
+            class="flex-1 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition"
+          >
+            이동 실행
+          </button>
         </div>
       </div>
     </div>
@@ -2153,12 +2327,55 @@
           COMMON: { name: '공통', description: '전사 공통 규제/시스템' },
         },
         domains: {
-          'GA-SALES': { business: 'GA', function: 'SALES', name: 'GA 영업/상담', ssotKey: ['carrier', 'product', 'docType'] },
-          'GA-COMM': { business: 'GA', function: 'COMM', name: 'GA 수수료/정산', ssotKey: ['carrier', 'product', 'docType'] },
-          'GA-CONTRACT': { business: 'GA', function: 'CONTRACT', name: 'GA 계약관리', ssotKey: ['carrier', 'product', 'docType'] },
-          'GA-COMP': { business: 'GA', function: 'COMP', name: 'GA 컴플라이언스', ssotKey: ['carrier', 'docType'] },
-          'GA-EDU': { business: 'GA', function: 'EDU', name: 'GA 교육/역량', ssotKey: ['docType'] },
-          'COMMON-COMP': { business: 'COMMON', function: 'COMP', name: '공통 규제/법률', ssotKey: ['docType'] },
+          'GA-SALES': {
+            business: 'GA', function: 'SALES', name: 'GA 영업/상담',
+            ssotKey: ['carrier', 'product', 'docType'],
+            facets: [
+              { id: 'carrier', name: '보험사', required: true },
+              { id: 'product', name: '상품', required: true },
+              { id: 'docType', name: '문서유형', required: true },
+            ],
+          },
+          'GA-COMM': {
+            business: 'GA', function: 'COMM', name: 'GA 수수료/정산',
+            ssotKey: ['carrier', 'product', 'docType'],
+            facets: [
+              { id: 'carrier', name: '보험사', required: true },
+              { id: 'product', name: '상품', required: true },
+              { id: 'docType', name: '문서유형', required: true },
+            ],
+          },
+          'GA-CONTRACT': {
+            business: 'GA', function: 'CONTRACT', name: 'GA 계약관리',
+            ssotKey: ['carrier', 'product', 'docType'],
+            facets: [
+              { id: 'carrier', name: '보험사', required: true },
+              { id: 'product', name: '상품', required: true },
+              { id: 'docType', name: '문서유형', required: true },
+            ],
+          },
+          'GA-COMP': {
+            business: 'GA', function: 'COMP', name: 'GA 컴플라이언스',
+            ssotKey: ['carrier', 'docType'],
+            facets: [
+              { id: 'carrier', name: '보험사', required: true },
+              { id: 'docType', name: '문서유형', required: true },
+            ],
+          },
+          'GA-EDU': {
+            business: 'GA', function: 'EDU', name: 'GA 교육/역량',
+            ssotKey: ['docType'],
+            facets: [
+              { id: 'docType', name: '문서유형', required: true },
+            ],
+          },
+          'COMMON-COMP': {
+            business: 'COMMON', function: 'COMP', name: '공통 규제/법률',
+            ssotKey: ['docType'],
+            facets: [
+              { id: 'docType', name: '문서유형', required: true },
+            ],
+          },
         },
         docTypeDomainMap: {
           'DOC-TERMS': 'GA-SALES', 'DOC-TERMS-SPECIAL': 'GA-SALES', 'DOC-GUIDE': 'GA-SALES',
@@ -2315,11 +2532,32 @@
           const uploadPreview = reactive({
             show: false,
             filename: '',
-            data: {},
+            data: {},       // { domain, carrier, product, docType, version }
             confidence: {},
             duplicateWarning: null,
+            sessionCount: 0,            // 세션 내 업로드 카운터
+            stickyContext: {             // 이전 선택값 유지
+              domain: 'GA-SALES',
+              carrier: '',
+              product: '',
+            },
           });
           const highlightedDocs = ref([]);
+
+          // 이동 확인 모달 (git conflict 방식)
+          const moveModal = reactive({
+            show: false,
+            docId: null,
+            docName: '',
+            oldDomain: '',
+            newDomain: '',
+            impact: {
+              autoResolved: [],  // 자동 처리됨
+              preserved: [],     // 유지됨 (ID 불변)
+              conflicts: [],     // 관리자 검토 필요
+            },
+            resolutions: {},     // { 'siblings:DOC-ID': 'keep'|'sever' }
+          });
           const toasts = ref([]);
 
           // 라이프사이클 필터
@@ -2350,6 +2588,45 @@
             if (!doc.meta) doc.meta = {};
             doc.meta[key] = val;
             doc[key] = val;
+          }
+
+          // === 도메인 facets 헬퍼 ===
+          function getDomainFacetIds(domain) {
+            const domainDef = store.domains[domain];
+            return new Set((domainDef?.facets || []).map(f => f.id));
+          }
+          function domainHasFacet(domain, facetId) {
+            return getDomainFacetIds(domain).has(facetId);
+          }
+
+          // === 자동 채번 ===
+          function generateDocId() {
+            store._docSeq = (store._docSeq || 0) + 1;
+            return `PG-${String(store._docSeq).padStart(6, '0')}`;
+          }
+          function initDocSeq() {
+            let maxSeq = Object.keys(store.documents).length;
+            Object.keys(store.documents).forEach(id => {
+              const match = id.match(/^PG-(\d+)$/);
+              if (match) maxSeq = Math.max(maxSeq, parseInt(match[1]));
+            });
+            store._docSeq = maxSeq;
+          }
+
+          // === 도메인별 SSOT 검증 ===
+          function checkSsotViolation(domain, classification, excludeId = null) {
+            const domainDef = store.domains[domain];
+            const ssotKey = domainDef?.ssotKey || ['carrier', 'product', 'docType'];
+            const myPath = ssotKey.map(k => classification[k] || '').join('|');
+            const dup = Object.entries(store.documents).find(([id, d]) => {
+              if (excludeId && id === excludeId) return false;
+              if ((d.lifecycle || 'ACTIVE') !== 'ACTIVE') return false;
+              if ((d.domain || 'GA-SALES') !== domain) return false;
+              const cls = d.classification || d;
+              const otherPath = ssotKey.map(k => cls[k] || d[k] || '').join('|');
+              return myPath === otherPath;
+            });
+            return dup ? dup[1] : null;
           }
 
           // === 신선도 계산 ===
@@ -2384,12 +2661,18 @@
             doc.updatedAt = new Date().toISOString();
             // SSOT: ACTIVE 전환 시 동일 경로의 다른 ACTIVE → DEPRECATED
             if (nextState === 'ACTIVE') {
-              const carrier = getDocCarrier(doc);
-              const product = getDocProduct(doc);
-              const docType = getDocDocType(doc);
+              const domain = doc.domain || 'GA-SALES';
+              const domainDef = store.domains[domain];
+              const ssotKey = domainDef?.ssotKey || ['carrier', 'product', 'docType'];
+              const cls = doc.classification || doc;
+              const myPath = ssotKey.map(k => cls[k] || doc[k] || '').join('|');
               Object.entries(store.documents).forEach(([id, d]) => {
                 if (id === docId) return;
-                if (getDocCarrier(d) === carrier && getDocProduct(d) === product && getDocDocType(d) === docType && d.lifecycle === 'ACTIVE') {
+                if ((d.domain || 'GA-SALES') !== domain) return;
+                if (d.lifecycle !== 'ACTIVE') return;
+                const dCls = d.classification || d;
+                const otherPath = ssotKey.map(k => dCls[k] || d[k] || '').join('|');
+                if (myPath === otherPath) {
                   d.lifecycle = 'DEPRECATED';
                   d.updatedAt = new Date().toISOString();
                 }
@@ -2622,7 +2905,11 @@
             Object.entries(store.documents).forEach(([id, doc]) => {
               // SSOT: 동일 경로에 ACTIVE 2개 이상 → 위반
               if ((doc.lifecycle || 'ACTIVE') !== 'ACTIVE') return;
-              const key = `${getDocCarrier(doc)}|${getDocProduct(doc)}|${getDocDocType(doc)}`;
+              const domain = doc.domain || 'GA-SALES';
+              const domainDef = store.domains[domain];
+              const ssotKey = domainDef?.ssotKey || ['carrier', 'product', 'docType'];
+              const cls = doc.classification || doc;
+              const key = domain + '|' + ssotKey.map(k => cls[k] || doc[k] || '').join('|');
               if (!groups[key]) groups[key] = [];
               groups[key].push({ id, name: doc.name });
             });
@@ -2815,6 +3102,7 @@
           // 초기화
           onMounted(() => {
             loadStore();
+            initDocSeq();
             nextTick(() => {
               initGraph();
             });
@@ -2839,6 +3127,7 @@
                 }
               });
               if (migrated) saveStore();
+              initDocSeq();
             } else {
               // data/taxonomy.json 또는 data/knowledge-graph.json 로드 시도
               Promise.all([
@@ -2860,6 +3149,7 @@
                   Object.assign(store.documents, graphMigrated.documents);
                 }
                 saveStore();
+                initDocSeq();
                 rebuildGraph();
               });
             }
@@ -3765,13 +4055,19 @@
           }
 
           function checkDocModalDuplicate() {
-            const { carrier, product, docType } = docModal.data;
-            if (!carrier || !product || !docType) {
+            const { domain, carrier, product, docType } = docModal.data;
+            const domainDef = store.domains[domain];
+            const ssotKey = domainDef?.ssotKey || ['carrier', 'product', 'docType'];
+            const vals = { carrier, product, docType };
+            // ssotKey의 모든 필드가 채워져야 검증
+            if (!ssotKey.every(k => vals[k])) {
               docModal.duplicateWarning = null;
               return;
             }
-            const dup = checkDuplicate(carrier, product, docType);
-            docModal.duplicateWarning = dup ? `이미 존재: ${dup.name}` : null;
+            const classification = {};
+            ssotKey.forEach(k => { classification[k] = vals[k]; });
+            const dup = checkSsotViolation(domain, classification);
+            docModal.duplicateWarning = dup ? `SSOT 위반: ${dup.name} (ACTIVE)` : null;
           }
 
           function handleFileUpload(event) {
@@ -3868,45 +4164,69 @@
               version = (version ? version + ', ' : '') + `버전 ${verMatch[1]}`;
             }
 
-            // 중복 체크
-            let dupWarning = null;
-            if (carrier && product && docType) {
-              const dup = checkDuplicate(carrier, product, docType);
-              if (dup) dupWarning = `이미 존재: ${dup.name}`;
-            }
+            // 스티키 컨텍스트: 파일명에서 못 잡은 항목은 이전 선택값 유지
+            const sticky = uploadPreview.stickyContext;
+            if (!carrier && sticky.carrier) { carrier = sticky.carrier; carrierConf = 0; }
+            if (!product && sticky.product) { product = sticky.product; productConf = 0; }
+
+            // 도메인 결정: docType 기반 또는 스티키
+            const domain = store.docTypeDomainMap?.[docType] || sticky.domain || 'GA-SALES';
 
             uploadPreview.show = true;
             uploadPreview.filename = filename;
-            uploadPreview.data = { carrier, product, docType, version };
+            uploadPreview.data = { domain, carrier, product, docType, version };
             uploadPreview.confidence = { carrier: carrierConf, product: productConf, docType: docTypeConf };
-            uploadPreview.duplicateWarning = dupWarning;
+            uploadPreview.duplicateWarning = null;
+
+            // 도메인별 SSOT 중복 체크
+            checkUploadDuplicate();
 
             event.target.value = '';
           }
 
+          function onUploadDomainChange() {
+            // 도메인 바뀌면 해당 도메인에 없는 facet 값 초기화
+            const d = uploadPreview.data.domain;
+            if (!domainHasFacet(d, 'carrier')) uploadPreview.data.carrier = '';
+            if (!domainHasFacet(d, 'product')) uploadPreview.data.product = '';
+            checkUploadDuplicate();
+          }
+
           function checkUploadDuplicate() {
-            const { carrier, product, docType } = uploadPreview.data;
-            if (!carrier || !product || !docType) {
+            const { domain, carrier, product, docType } = uploadPreview.data;
+            if (!docType) {
               uploadPreview.duplicateWarning = null;
               return;
             }
-            const dup = checkDuplicate(carrier, product, docType);
-            uploadPreview.duplicateWarning = dup ? `이미 존재: ${dup.name}` : null;
+            // 도메인별 SSOT 키로 중복 체크
+            const classification = { docType };
+            if (domainHasFacet(domain, 'carrier') && carrier) classification.carrier = carrier;
+            if (domainHasFacet(domain, 'product') && product) classification.product = product;
+            const dup = checkSsotViolation(domain, classification);
+            uploadPreview.duplicateWarning = dup ? `SSOT 위반 — 동일 경로에 ACTIVE 문서: ${dup.name}` : null;
           }
 
-          function createFromUpload() {
-            const { carrier, product, docType } = uploadPreview.data;
-            if (!carrier || !product || !docType) return;
+          function createFromUpload(continueNext) {
+            const { domain, carrier, product, docType } = uploadPreview.data;
+            if (!docType) return;
             if (uploadPreview.duplicateWarning) return;
 
-            const count = Object.keys(store.documents).length + 1;
-            const id = `${docType}-${carrier}-${product}-${String(count).padStart(3, '0')}`;
+            const id = generateDocId();
             const carrierObj = store.taxonomy.carriers[carrier];
             const productObj = store.taxonomy.products[product];
             const docTypeObj = store.taxonomy.docTypes[docType];
-            const domain = store.docTypeDomainMap?.[docType] || 'GA-SALES';
+            const facetIds = getDomainFacetIds(domain);
 
-            const docName = `${carrierObj?.name || carrier} ${productObj?.name || product} ${docTypeObj?.name || docType}`;
+            // 도메인 facets에 맞는 classification만 구성
+            const classification = { docType };
+            if (facetIds.has('carrier') && carrier) classification.carrier = carrier;
+            if (facetIds.has('product') && product) classification.product = product;
+
+            const nameParts = [];
+            if (classification.carrier) nameParts.push(carrierObj?.name || carrier);
+            if (classification.product) nameParts.push(productObj?.name || product);
+            nameParts.push(docTypeObj?.name || docType);
+            const docName = nameParts.join(' ');
 
             store.documents[id] = {
               id,
@@ -3914,9 +4234,8 @@
               domain: domain,
               lifecycle: 'DRAFT',
               version: { major: 1, minor: 0 },
-              classification: { carrier, product, docType },
+              classification,
               meta: { process: '', audience: '' },
-              carrier, product, docType,
               tier: docTypeObj?.tier || 'COLD',
               content: '',
               relations: { parent: null, children: [], siblings: [], references: [], supersedes: null, supersededBy: null },
@@ -3925,10 +4244,26 @@
               reviewedAt: null,
             };
 
+            // 스티키 컨텍스트 업데이트 (다음 업로드 시 유지)
+            uploadPreview.stickyContext.domain = domain;
+            if (carrier) uploadPreview.stickyContext.carrier = carrier;
+            if (product) uploadPreview.stickyContext.product = product;
+            uploadPreview.sessionCount += 1;
+
             saveStore();
             selectDocument(id);
-            uploadPreview.show = false;
-            showToast(`문서 생성: ${docName}`, 'success');
+            showToast(`문서 생성 (${id}): ${docName} [${uploadPreview.sessionCount}건째]`, 'success');
+
+            if (continueNext) {
+              // 모달 유지 + 파일 선택기 열기
+              uploadPreview.show = false;
+              nextTick(() => {
+                const fileInput = document.querySelector('input[type="file"]');
+                if (fileInput) fileInput.click();
+              });
+            } else {
+              uploadPreview.show = false;
+            }
           }
 
           function showAddModal(type) {
@@ -3969,29 +4304,56 @@
 
           function showAddDocModal() {
             docModal.show = true;
-            docModal.data = { carrier: '', product: '', docType: '', process: '', audience: '', name: '' };
+            docModal.data = { domain: 'GA-SALES', carrier: '', product: '', docType: '', process: '', audience: '', name: '' };
             docModal.duplicateWarning = null;
           }
 
-          function createDocument() {
-            const { carrier, product, docType, process, audience, name } = docModal.data;
-            if (!carrier || !product || !docType) {
-              return showToast('보험사, 상품, 문서유형을 선택하세요', 'error');
+          function onDocModalDomainChange() {
+            // 도메인 변경 시 해당 도메인에 없는 facet 값 초기화
+            const domain = docModal.data.domain;
+            if (!domainHasFacet(domain, 'carrier')) docModal.data.carrier = '';
+            if (!domainHasFacet(domain, 'product')) docModal.data.product = '';
+            // docType 기반 도메인 자동 매핑 (역방향)
+            if (docModal.data.docType) {
+              const mappedDomain = store.docTypeDomainMap?.[docModal.data.docType];
+              if (mappedDomain && mappedDomain !== domain) {
+                docModal.data.docType = '';
+              }
             }
+            checkDocModalDuplicate();
+          }
+
+          function createDocument() {
+            const { domain, carrier, product, docType, process, audience, name } = docModal.data;
+            const domainDef = store.domains[domain];
+            const facetIds = getDomainFacetIds(domain);
+
+            // 필수 facet 검증
+            if (facetIds.has('carrier') && !carrier) return showToast('보험사를 선택하세요', 'error');
+            if (facetIds.has('product') && !product) return showToast('상품을 선택하세요', 'error');
+            if (!docType) return showToast('문서유형을 선택하세요', 'error');
 
             if (docModal.duplicateWarning) {
               return showToast('중복 문서가 존재합니다', 'error');
             }
 
-            const count = Object.keys(store.documents).length + 1;
-            const id = `${docType}-${carrier}-${product}-${String(count).padStart(3, '0')}`;
+            // 자동 채번 (위치 무관 ID)
+            const id = generateDocId();
             const docTypeObj = store.taxonomy.docTypes[docType];
             const carrierObj = store.taxonomy.carriers[carrier];
             const productObj = store.taxonomy.products[product];
-            const domain = store.docTypeDomainMap?.[docType] || 'GA-SALES';
 
-            const docName =
-              name || `${carrierObj?.name || carrier} ${productObj?.name || product} ${docTypeObj?.name || docType}`;
+            // 도메인 facets에 맞는 classification만 구성
+            const classification = { docType };
+            if (facetIds.has('carrier')) classification.carrier = carrier;
+            if (facetIds.has('product')) classification.product = product;
+
+            // 문서명 자동 생성
+            const nameParts = [];
+            if (classification.carrier) nameParts.push(carrierObj?.name || carrier);
+            if (classification.product) nameParts.push(productObj?.name || product);
+            nameParts.push(docTypeObj?.name || docType);
+            const docName = name || nameParts.join(' ');
 
             store.documents[id] = {
               id,
@@ -3999,9 +4361,8 @@
               domain: domain,
               lifecycle: 'DRAFT',
               version: { major: 1, minor: 0 },
-              classification: { carrier, product, docType },
+              classification,
               meta: { process: process || '', audience: audience || '' },
-              carrier, product, docType,
               tier: docTypeObj?.tier || 'COLD',
               content: '',
               relations: { parent: null, children: [], siblings: [], references: [], supersedes: null, supersededBy: null },
@@ -4013,7 +4374,228 @@
             saveStore();
             selectDocument(id);
             docModal.show = false;
-            showToast('문서가 생성되었습니다', 'success');
+            showToast(`문서 생성 (${id})`, 'success');
+          }
+
+          // === 이동 영향 분석 (git conflict 방식) ===
+          function analyzeMoveImpact(docId, newDomain) {
+            const doc = store.documents[docId];
+            if (!doc) return null;
+            const oldDomain = doc.domain || 'GA-SALES';
+            const relations = doc.relations || {};
+            const newFacets = getDomainFacetIds(newDomain);
+            const oldFacets = getDomainFacetIds(oldDomain);
+
+            const autoResolved = [];
+            const preserved = [];
+            const conflicts = [];
+
+            // 제거될 classification 필드
+            const removedFields = [];
+            Object.keys(doc.classification || {}).forEach(k => {
+              if (!newFacets.has(k)) removedFields.push(k);
+            });
+            if (removedFields.length > 0) {
+              autoResolved.push({
+                type: 'classification',
+                icon: '🔄',
+                message: `classification 필드 제거: ${removedFields.join(', ')} (${newDomain} facets에 없음)`,
+              });
+            }
+
+            // 부모 관계
+            if (relations.parent) {
+              const parentDoc = store.documents[relations.parent];
+              const parentDomain = parentDoc?.domain || 'GA-SALES';
+              if (parentDomain !== newDomain) {
+                conflicts.push({
+                  type: 'parent',
+                  relType: 'parent',
+                  targetId: relations.parent,
+                  targetName: parentDoc?.name || relations.parent,
+                  targetDomain: parentDomain,
+                  icon: '⬆️',
+                  message: `부모 "${parentDoc?.name}" (${parentDomain}) — 도메인이 달라짐`,
+                  defaultAction: 'sever',
+                });
+              } else {
+                preserved.push({
+                  type: 'parent',
+                  icon: '⬆️',
+                  message: `부모 "${parentDoc?.name}" — 같은 도메인, 유지`,
+                });
+              }
+            }
+
+            // 자식 관계
+            const children = relations.children || [];
+            if (children.length > 0) {
+              const childNames = children.map(cid => store.documents[cid]?.name || cid).slice(0, 3);
+              const more = children.length > 3 ? ` 외 ${children.length - 3}건` : '';
+              autoResolved.push({
+                type: 'children',
+                icon: '⬇️',
+                message: `자식 ${children.length}건 함께 이동: ${childNames.join(', ')}${more}`,
+              });
+            }
+
+            // 형제 관계 → 컨플릭트
+            const siblings = relations.siblings || [];
+            siblings.forEach(sibId => {
+              const sibDoc = store.documents[sibId];
+              if (!sibDoc) return;
+              const sibDomain = sibDoc.domain || 'GA-SALES';
+              conflicts.push({
+                type: 'sibling',
+                relType: 'siblings',
+                targetId: sibId,
+                targetName: sibDoc.name || sibId,
+                targetDomain: sibDomain,
+                icon: '↔️',
+                message: `형제 "${sibDoc.name}" (${sibDomain})`,
+                defaultAction: sibDomain === newDomain ? 'keep' : 'sever',
+              });
+            });
+
+            // 나가는 참조 → 보존 (ID 불변이므로)
+            const refs = relations.references || [];
+            if (refs.length > 0) {
+              preserved.push({
+                type: 'references_out',
+                icon: '→',
+                message: `나가는 참조 ${refs.length}건 — ID 불변, 유지`,
+              });
+            }
+
+            // 들어오는 참조 → 컨플릭트 (참조자에게 알림 필요)
+            const incomingRefs = [];
+            Object.entries(store.documents).forEach(([id, d]) => {
+              if (id === docId) return;
+              if ((d.relations?.references || []).includes(docId)) {
+                incomingRefs.push({ id, name: d.name, domain: d.domain || 'GA-SALES' });
+              }
+            });
+            incomingRefs.forEach(ref => {
+              conflicts.push({
+                type: 'reference_in',
+                relType: 'reference_in',
+                targetId: ref.id,
+                targetName: ref.name,
+                targetDomain: ref.domain,
+                icon: '←',
+                message: `"${ref.name}" (${ref.domain})가 이 문서를 참조 중`,
+                defaultAction: 'keep',
+              });
+            });
+
+            // SUPERSEDES → 보존
+            if (relations.supersedes) {
+              preserved.push({
+                type: 'supersedes',
+                icon: '🔗',
+                message: `버전 이력 (SUPERSEDES) — 유지`,
+              });
+            }
+
+            return { autoResolved, preserved, conflicts };
+          }
+
+          function showMoveConfirm(docId, newDomain) {
+            const doc = store.documents[docId];
+            if (!doc) return;
+            const oldDomain = doc.domain || 'GA-SALES';
+            if (oldDomain === newDomain) return;
+
+            const impact = analyzeMoveImpact(docId, newDomain);
+            moveModal.docId = docId;
+            moveModal.docName = doc.name;
+            moveModal.oldDomain = oldDomain;
+            moveModal.newDomain = newDomain;
+            moveModal.impact = impact;
+            // 기본 해결책 설정
+            moveModal.resolutions = {};
+            impact.conflicts.forEach((c, i) => {
+              moveModal.resolutions[`${c.relType}:${c.targetId}`] = c.defaultAction;
+            });
+            moveModal.show = true;
+          }
+
+          function executeMoveWithResolution() {
+            const { docId, newDomain, resolutions, impact } = moveModal;
+            const doc = store.documents[docId];
+            if (!doc) return;
+            const oldDomain = doc.domain || 'GA-SALES';
+
+            // 1. 도메인 + classification 변경
+            const newFacets = getDomainFacetIds(newDomain);
+            doc.domain = newDomain;
+            const cls = doc.classification || {};
+            const newCls = {};
+            Object.entries(cls).forEach(([k, v]) => {
+              if (newFacets.has(k)) newCls[k] = v;
+            });
+            doc.classification = newCls;
+            doc.updatedAt = new Date().toISOString();
+            if (typeof doc.version === 'object') doc.version.minor += 1;
+
+            // 2. 컨플릭트 해결 적용
+            let severedCount = 0;
+            let keptCount = 0;
+            impact.conflicts.forEach(c => {
+              const key = `${c.relType}:${c.targetId}`;
+              const action = resolutions[key] || c.defaultAction;
+
+              if (action === 'sever') {
+                severedCount++;
+                if (c.relType === 'parent') {
+                  // 부모 관계 해제
+                  doc.relations.parent = null;
+                  const parentDoc = store.documents[c.targetId];
+                  if (parentDoc?.relations?.children) {
+                    parentDoc.relations.children = parentDoc.relations.children.filter(id => id !== docId);
+                  }
+                } else if (c.relType === 'siblings') {
+                  // 형제 관계 양방향 해제
+                  doc.relations.siblings = (doc.relations.siblings || []).filter(id => id !== c.targetId);
+                  const sibDoc = store.documents[c.targetId];
+                  if (sibDoc?.relations?.siblings) {
+                    sibDoc.relations.siblings = sibDoc.relations.siblings.filter(id => id !== docId);
+                  }
+                } else if (c.relType === 'reference_in') {
+                  // 들어오는 참조 해제
+                  const refDoc = store.documents[c.targetId];
+                  if (refDoc?.relations?.references) {
+                    refDoc.relations.references = refDoc.relations.references.filter(id => id !== docId);
+                  }
+                }
+              } else {
+                keptCount++;
+              }
+            });
+
+            // 3. 자식 문서도 도메인 이동 (자동)
+            const children = doc.relations?.children || [];
+            children.forEach(childId => {
+              const childDoc = store.documents[childId];
+              if (childDoc) {
+                childDoc.domain = newDomain;
+                const childCls = childDoc.classification || {};
+                const childNewCls = {};
+                Object.entries(childCls).forEach(([k, v]) => {
+                  if (newFacets.has(k)) childNewCls[k] = v;
+                });
+                childDoc.classification = childNewCls;
+                childDoc.updatedAt = new Date().toISOString();
+              }
+            });
+
+            saveStore();
+            moveModal.show = false;
+
+            const msg = `이동 완료: ${oldDomain} → ${newDomain}` +
+              (severedCount > 0 ? ` (관계 해제 ${severedCount}건)` : '') +
+              (keptCount > 0 ? ` (관계 유지 ${keptCount}건)` : '');
+            showToast(msg, 'success');
           }
 
           function deleteDocument(id) {
@@ -4410,8 +4992,13 @@
             showAddModal,
             addTaxonomy,
             showAddDocModal,
+            onDocModalDomainChange,
             createDocument,
+            moveModal,
+            showMoveConfirm,
+            executeMoveWithResolution,
             deleteDocument,
+            domainHasFacet,
             addSiblingRelation,
             removeSiblingRelation,
             addReference,
@@ -4426,6 +5013,7 @@
             getDocCountByProduct,
             getDocsByProduct,
             checkUploadDuplicate,
+            onUploadDomainChange,
             createFromUpload,
             exportData,
             importData,
