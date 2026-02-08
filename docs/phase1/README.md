@@ -4,6 +4,26 @@
 
 ---
 
+## 문서 구조
+
+```
+docs/phase1/
+├── project-overview.md    ← 1. 기획서 (큰그림, 문제, 해결)
+├── framework-spec.md      ← 2. 아키텍처 설계서 (구현 상세)
+├── domain-template.md     ← 3. 도메인 추가 템플릿
+├── ga-domain-example.md   ← 4. GA 도메인 구현 예시
+└── README.md              ← 5. 실행 가이드 (현재 문서)
+```
+
+| 순서 | 문서 | 목적 | 대상 |
+|------|------|------|------|
+| 1 | **project-overview.md** | 왜 만드는가? 무엇을 해결하는가? | 의사결정자, 신규 합류자 |
+| 2 | **framework-spec.md** | 어떻게 만드는가? (구현 명세) | 개발자, 설계자 |
+| 3 | **domain-template.md** | 새 도메인 어떻게 추가? | 도메인 전문가 |
+| 4 | **ga-domain-example.md** | 첫 번째 구현 사례 | 개발자 |
+
+---
+
 ## 1. 목표
 
 **JSON 기반 문서관리 프레임워크의 분류체계를 검증한다.**
@@ -43,17 +63,27 @@
 
 ## 4. 산출물
 
+### 문서 산출물
+
+| 산출물 | 파일 | 역할 |
+|--------|------|------|
+| 프로젝트 기획서 | `project-overview.md` | 큰그림, 문제, 해결 방안 |
+| 아키텍처 설계서 | `framework-spec.md` | 구현 명세 (What + How) |
+| 도메인 템플릿 | `domain-template.md` | 새 도메인 추가 가이드 |
+| GA 도메인 예시 | `ga-domain-example.md` | 첫 번째 구현 사례 |
+| 검증 결과 | `results/` | 온톨로지 검증 결과 |
+
+### 코드 산출물
+
 | 산출물 | 파일 | 역할 |
 |--------|------|------|
 | 시스템+도메인 정의 | `src/taxonomy.py` | 프레임워크의 마스터 정의 |
 | 온톨로지 메타데이터 | `src/ontology.py` | 클래스 계층, 개념, 관계 |
 | 문서 템플릿 | `src/doc_templates.py` | 60+ 문서 내용 템플릿 |
 | 지식 그래프 생성 | `src/simulator.py` | 검증용 데이터 생성기 |
-| 온톨로지 그래프 | `src/simulator_ontology.py` | @type 포함 그래프 생성 |
 | 데이터 검증 | `src/verifier.py` | 무결성 검증 |
 | 구조 검증 | `src/ontology_validator.py` | 온톨로지 6/6 테스트 |
 | 관리 UI | `ui/admin-v3.html` | 계층 탐색 Admin 페이지 |
-| 검증 결과 | `docs/phase1/results/` | 온톨로지 검증 결과 |
 
 ---
 

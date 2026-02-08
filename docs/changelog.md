@@ -2,6 +2,47 @@
 
 ---
 
+## v3.1 (2026-02-08) - Phase 2 구현 준비
+
+> Phase 2 구현 전 문서 정비 및 설계 확정
+
+### 핵심 변경
+
+| 항목 | v3.0 | v3.1 |
+|------|------|------|
+| **라이프사이클** | 6단계 | 3단계 (DRAFT, ACTIVE, DEPRECATED) |
+| **DB 스키마** | 파편화됨 | 정본 1개로 통합 (`phase2/database-schema.md`) |
+| **문서 구조** | 중복/불일치 | 정본 참조로 일관성 확보 |
+
+### 라이프사이클 단순화
+
+```
+v3.0: DRAFT → REVIEW → ACTIVE → STALE → DEPRECATED → ARCHIVED (6단계)
+v3.1: DRAFT → ACTIVE → DEPRECATED (3단계)
+```
+
+| 제거된 상태 | 사유 |
+|------------|------|
+| REVIEW | Phase 2에서는 워크플로우 불필요 |
+| STALE | 신선도는 경고 지표로만 사용 |
+| ARCHIVED | DEPRECATED로 충분 |
+
+> REVIEW, STALE, ARCHIVED는 Phase 3에서 재검토
+
+### 정본 데이터베이스 스키마 생성
+
+- `docs/phase2/database-schema.md` 신규: ERD (Mermaid) + 완전한 DDL
+- 모든 문서가 이 정본을 참조하도록 동기화
+- 트리거 4개: 순환 참조 방지, SSOT 검증, 해시 자동 생성, 타임스탬프 갱신
+
+### 문서 정리
+
+- 레거시 파일 삭제 (Neo4j/Qdrant 관련)
+- 주체별 보고서 생성 (`reports/` 폴더)
+- CLAUDE.md, framework-guide.md 동기화
+
+---
+
 ## v3.0 (2026-02-08) - 프레임워크 전환
 
 > 보험 특화 → 도메인 무관 프레임워크로 아키텍처 전환

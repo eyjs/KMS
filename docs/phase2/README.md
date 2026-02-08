@@ -1,163 +1,248 @@
-# Phase 2: 백엔드 구축
+# Phase 2: 문서 체계 관리 시스템
 
-> **Version** 3.0 | 2026-02 | 예정 단계
+> **Version** 3.1 | 2026-02-08 | 현재 단계
 
 ---
 
 ## 1. 목표
 
-**전사 지식관리 시스템의 백엔드 인프라를 구축한다.**
+**문서 체계 관리 시스템을 구축한다.**
 
-Phase 1에서 검증된 분류체계를 실제 데이터베이스와 API로 구현:
-- Vue 3 앱 + REST API 서버
-- Neo4j 그래프 DB로 관계 탐색
-- Qdrant 벡터 DB로 시맨틱 검색
+Phase 1에서 검증된 분류체계를 실제 시스템으로 구현:
+- 문서 업로드/저장/분류/관계 관리
+- 문서 뷰어 (PDF, Markdown, CSV)
+- 외부 시스템용 API 제공
+- 데이터 주권 확보
 
----
-
-## 2. 기술 스택
-
-| 영역 | 기술 | 비고 |
-|------|------|------|
-| 프론트엔드 | Vue 3 + Vue Router + Pinia | 회사 표준 |
-| API 서버 | Node.js (Express) | Vue 생태계 |
-| 그래프 DB | Neo4j | 관계 탐색 |
-| 벡터 DB | Qdrant | 시맨틱 검색 |
-| 파일 저장 | NAS / Blob Storage | 원본 문서 |
+> **핵심 결정**: 문서 처리(파싱, NLP, 벡터화)는 외주에 위임하고, 체계 관리에 집중한다.
 
 ---
 
-## 3. API 설계
+## 2. 범위
 
-### 3.1 문서 조회
+### 포함 (직접 구현)
+
+| 기능 | 상세 |
+|------|------|
+| 파일 업로드 | PDF, Markdown, CSV만 허용 |
+| 분류 관리 | 보험사/상품/문서유형 선택 |
+| 관계 관리 | 부모-자식, 참조, 대체 관계 |
+| 라이프사이클 | DRAFT → ACTIVE → DEPRECATED |
+| SSOT 보장 | 중복 문서 경고 |
+| 문서 뷰어 | PDF, Markdown, CSV 인라인 뷰어 |
+| 관계 그래프 | vis-network 시각화 |
+| 외부 API | REST API + API Key 인증 |
+
+### 제외 (외주 위임)
+
+| 기능 | 사유 |
+|------|------|
+| PDF 텍스트 추출 | Python 필요, 역량 부재 |
+| 한글 NLP | Python 필요, 역량 부재 |
+| 벡터 DB 구축 | 데이터 엔지니어링 영역 |
+| RAG/챗봇 | Phase 3 또는 외주 |
+
+---
+
+## 3. 기술 스택
+
+| 영역 | 기술 | 버전 | 선정 이유 |
+|------|------|------|----------|
+| Frontend | Vue 3 | 3.4+ | 회사 표준 |
+| UI | Element Plus | 2.x | Vue 3 호환 |
+| 빌드 | Vite | 5.x | Vue 공식 |
+| Backend | ASP.NET Core | 8.0 LTS | IT팀 운영 가능 |
+| ORM | EF Core | 8.x | MS 공식 |
+| Database | PostgreSQL | 16 | 무료, JSONB |
+| PDF 뷰어 | pdf.js | - | 오픈소스 |
+| MD 뷰어 | marked.js | - | 경량 |
+| 그래프 | vis-network | 9.x | Phase 1 검증됨 |
+
+---
+
+## 4. 허용 파일 형식
+
+| 형식 | 허용 | 뷰어 | 사유 |
+|------|------|------|------|
+| **PDF** | O | pdf.js | 표준 문서 형식 |
+| **Markdown** | O | marked.js | 텍스트 기반, 버전관리 용이 |
+| **CSV** | O | 테이블 렌더링 | 데이터 표준 형식 |
+| Word | X | - | 형식 복잡, 뷰어 불안정 |
+| PPT | X | - | 형식 복잡, 뷰어 불안정 |
+| Excel | X | - | CSV로 변환 권장 |
+
+---
+
+## 5. 데이터베이스 설계
+
+> **정본**: `database-schema.md` 참조
+
+### 핵심 테이블
+
+| 테이블 | 설명 |
+|--------|------|
+| `users` | 사용자 (JWT 인증용) |
+| `domain_master` | 도메인 정의 + 필수 facet |
+| `facet_master` | 분류 마스터 + 신선도 설정 |
+| `documents` | 문서 메타데이터 |
+| `classifications` | 문서별 분류 (EAV) |
+| `relations` | 문서 간 관계 |
+| `document_history` | 변경 이력 |
+| `api_keys` | 외부 API 인증 |
+
+### 주요 컬럼 추가 (기존 대비)
+
+| 테이블 | 추가 컬럼 | 용도 |
+|--------|----------|------|
+| documents | `reviewed_at` | 신선도 계산 기준 |
+| documents | `version_major/minor` | 버전 관리 |
+| documents | `row_version` | 동시성 제어 |
+| documents | `created_by/updated_by` | 감사 추적 |
+| facet_master | `tier`, `max_age_days` | 신선도 설정 |
+| relations | `id` (UUID) | 단일 키 삭제용 |
+
+### 라이프사이클 (확정)
 
 ```
-GET /documents?carrier={}&product={}&doc_type={}
-GET /documents/{id}
-GET /documents/{id}/neighbors?depth={}
+DRAFT → ACTIVE → DEPRECATED (3단계)
 ```
 
-### 3.2 분류 데이터
+| 상태 | 설명 |
+|------|------|
+| DRAFT | 작성 중 |
+| ACTIVE | 유효한 문서 |
+| DEPRECATED | 만료됨 |
+
+> REVIEW, STALE, ARCHIVED는 Phase 3에서 검토
+
+---
+
+## 6. API 설계
+
+> **상세**: `reports/report-developer.md` 참조
+
+### 내부 API (Admin)
 
 ```
-GET /domains
-GET /domains/{id}/facets
-GET /domains/{id}/masters   # carrier, product 목록
+인증
+POST   /api/auth/login                 JWT 발급
+POST   /api/auth/refresh               토큰 갱신
+
+문서
+POST   /api/documents                  업로드
+GET    /api/documents                  목록 (?domain=&lifecycle=&page=&size=)
+GET    /api/documents/{id}             상세
+PUT    /api/documents/{id}             수정 (row_version 필수)
+DELETE /api/documents/{id}             삭제 (논리)
+PATCH  /api/documents/{id}/lifecycle   상태 변경
+PATCH  /api/documents/{id}/review      검토일 갱신
+
+파일/관계
+GET    /api/documents/{id}/file        다운로드
+GET    /api/documents/{id}/preview     미리보기
+GET    /api/documents/{id}/relations   관계 목록 (?depth=1)
+POST   /api/relations                  관계 생성
+DELETE /api/relations/{id}             관계 삭제
+
+분류
+GET    /api/taxonomy/{facetType}       분류 목록
+GET    /api/domains                    도메인 목록
 ```
 
-### 3.3 관계 탐색
+### 외부 API (외주용)
 
 ```
-GET /documents/{id}/relations?type={}
-GET /documents/{id}/propagate?depth={}
-```
+GET /api/v1/documents                  목록 (필터, 페이징)
+GET /api/v1/documents/{id}             메타데이터
+GET /api/v1/documents/{id}/file        원본 다운로드
+GET /api/v1/documents/{id}/relations   관계 조회
+GET /api/v1/taxonomy/{type}            분류 목록
 
-### 3.4 라이프사이클
-
-```
-PATCH /documents/{id}/status
-POST /documents/{id}/review
-POST /documents/{id}/supersede
+인증: X-API-Key 헤더
 ```
 
 ---
 
-## 4. 데이터 모델
+## 7. 파일 저장 구조
 
-### 4.1 Neo4j 노드
-
-```cypher
-// 문서 노드
-CREATE (d:Document {
-  id: "DOC-001",
-  domain: "GA-SALES",
-  lifecycle: "ACTIVE",
-  version: {major: 1, minor: 0},
-  createdAt: datetime(),
-  updatedAt: datetime()
-})
-
-// 분류 속성
-SET d.carrier = "INS-SAMSUNG"
-SET d.product = "PRD-LIFE-WHOLE"
-SET d.docType = "DOC-TERMS"
-SET d.tier = "COLD"
 ```
-
-### 4.2 관계
-
-```cypher
-// 부모-자식
-(parent)-[:PARENT_OF]->(child)
-(child)-[:CHILD_OF]->(parent)
-
-// 형제
-(doc1)-[:SIBLING]->(doc2)
-
-// 참조 (크로스 도메인 가능)
-(doc1)-[:REFERENCE]->(doc2)
-
-// 버전 대체
-(new)-[:SUPERSEDES]->(old)
+storage/
+├── originals/              # 원본 파일
+│   └── {domain}/
+│       └── {year}/
+│           └── {id}.{ext}
+│
+├── thumbnails/             # 미리보기 (선택)
+│   └── {id}.png
+│
+└── extracted/              # Phase 3용 (비워둠)
 ```
 
 ---
 
-## 5. 문서 파이프라인
+## 8. 개발 일정
 
-```
-[업로드]
-    │
-    ▼
-[파일명 파싱] → 보험사/상품/유형 자동 추출
-    │
-    ▼
-[중복 검사] → SSOT 위반 시 경고
-    │
-    ▼
-[메타데이터 입력] → 분류 확정 + 관계 설정
-    │
-    ▼
-[텍스트 추출] → PDF/HWP 파싱
-    │
-    ▼
-[청킹] → 문서유형별 전략 적용
-    │
-    ▼
-[임베딩] → Qdrant 저장
-    │
-    ▼
-[활성화] → lifecycle = ACTIVE
-```
+| 주차 | 마일스톤 |
+|------|---------|
+| W1-2 | 환경 구축, DB 스키마 |
+| W3-4 | 문서 CRUD, 파일 업로드 |
+| W5-6 | 관계 관리, 순환 방지 |
+| W7-8 | Admin UI, 뷰어 |
+| W9-10 | 외부 API, 인증 |
+| W11-12 | 테스트, 안정화 |
+
+**총 기간: 3개월**
 
 ---
 
-## 6. Hot-Warm-Cold 인덱스 분리
-
-| 티어 | Qdrant Collection | 재인덱싱 | 문서유형 |
-|------|------------------|---------|---------|
-| HOT | `idx_hot` | 매일 | 시책, 수수료, 보험료표 |
-| WARM | `idx_warm` | 주간 | 상품설명서, 스크립트, 심사가이드 |
-| COLD | `idx_cold` | 분기 | 약관, 교육자료, 규정 |
-
----
-
-## 7. 완료 기준
+## 9. 완료 기준
 
 | 기준 | 상태 |
 |------|------|
-| Vue 앱 기본 구조 구축 | 예정 |
-| REST API 엔드포인트 구현 | 예정 |
-| Neo4j 스키마 및 데이터 마이그레이션 | 예정 |
-| Qdrant 벡터 인덱스 구축 | 예정 |
-| 문서 업로드 파이프라인 동작 | 예정 |
-| SSOT 유니크 제약 DB 레벨 적용 | 예정 |
+| 파일 업로드 (PDF/MD/CSV) | 예정 |
+| 분류 CRUD | 예정 |
+| 관계 CRUD + 순환 방지 | 예정 |
+| 라이프사이클 상태 머신 | 예정 |
+| SSOT 유니크 제약 | 예정 |
+| PDF/MD/CSV 뷰어 | 예정 |
+| 관계 그래프 시각화 | 예정 |
+| 외부 API + 인증 | 예정 |
+| IT팀 운영 이관 | 예정 |
 
 ---
 
-## 8. 다음 단계
+## 10. 외주 연동 구조
 
-Phase 2 완료 후 → **Phase 3: RAG 시스템 연동**
-- 자연어 → API 변환
-- 벡터 검색 + 그래프 탐색 통합
-- LLM 응답 생성 + 출처 인용
+```
+┌─────────────────────────────────────┐
+│           우리 시스템 (KMS)           │
+│                                     │
+│  문서 저장 + 분류 + 관계 + 뷰어       │
+│  API 제공 (/api/v1/*)               │
+└──────────────┬──────────────────────┘
+               │
+         [REST API]
+               │
+    ┌──────────┴──────────┐
+    ▼                     ▼
+┌─────────┐          ┌─────────┐
+│ RAG 업체 │          │ 미래 업체 │
+└─────────┘          └─────────┘
+
+외주 교체 시:
+1. API 키 발급
+2. 매뉴얼 전달
+3. 끝 (1일 소요)
+```
+
+---
+
+## 11. 다음 단계
+
+**Phase 3 (선택적 확장):**
+- 조건: 예산 확보, 전문 인력 채용
+- 내용: Python 코어 엔진, 벡터 DB, RAG 내재화
+
+---
+
+**문서 끝**
