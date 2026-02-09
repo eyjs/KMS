@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 사용자
+// ============================================================
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  name         String   @db.VarChar(100)
+  role         String   @default("EMPLOYEE") @db.VarChar(20)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  createdDocuments Document[]        @relation("CreatedBy")
+  updatedDocuments Document[]        @relation("UpdatedBy")
+  createdRelations Relation[]        @relation("RelationCreatedBy")
+  documentHistory  DocumentHistory[]
+
+  @@map("users")
+}
+
+// ============================================================
+// 도메인 마스터
+// ============================================================
+
+model DomainMaster {
+  code          String   @id @db.VarChar(20)
+  displayName   String   @map("display_name") @db.VarChar(100)
+  requiredFacets Json    @default("[]") @map("required_facets")
+  ssotKey       Json     @default("[]") @map("ssot_key")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  documents    Document[]
+  facetMasters FacetMaster[]
+
+  @@map("domain_master")
+}
+
+// ============================================================
+// 분류 마스터
+// ============================================================
+
+model FacetMaster {
+  id          Int      @id @default(autoincrement())
+  domain      String?  @db.VarChar(20)
+  facetType   String   @map("facet_type") @db.VarChar(50)
+  code        String   @db.VarChar(50)
+  displayName String   @map("display_name") @db.VarChar(100)
+  parentCode  String?  @map("parent_code") @db.VarChar(50)
+  tier        String?  @db.VarChar(10)
+  maxAgeDays  Int?     @map("max_age_days")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  domainMaster DomainMaster? @relation(fields: [domain], references: [code])
+
+  @@unique([facetType, code])
+  @@index([facetType])
+  @@index([domain])
+  @@map("facet_master")
+}
+
+// ============================================================
+// 문서
+// ============================================================
+
+model Document {
+  id                 String   @id @default(uuid()) @db.Uuid
+  domain             String   @db.VarChar(20)
+  lifecycle          String   @default("DRAFT") @db.VarChar(20)
+  securityLevel      String   @default("INTERNAL") @map("security_level") @db.VarChar(20)
+  filePath           String?  @map("file_path")
+  fileName           String   @map("file_name")
+  fileType           String   @map("file_type") @db.VarChar(10)
+  fileSize           BigInt?  @map("file_size")
+  versionMajor       Int      @default(1) @map("version_major")
+  versionMinor       Int      @default(0) @map("version_minor")
+  reviewedAt         DateTime? @map("reviewed_at")
+  classificationHash String?  @map("classification_hash") @db.VarChar(64)
+  createdById        String?  @map("created_by") @db.Uuid
+  updatedById        String?  @map("updated_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @default(now()) @map("updated_at")
+  isDeleted          Boolean  @default(false) @map("is_deleted")
+  rowVersion         Int      @default(1) @map("row_version")
+
+  domainMaster    DomainMaster      @relation(fields: [domain], references: [code])
+  createdBy       User?             @relation("CreatedBy", fields: [createdById], references: [id])
+  updatedBy       User?             @relation("UpdatedBy", fields: [updatedById], references: [id])
+  classifications Classification[]
+  sourceRelations Relation[]        @relation("SourceDoc")
+  targetRelations Relation[]        @relation("TargetDoc")
+  history         DocumentHistory[]
+
+  @@index([domain])
+  @@index([lifecycle])
+  @@index([securityLevel])
+  @@index([classificationHash])
+  @@index([isDeleted])
+  @@map("documents")
+}
+
+// ============================================================
+// 분류 (EAV)
+// ============================================================
+
+model Classification {
+  id         Int      @id @default(autoincrement())
+  documentId String   @map("document_id") @db.Uuid
+  facetType  String   @map("facet_type") @db.VarChar(50)
+  facetValue String   @map("facet_value") @db.VarChar(100)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, facetType])
+  @@index([documentId])
+  @@index([facetType, facetValue])
+  @@map("classifications")
+}
+
+// ============================================================
+// 관계
+// ============================================================
+
+model Relation {
+  id           String   @id @default(uuid()) @db.Uuid
+  sourceId     String   @map("source_id") @db.Uuid
+  targetId     String   @map("target_id") @db.Uuid
+  relationType String   @map("relation_type") @db.VarChar(20)
+  createdById  String?  @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  source    Document @relation("SourceDoc", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    Document @relation("TargetDoc", fields: [targetId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("RelationCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([sourceId, targetId, relationType])
+  @@index([sourceId])
+  @@index([targetId])
+  @@map("relations")
+}
+
+// ============================================================
+// 문서 이력
+// ============================================================
+
+model DocumentHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  action     String   @db.VarChar(20)
+  changes    Json?
+  userId     String?  @map("user_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id])
+
+  @@index([documentId])
+  @@index([createdAt])
+  @@map("document_history")
+}
+
+// ============================================================
+// API 키
+// ============================================================
+
+model ApiKey {
+  id         Int       @id @default(autoincrement())
+  keyHash    String    @unique @map("key_hash") @db.VarChar(64)
+  keyPrefix  String    @map("key_prefix") @db.VarChar(8)
+  name       String    @db.VarChar(100)
+  role       String    @default("EXTERNAL") @db.VarChar(20)
+  expiresAt  DateTime? @map("expires_at")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime? @map("last_used_at")
+
+  @@index([keyHash])
+  @@map("api_keys")
+}

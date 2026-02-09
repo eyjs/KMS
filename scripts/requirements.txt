@@ -1,0 +1,3 @@
+# Python 코어 검증 도구 의존성
+# 표준 라이브러리만 사용 (json, os, datetime, hashlib 등)
+# 추가 의존성 없음

@@ -514,10 +514,13 @@
             <!-- 축 선택 -->
             <div class="flex items-center gap-1 mb-2">
               <span class="text-gray-400 mr-0.5">축:</span>
-              <button v-for="axis in AXIS_OPTIONS" :key="axis.id"
+              <button
+                v-for="axis in AXIS_OPTIONS"
+                :key="axis.id"
                 @click="setStartAxis(axis.id)"
                 :class="startAxis === axis.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'"
-                class="px-1.5 py-0.5 rounded text-[10px] font-medium transition">
+                class="px-1.5 py-0.5 rounded text-[10px] font-medium transition"
+              >
                 {{ axis.label }}
               </button>
             </div>
@@ -610,10 +613,13 @@
           <!-- 축 선택 -->
           <div class="flex items-center gap-1 mb-2">
             <span class="text-xs text-gray-400 mr-1">시작 축:</span>
-            <button v-for="axis in AXIS_OPTIONS" :key="axis.id"
+            <button
+              v-for="axis in AXIS_OPTIONS"
+              :key="axis.id"
               @click="setStartAxis(axis.id)"
               :class="startAxis === axis.id ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-              class="px-2.5 py-1 rounded text-xs font-medium transition">
+              class="px-2.5 py-1 rounded text-xs font-medium transition"
+            >
               {{ axis.label }}
             </button>
           </div>
@@ -745,10 +751,14 @@
                     <td class="px-4 py-2.5 text-sm text-gray-600">{{ getProductName(getDocProduct(doc)) }}</td>
                     <td class="px-4 py-2.5 text-sm text-gray-600">{{ getDocTypeName(getDocDocType(doc)) }}</td>
                     <td class="px-4 py-2.5">
-                      <span :class="getLifecycleClass(doc.lifecycle || 'ACTIVE')" class="text-xs px-2 py-0.5 rounded">{{ doc.lifecycle || 'ACTIVE' }}</span>
+                      <span :class="getLifecycleClass(doc.lifecycle || 'ACTIVE')" class="text-xs px-2 py-0.5 rounded"
+                        >{{ doc.lifecycle || 'ACTIVE' }}</span
+                      >
                     </td>
                     <td class="px-4 py-2.5">
-                      <span :class="getFreshnessClass(calcFreshness(doc).status)" class="text-xs px-2 py-0.5 rounded">{{ calcFreshness(doc).status }}</span>
+                      <span :class="getFreshnessClass(calcFreshness(doc).status)" class="text-xs px-2 py-0.5 rounded"
+                        >{{ calcFreshness(doc).status }}</span
+                      >
                     </td>
                   </tr>
                 </tbody>
@@ -766,7 +776,9 @@
                 class="bg-white rounded-lg shadow-sm p-4 cursor-pointer hover:bg-indigo-50 hover:ring-2 hover:ring-indigo-200 transition group"
               >
                 <div class="flex items-center justify-between">
-                  <span class="font-medium text-sm text-gray-800 group-hover:text-indigo-700">{{ getDrillCategoryName(cat.type, cat.id) }}</span>
+                  <span class="font-medium text-sm text-gray-800 group-hover:text-indigo-700"
+                    >{{ getDrillCategoryName(cat.type, cat.id) }}</span
+                  >
                   <span class="text-xs text-gray-400">&rsaquo;</span>
                 </div>
                 <div class="text-xs text-gray-500 mt-1">{{ cat.count }}건</div>
@@ -934,24 +946,27 @@
         <!-- Dashboard View -->
         <div v-show="viewMode === 'dashboard'" class="flex-1 overflow-auto p-4">
           <div class="max-w-6xl mx-auto space-y-4">
-
             <!-- 건강 점수 헤더 -->
             <div class="bg-white rounded-lg shadow-sm p-5">
               <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-bold text-gray-800">데이터 품질 대시보드</h2>
                 <div class="flex items-center gap-3">
                   <span class="text-xs text-gray-400">마지막 갱신: {{ formatDate(store.lastModified) }}</span>
-                  <span class="text-sm font-bold px-3 py-1 rounded-full"
-                    :class="dashboard.score >= 90 ? 'bg-green-100 text-green-700' : dashboard.score >= 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'">
+                  <span
+                    class="text-sm font-bold px-3 py-1 rounded-full"
+                    :class="dashboard.score >= 90 ? 'bg-green-100 text-green-700' : dashboard.score >= 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'"
+                  >
                     {{ dashboard.score }}점
                   </span>
                 </div>
               </div>
               <!-- 점수 바 -->
               <div class="w-full bg-gray-200 rounded-full h-3">
-                <div class="h-3 rounded-full transition-all duration-500"
+                <div
+                  class="h-3 rounded-full transition-all duration-500"
                   :class="dashboard.score >= 90 ? 'bg-green-500' : dashboard.score >= 70 ? 'bg-yellow-500' : 'bg-red-500'"
-                  :style="{ width: dashboard.score + '%' }"></div>
+                  :style="{ width: dashboard.score + '%' }"
+                ></div>
               </div>
               <div class="flex justify-between text-xs text-gray-400 mt-1">
                 <span>0</span><span>50</span><span>100</span>
@@ -965,19 +980,28 @@
                 <div class="text-xs text-gray-500 mt-1">전체 문서</div>
               </div>
               <div class="bg-white rounded-lg shadow-sm p-4 text-center">
-                <div class="text-3xl font-bold" :class="dashboard.orphanCount === 0 ? 'text-green-600' : 'text-red-600'">
+                <div
+                  class="text-3xl font-bold"
+                  :class="dashboard.orphanCount === 0 ? 'text-green-600' : 'text-red-600'"
+                >
                   {{ dashboard.orphanCount }}
                 </div>
                 <div class="text-xs text-gray-500 mt-1">고아 문서 (관계 없음)</div>
               </div>
               <div class="bg-white rounded-lg shadow-sm p-4 text-center">
-                <div class="text-3xl font-bold" :class="dashboard.duplicateCount === 0 ? 'text-green-600' : 'text-red-600'">
+                <div
+                  class="text-3xl font-bold"
+                  :class="dashboard.duplicateCount === 0 ? 'text-green-600' : 'text-red-600'"
+                >
                   {{ dashboard.duplicateCount }}
                 </div>
                 <div class="text-xs text-gray-500 mt-1">유니크 위반</div>
               </div>
               <div class="bg-white rounded-lg shadow-sm p-4 text-center">
-                <div class="text-3xl font-bold" :class="dashboard.brokenRefCount === 0 ? 'text-green-600' : 'text-orange-600'">
+                <div
+                  class="text-3xl font-bold"
+                  :class="dashboard.brokenRefCount === 0 ? 'text-green-600' : 'text-orange-600'"
+                >
                   {{ dashboard.brokenRefCount }}
                 </div>
                 <div class="text-xs text-gray-500 mt-1">끊어진 참조</div>
@@ -991,7 +1015,9 @@
                 <div class="space-y-2">
                   <div v-for="lc in dashboard.lifecycleDist" :key="lc.name">
                     <div class="flex justify-between text-xs mb-1">
-                      <span :class="getLifecycleClass(lc.name)" class="px-1.5 py-0.5 rounded font-medium">{{ lc.name }}</span>
+                      <span :class="getLifecycleClass(lc.name)" class="px-1.5 py-0.5 rounded font-medium"
+                        >{{ lc.name }}</span
+                      >
                       <span class="text-gray-600">{{ lc.count }}건 ({{ lc.pct }}%)</span>
                     </div>
                     <div class="w-full bg-gray-100 rounded-full h-2">
@@ -1009,9 +1035,11 @@
                       <span class="text-gray-600">{{ f.count }}건 ({{ f.pct }}%)</span>
                     </div>
                     <div class="w-full bg-gray-100 rounded-full h-2">
-                      <div class="h-2 rounded-full"
+                      <div
+                        class="h-2 rounded-full"
                         :class="f.name === 'FRESH' ? 'bg-green-400' : f.name === 'WARNING' ? 'bg-yellow-400' : 'bg-red-400'"
-                        :style="{ width: f.pct + '%' }"></div>
+                        :style="{ width: f.pct + '%' }"
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -1037,7 +1065,10 @@
                   </div>
                 </div>
                 <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
-                  SSOT 위반: <span class="font-bold" :class="dashboard.ssotViolations > 0 ? 'text-red-600' : 'text-green-600'">{{ dashboard.ssotViolations }}건</span>
+                  SSOT 위반:
+                  <span class="font-bold" :class="dashboard.ssotViolations > 0 ? 'text-red-600' : 'text-green-600'"
+                    >{{ dashboard.ssotViolations }}건</span
+                  >
                 </div>
               </div>
             </div>
@@ -1051,14 +1082,19 @@
                   <div v-for="rel in dashboard.relationHealth" :key="rel.label">
                     <div class="flex justify-between text-xs mb-1">
                       <span class="text-gray-600">{{ rel.label }}</span>
-                      <span class="font-medium" :class="rel.pct >= 50 ? 'text-green-600' : rel.pct >= 20 ? 'text-yellow-600' : 'text-red-600'">
+                      <span
+                        class="font-medium"
+                        :class="rel.pct >= 50 ? 'text-green-600' : rel.pct >= 20 ? 'text-yellow-600' : 'text-red-600'"
+                      >
                         {{ rel.count }}건 ({{ rel.pct }}%)
                       </span>
                     </div>
                     <div class="w-full bg-gray-100 rounded-full h-2">
-                      <div class="h-2 rounded-full transition-all"
+                      <div
+                        class="h-2 rounded-full transition-all"
                         :class="rel.pct >= 50 ? 'bg-green-400' : rel.pct >= 20 ? 'bg-yellow-400' : 'bg-red-400'"
-                        :style="{ width: rel.pct + '%' }"></div>
+                        :style="{ width: rel.pct + '%' }"
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -1073,15 +1109,19 @@
                 <div class="space-y-3">
                   <div v-for="tier in dashboard.tierDist" :key="tier.name">
                     <div class="flex justify-between text-xs mb-1">
-                      <span :class="tier.name === 'HOT' ? 'text-red-600 font-bold' : tier.name === 'WARM' ? 'text-orange-600 font-bold' : 'text-blue-600 font-bold'">
+                      <span
+                        :class="tier.name === 'HOT' ? 'text-red-600 font-bold' : tier.name === 'WARM' ? 'text-orange-600 font-bold' : 'text-blue-600 font-bold'"
+                      >
                         {{ tier.name }}
                       </span>
                       <span class="text-gray-600">{{ tier.count }}건 ({{ tier.pct }}%)</span>
                     </div>
                     <div class="w-full bg-gray-100 rounded-full h-2.5">
-                      <div class="h-2.5 rounded-full"
+                      <div
+                        class="h-2.5 rounded-full"
                         :class="tier.name === 'HOT' ? 'bg-red-400' : tier.name === 'WARM' ? 'bg-orange-400' : 'bg-blue-400'"
-                        :style="{ width: tier.pct + '%' }"></div>
+                        :style="{ width: tier.pct + '%' }"
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -1106,11 +1146,15 @@
                 <div v-for="item in dashboard.carrierDist" :key="item.id" class="flex items-center gap-2">
                   <span class="w-28 text-xs text-gray-700 truncate" :title="item.name">{{ item.name }}</span>
                   <div class="flex-1 bg-gray-100 rounded-full h-4 relative">
-                    <div class="h-4 rounded-full bg-purple-400 flex items-center justify-end pr-1.5"
-                      :style="{ width: Math.max(item.pct, 2) + '%' }">
+                    <div
+                      class="h-4 rounded-full bg-purple-400 flex items-center justify-end pr-1.5"
+                      :style="{ width: Math.max(item.pct, 2) + '%' }"
+                    >
                       <span v-if="item.pct > 8" class="text-white text-xs font-medium">{{ item.count }}</span>
                     </div>
-                    <span v-if="item.pct <= 8" class="absolute right-1 top-0.5 text-xs text-gray-500">{{ item.count }}</span>
+                    <span v-if="item.pct <= 8" class="absolute right-1 top-0.5 text-xs text-gray-500"
+                      >{{ item.count }}</span
+                    >
                   </div>
                 </div>
               </div>
@@ -1135,12 +1179,17 @@
                 <h3 class="font-bold text-gray-800 mb-3 text-sm">상품 개편 (SUPERSEDES) 체인</h3>
                 <div v-if="dashboard.supersedesChains.length === 0" class="text-sm text-gray-400">개편 관계 없음</div>
                 <div v-else class="space-y-2">
-                  <div v-for="(chain, idx) in dashboard.supersedesChains" :key="idx"
-                    class="p-2 bg-amber-50 rounded border border-amber-200">
+                  <div
+                    v-for="(chain, idx) in dashboard.supersedesChains"
+                    :key="idx"
+                    class="p-2 bg-amber-50 rounded border border-amber-200"
+                  >
                     <div class="flex items-center gap-1 flex-wrap">
                       <template v-for="(pid, ci) in chain" :key="pid">
-                        <span class="text-xs px-1.5 py-0.5 bg-white rounded border"
-                          :class="ci === 0 ? 'border-amber-400 font-bold' : 'border-gray-200'">
+                        <span
+                          class="text-xs px-1.5 py-0.5 bg-white rounded border"
+                          :class="ci === 0 ? 'border-amber-400 font-bold' : 'border-gray-200'"
+                        >
                           {{ getProductName(pid) }}
                         </span>
                         <span v-if="ci < chain.length - 1" class="text-gray-400 text-xs">&rarr;</span>
@@ -1154,7 +1203,10 @@
                   <div class="flex-1 bg-gray-100 rounded-full h-3">
                     <div class="h-3 rounded-full bg-teal-400" :style="{ width: dashboard.contentFillPct + '%' }"></div>
                   </div>
-                  <span class="text-sm font-bold" :class="dashboard.contentFillPct > 50 ? 'text-teal-600' : 'text-red-600'">
+                  <span
+                    class="text-sm font-bold"
+                    :class="dashboard.contentFillPct > 50 ? 'text-teal-600' : 'text-red-600'"
+                  >
                     {{ dashboard.contentFillPct }}%
                   </span>
                 </div>
@@ -1168,10 +1220,15 @@
             <div v-if="dashboard.issues.length > 0" class="bg-white rounded-lg shadow-sm p-4">
               <h3 class="font-bold text-gray-800 mb-3 text-sm">발견된 문제 ({{ dashboard.issues.length }}건)</h3>
               <div class="space-y-1.5 max-h-60 overflow-auto scrollbar-thin">
-                <div v-for="(issue, idx) in dashboard.issues" :key="idx"
+                <div
+                  v-for="(issue, idx) in dashboard.issues"
+                  :key="idx"
                   class="flex items-start gap-2 text-xs p-2 rounded"
-                  :class="issue.severity === 'error' ? 'bg-red-50' : issue.severity === 'warning' ? 'bg-yellow-50' : 'bg-blue-50'">
-                  <span :class="issue.severity === 'error' ? 'text-red-500' : issue.severity === 'warning' ? 'text-orange-500' : 'text-blue-500'">
+                  :class="issue.severity === 'error' ? 'bg-red-50' : issue.severity === 'warning' ? 'bg-yellow-50' : 'bg-blue-50'"
+                >
+                  <span
+                    :class="issue.severity === 'error' ? 'text-red-500' : issue.severity === 'warning' ? 'text-orange-500' : 'text-blue-500'"
+                  >
                     {{ issue.severity === 'error' ? '!!!' : issue.severity === 'warning' ? '!!' : 'i' }}
                   </span>
                   <span class="text-gray-700">{{ issue.message }}</span>
@@ -1181,7 +1238,6 @@
             <div v-else class="bg-green-50 rounded-lg shadow-sm p-4 text-center">
               <span class="text-green-600 font-medium text-sm">모든 검증 통과 - 데이터 품질 양호</span>
             </div>
-
           </div>
         </div>
 
@@ -1587,12 +1643,18 @@
             <div>
               <label class="text-xs font-medium text-gray-500">라이프사이클</label>
               <div class="mt-1 flex items-center gap-2">
-                <span :class="getLifecycleClass(selectedDoc.lifecycle || 'ACTIVE')" class="text-xs px-3 py-1.5 rounded-lg font-bold">
+                <span
+                  :class="getLifecycleClass(selectedDoc.lifecycle || 'ACTIVE')"
+                  class="text-xs px-3 py-1.5 rounded-lg font-bold"
+                >
                   {{ selectedDoc.lifecycle || 'ACTIVE' }}
                 </span>
-                <button v-for="next in getNextLifecycleStates(selectedDoc.lifecycle || 'ACTIVE')" :key="next"
+                <button
+                  v-for="next in getNextLifecycleStates(selectedDoc.lifecycle || 'ACTIVE')"
+                  :key="next"
                   @click="transitionLifecycle(selectedDocId, next)"
-                  class="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 transition">
+                  class="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 transition"
+                >
                   &rarr; {{ next }}
                 </button>
               </div>
@@ -1603,13 +1665,19 @@
               <label class="text-xs font-medium text-gray-500">신선도</label>
               <div class="mt-1">
                 <div class="flex justify-between text-xs mb-1">
-                  <span :class="getFreshnessClass(calcFreshness(selectedDoc).status)" class="font-medium">{{ calcFreshness(selectedDoc).status }}</span>
-                  <span class="text-gray-500">{{ calcFreshness(selectedDoc).daysSince }}일 / {{ calcFreshness(selectedDoc).maxDays }}일</span>
+                  <span :class="getFreshnessClass(calcFreshness(selectedDoc).status)" class="font-medium"
+                    >{{ calcFreshness(selectedDoc).status }}</span
+                  >
+                  <span class="text-gray-500"
+                    >{{ calcFreshness(selectedDoc).daysSince }}일 / {{ calcFreshness(selectedDoc).maxDays }}일</span
+                  >
                 </div>
                 <div class="w-full bg-gray-200 rounded-full h-2">
-                  <div class="h-2 rounded-full transition-all"
+                  <div
+                    class="h-2 rounded-full transition-all"
                     :class="calcFreshness(selectedDoc).status === 'FRESH' ? 'bg-green-500' : calcFreshness(selectedDoc).status === 'WARNING' ? 'bg-yellow-500' : 'bg-red-500'"
-                    :style="{ width: Math.min(100, calcFreshness(selectedDoc).pct) + '%' }"></div>
+                    :style="{ width: Math.min(100, calcFreshness(selectedDoc).pct) + '%' }"
+                  ></div>
                 </div>
               </div>
             </div>
@@ -1635,7 +1703,8 @@
               <div>
                 <label class="text-xs font-medium text-gray-500">버전</label>
                 <div class="mt-1 px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700">
-                  v{{ typeof selectedDoc.version === 'object' ? selectedDoc.version.major + '.' + selectedDoc.version.minor : selectedDoc.version || '1.0' }}
+                  v{{ typeof selectedDoc.version === 'object' ? selectedDoc.version.major + '.' +
+                  selectedDoc.version.minor : selectedDoc.version || '1.0' }}
                 </div>
               </div>
             </div>
@@ -1650,7 +1719,10 @@
               />
             </div>
 
-            <div class="grid grid-cols-2 gap-3" v-if="domainHasFacet(selectedDoc.domain || 'GA-SALES', 'carrier') || domainHasFacet(selectedDoc.domain || 'GA-SALES', 'product')">
+            <div
+              class="grid grid-cols-2 gap-3"
+              v-if="domainHasFacet(selectedDoc.domain || 'GA-SALES', 'carrier') || domainHasFacet(selectedDoc.domain || 'GA-SALES', 'product')"
+            >
               <div v-if="domainHasFacet(selectedDoc.domain || 'GA-SALES', 'carrier')">
                 <label class="text-xs font-medium text-gray-500">보험사</label>
                 <select
@@ -1712,7 +1784,10 @@
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="text-xs font-medium text-gray-500">Tier</label>
-                <div :class="getTierClass(selectedDoc.tier)" class="mt-1 px-3 py-2 rounded-lg text-sm text-center font-medium">
+                <div
+                  :class="getTierClass(selectedDoc.tier)"
+                  class="mt-1 px-3 py-2 rounded-lg text-sm text-center font-medium"
+                >
                   {{ selectedDoc.tier }}
                 </div>
               </div>
@@ -1951,7 +2026,10 @@
             </div>
 
             <!-- 보험사/상품 (도메인 facets에 따라 표시) -->
-            <div class="grid grid-cols-2 gap-3" v-if="domainHasFacet(docModal.data.domain, 'carrier') || domainHasFacet(docModal.data.domain, 'product')">
+            <div
+              class="grid grid-cols-2 gap-3"
+              v-if="domainHasFacet(docModal.data.domain, 'carrier') || domainHasFacet(docModal.data.domain, 'product')"
+            >
               <div v-if="domainHasFacet(docModal.data.domain, 'carrier')">
                 <label class="text-xs font-medium text-gray-500">보험사</label>
                 <select
@@ -2052,7 +2130,10 @@
         <div class="bg-white rounded-xl shadow-2xl w-[520px] p-6">
           <div class="flex items-center justify-between mb-2">
             <h3 class="text-lg font-bold">자동 분류 결과</h3>
-            <span v-if="uploadPreview.sessionCount > 0" class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium">
+            <span
+              v-if="uploadPreview.sessionCount > 0"
+              class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium"
+            >
               이번 세션: {{ uploadPreview.sessionCount }}건 등록
             </span>
           </div>
@@ -2201,8 +2282,13 @@
         <!-- 자동 처리 (Auto-resolved) -->
         <div v-if="moveModal.impact.autoResolved.length > 0" class="mb-4">
           <div class="flex items-center gap-2 mb-2">
-            <span class="w-5 h-5 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
-            <span class="text-sm font-medium text-green-700">자동 처리 ({{ moveModal.impact.autoResolved.length }}건)</span>
+            <span
+              class="w-5 h-5 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-bold"
+              >✓</span
+            >
+            <span class="text-sm font-medium text-green-700"
+              >자동 처리 ({{ moveModal.impact.autoResolved.length }}건)</span
+            >
           </div>
           <div class="space-y-1 ml-7">
             <div
@@ -2219,7 +2305,10 @@
         <!-- 보존됨 (Preserved) -->
         <div v-if="moveModal.impact.preserved.length > 0" class="mb-4">
           <div class="flex items-center gap-2 mb-2">
-            <span class="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">═</span>
+            <span
+              class="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold"
+              >═</span
+            >
             <span class="text-sm font-medium text-blue-700">유지됨 ({{ moveModal.impact.preserved.length }}건)</span>
           </div>
           <div class="space-y-1 ml-7">
@@ -2237,8 +2326,13 @@
         <!-- 컨플릭트 (관리자 결정 필요) -->
         <div v-if="moveModal.impact.conflicts.length > 0" class="mb-4">
           <div class="flex items-center gap-2 mb-2">
-            <span class="w-5 h-5 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-xs font-bold">!</span>
-            <span class="text-sm font-medium text-orange-700">관리자 결정 필요 ({{ moveModal.impact.conflicts.length }}건)</span>
+            <span
+              class="w-5 h-5 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-xs font-bold"
+              >!</span
+            >
+            <span class="text-sm font-medium text-orange-700"
+              >관리자 결정 필요 ({{ moveModal.impact.conflicts.length }}건)</span
+            >
           </div>
           <div class="space-y-2 ml-7">
             <div
@@ -2328,7 +2422,9 @@
         },
         domains: {
           'GA-SALES': {
-            business: 'GA', function: 'SALES', name: 'GA 영업/상담',
+            business: 'GA',
+            function: 'SALES',
+            name: 'GA 영업/상담',
             ssotKey: ['carrier', 'product', 'docType'],
             facets: [
               { id: 'carrier', name: '보험사', required: true },
@@ -2337,7 +2433,9 @@
             ],
           },
           'GA-COMM': {
-            business: 'GA', function: 'COMM', name: 'GA 수수료/정산',
+            business: 'GA',
+            function: 'COMM',
+            name: 'GA 수수료/정산',
             ssotKey: ['carrier', 'product', 'docType'],
             facets: [
               { id: 'carrier', name: '보험사', required: true },
@@ -2346,7 +2444,9 @@
             ],
           },
           'GA-CONTRACT': {
-            business: 'GA', function: 'CONTRACT', name: 'GA 계약관리',
+            business: 'GA',
+            function: 'CONTRACT',
+            name: 'GA 계약관리',
             ssotKey: ['carrier', 'product', 'docType'],
             facets: [
               { id: 'carrier', name: '보험사', required: true },
@@ -2355,7 +2455,9 @@
             ],
           },
           'GA-COMP': {
-            business: 'GA', function: 'COMP', name: 'GA 컴플라이언스',
+            business: 'GA',
+            function: 'COMP',
+            name: 'GA 컴플라이언스',
             ssotKey: ['carrier', 'docType'],
             facets: [
               { id: 'carrier', name: '보험사', required: true },
@@ -2363,30 +2465,47 @@
             ],
           },
           'GA-EDU': {
-            business: 'GA', function: 'EDU', name: 'GA 교육/역량',
+            business: 'GA',
+            function: 'EDU',
+            name: 'GA 교육/역량',
             ssotKey: ['docType'],
-            facets: [
-              { id: 'docType', name: '문서유형', required: true },
-            ],
+            facets: [{ id: 'docType', name: '문서유형', required: true }],
           },
           'COMMON-COMP': {
-            business: 'COMMON', function: 'COMP', name: '공통 규제/법률',
+            business: 'COMMON',
+            function: 'COMP',
+            name: '공통 규제/법률',
             ssotKey: ['docType'],
-            facets: [
-              { id: 'docType', name: '문서유형', required: true },
-            ],
+            facets: [{ id: 'docType', name: '문서유형', required: true }],
           },
         },
         docTypeDomainMap: {
-          'DOC-TERMS': 'GA-SALES', 'DOC-TERMS-SPECIAL': 'GA-SALES', 'DOC-GUIDE': 'GA-SALES',
-          'DOC-RATE-TABLE': 'GA-SALES', 'DOC-BROCHURE': 'GA-SALES', 'DOC-PRODUCT-SUMMARY': 'GA-SALES',
-          'DOC-SCRIPT': 'GA-SALES', 'DOC-COMPARISON': 'GA-SALES', 'DOC-PROPOSAL': 'GA-SALES',
-          'DOC-INCENTIVE': 'GA-COMM', 'DOC-COMMISSION': 'GA-COMM', 'DOC-COMMISSION-CALC': 'GA-COMM',
-          'DOC-SETTLEMENT': 'GA-COMM', 'DOC-PERFORMANCE': 'GA-COMM', 'DOC-CHARGEBACK': 'GA-COMM',
-          'DOC-APPLICATION': 'GA-CONTRACT', 'DOC-DISCLOSURE': 'GA-CONTRACT', 'DOC-CONFIRMATION': 'GA-CONTRACT',
+          'DOC-TERMS': 'GA-SALES',
+          'DOC-TERMS-SPECIAL': 'GA-SALES',
+          'DOC-GUIDE': 'GA-SALES',
+          'DOC-RATE-TABLE': 'GA-SALES',
+          'DOC-BROCHURE': 'GA-SALES',
+          'DOC-PRODUCT-SUMMARY': 'GA-SALES',
+          'DOC-SCRIPT': 'GA-SALES',
+          'DOC-COMPARISON': 'GA-SALES',
+          'DOC-PROPOSAL': 'GA-SALES',
+          'DOC-INCENTIVE': 'GA-COMM',
+          'DOC-COMMISSION': 'GA-COMM',
+          'DOC-COMMISSION-CALC': 'GA-COMM',
+          'DOC-SETTLEMENT': 'GA-COMM',
+          'DOC-PERFORMANCE': 'GA-COMM',
+          'DOC-CHARGEBACK': 'GA-COMM',
+          'DOC-APPLICATION': 'GA-CONTRACT',
+          'DOC-DISCLOSURE': 'GA-CONTRACT',
+          'DOC-CONFIRMATION': 'GA-CONTRACT',
           'DOC-COMPLIANCE-GUIDE': 'GA-COMP',
-          'DOC-TRAINING': 'GA-EDU', 'DOC-ONBOARDING': 'GA-EDU', 'DOC-COMPLIANCE': 'GA-EDU', 'DOC-CERTIFICATION': 'GA-EDU',
-          'DOC-LAW-INSURANCE': 'COMMON-COMP', 'DOC-LAW-CONSUMER': 'COMMON-COMP', 'DOC-REGULATION': 'COMMON-COMP',
+          'DOC-TRAINING': 'GA-EDU',
+          'DOC-ONBOARDING': 'GA-EDU',
+          'DOC-COMPLIANCE': 'GA-EDU',
+          'DOC-CERTIFICATION': 'GA-EDU',
+          'DOC-LAW-INSURANCE': 'COMMON-COMP',
+          'DOC-LAW-CONSUMER': 'COMMON-COMP',
+          'DOC-REGULATION': 'COMMON-COMP',
         },
         taxonomy: {
           carriers: {
@@ -2433,7 +2552,8 @@
         if (taxData.system) data.system = { ...data.system, ...taxData.system };
         if (taxData.businesses) data.businesses = { ...data.businesses, ...taxData.businesses };
         if (taxData.domains) data.domains = { ...data.domains, ...taxData.domains };
-        if (taxData.doc_type_domain_map) data.docTypeDomainMap = { ...data.docTypeDomainMap, ...taxData.doc_type_domain_map };
+        if (taxData.doc_type_domain_map)
+          data.docTypeDomainMap = { ...data.docTypeDomainMap, ...taxData.doc_type_domain_map };
 
         return data;
       }
@@ -2532,11 +2652,12 @@
           const uploadPreview = reactive({
             show: false,
             filename: '',
-            data: {},       // { domain, carrier, product, docType, version }
+            data: {}, // { domain, carrier, product, docType, version }
             confidence: {},
             duplicateWarning: null,
-            sessionCount: 0,            // 세션 내 업로드 카운터
-            stickyContext: {             // 이전 선택값 유지
+            sessionCount: 0, // 세션 내 업로드 카운터
+            stickyContext: {
+              // 이전 선택값 유지
               domain: 'GA-SALES',
               carrier: '',
               product: '',
@@ -2552,11 +2673,11 @@
             oldDomain: '',
             newDomain: '',
             impact: {
-              autoResolved: [],  // 자동 처리됨
-              preserved: [],     // 유지됨 (ID 불변)
-              conflicts: [],     // 관리자 검토 필요
+              autoResolved: [], // 자동 처리됨
+              preserved: [], // 유지됨 (ID 불변)
+              conflicts: [], // 관리자 검토 필요
             },
-            resolutions: {},     // { 'siblings:DOC-ID': 'keep'|'sever' }
+            resolutions: {}, // { 'siblings:DOC-ID': 'keep'|'sever' }
           });
           const toasts = ref([]);
 
@@ -2574,10 +2695,18 @@
           ];
 
           // === v3.0 호환 헬퍼: classification/meta 또는 flat 필드 읽기 ===
-          function getDocCarrier(doc) { return doc?.classification?.carrier || doc?.carrier || ''; }
-          function getDocProduct(doc) { return doc?.classification?.product || doc?.product || ''; }
-          function getDocDocType(doc) { return doc?.classification?.docType || doc?.docType || ''; }
-          function getDocMeta(doc, key) { return doc?.meta?.[key] || doc?.[key] || ''; }
+          function getDocCarrier(doc) {
+            return doc?.classification?.carrier || doc?.carrier || '';
+          }
+          function getDocProduct(doc) {
+            return doc?.classification?.product || doc?.product || '';
+          }
+          function getDocDocType(doc) {
+            return doc?.classification?.docType || doc?.docType || '';
+          }
+          function getDocMeta(doc, key) {
+            return doc?.meta?.[key] || doc?.[key] || '';
+          }
           function setDocClassification(doc, key, val) {
             if (!doc.classification) doc.classification = {};
             doc.classification[key] = val;
@@ -2593,7 +2722,7 @@
           // === 도메인 facets 헬퍼 ===
           function getDomainFacetIds(domain) {
             const domainDef = store.domains[domain];
-            return new Set((domainDef?.facets || []).map(f => f.id));
+            return new Set((domainDef?.facets || []).map((f) => f.id));
           }
           function domainHasFacet(domain, facetId) {
             return getDomainFacetIds(domain).has(facetId);
@@ -2606,7 +2735,7 @@
           }
           function initDocSeq() {
             let maxSeq = Object.keys(store.documents).length;
-            Object.keys(store.documents).forEach(id => {
+            Object.keys(store.documents).forEach((id) => {
               const match = id.match(/^PG-(\d+)$/);
               if (match) maxSeq = Math.max(maxSeq, parseInt(match[1]));
             });
@@ -2617,13 +2746,13 @@
           function checkSsotViolation(domain, classification, excludeId = null) {
             const domainDef = store.domains[domain];
             const ssotKey = domainDef?.ssotKey || ['carrier', 'product', 'docType'];
-            const myPath = ssotKey.map(k => classification[k] || '').join('|');
+            const myPath = ssotKey.map((k) => classification[k] || '').join('|');
             const dup = Object.entries(store.documents).find(([id, d]) => {
               if (excludeId && id === excludeId) return false;
               if ((d.lifecycle || 'ACTIVE') !== 'ACTIVE') return false;
               if ((d.domain || 'GA-SALES') !== domain) return false;
               const cls = d.classification || d;
-              const otherPath = ssotKey.map(k => cls[k] || d[k] || '').join('|');
+              const otherPath = ssotKey.map((k) => cls[k] || d[k] || '').join('|');
               return myPath === otherPath;
             });
             return dup ? dup[1] : null;
@@ -2632,10 +2761,12 @@
           // === 신선도 계산 ===
           function calcFreshness(doc) {
             if (!doc) return { daysSince: 0, maxDays: 90, pct: 0, status: 'FRESH' };
-            const lastDate = new Date(Math.max(
-              new Date(doc.updatedAt || doc.createdAt || Date.now()).getTime(),
-              new Date(doc.reviewedAt || 0).getTime()
-            ));
+            const lastDate = new Date(
+              Math.max(
+                new Date(doc.updatedAt || doc.createdAt || Date.now()).getTime(),
+                new Date(doc.reviewedAt || 0).getTime(),
+              ),
+            );
             const daysSince = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / 86400000));
             const tier = doc.tier || 'WARM';
             const defaults = store.system?.freshnessDefaults || { HOT: 30, WARM: 90, COLD: 365 };
@@ -2665,13 +2796,13 @@
               const domainDef = store.domains[domain];
               const ssotKey = domainDef?.ssotKey || ['carrier', 'product', 'docType'];
               const cls = doc.classification || doc;
-              const myPath = ssotKey.map(k => cls[k] || doc[k] || '').join('|');
+              const myPath = ssotKey.map((k) => cls[k] || doc[k] || '').join('|');
               Object.entries(store.documents).forEach(([id, d]) => {
                 if (id === docId) return;
                 if ((d.domain || 'GA-SALES') !== domain) return;
                 if (d.lifecycle !== 'ACTIVE') return;
                 const dCls = d.classification || d;
-                const otherPath = ssotKey.map(k => dCls[k] || d[k] || '').join('|');
+                const otherPath = ssotKey.map((k) => dCls[k] || d[k] || '').join('|');
                 if (myPath === otherPath) {
                   d.lifecycle = 'DEPRECATED';
                   d.updatedAt = new Date().toISOString();
@@ -2702,7 +2833,7 @@
           // 라이프사이클 카운트
           const lifecycleCounts = computed(() => {
             const counts = {};
-            Object.values(store.documents).forEach(d => {
+            Object.values(store.documents).forEach((d) => {
               const s = d.lifecycle || 'ACTIVE';
               counts[s] = (counts[s] || 0) + 1;
             });
@@ -2715,7 +2846,8 @@
             const docType = doc.docType || '';
             return {
               ...doc,
-              domain: doc.domain || store.docTypeDomainMap?.[docType] || DEFAULT_DATA.docTypeDomainMap[docType] || 'GA-SALES',
+              domain:
+                doc.domain || store.docTypeDomainMap?.[docType] || DEFAULT_DATA.docTypeDomainMap[docType] || 'GA-SALES',
               lifecycle: doc.lifecycle || doc.status || 'ACTIVE',
               version: typeof doc.version === 'object' ? doc.version : { major: parseInt(doc.version) || 1, minor: 0 },
               classification: { carrier: doc.carrier || '', product: doc.product || '', docType: docType },
@@ -2732,7 +2864,7 @@
           function getDrillOrder() {
             const base = ['carrier', 'product', 'docType'];
             const start = startAxis.value;
-            if (base.includes(start)) return [start, ...base.filter(a => a !== start)];
+            if (base.includes(start)) return [start, ...base.filter((a) => a !== start)];
             return [start, ...base];
           }
 
@@ -2909,7 +3041,7 @@
               const domainDef = store.domains[domain];
               const ssotKey = domainDef?.ssotKey || ['carrier', 'product', 'docType'];
               const cls = doc.classification || doc;
-              const key = domain + '|' + ssotKey.map(k => cls[k] || doc[k] || '').join('|');
+              const key = domain + '|' + ssotKey.map((k) => cls[k] || doc[k] || '').join('|');
               if (!groups[key]) groups[key] = [];
               groups[key].push({ id, name: doc.name });
             });
@@ -2928,20 +3060,41 @@
           const dashboard = computed(() => {
             const docs = Object.entries(store.documents);
             const totalDocs = docs.length;
-            if (totalDocs === 0) return {
-              score: 0, totalDocs: 0, orphanCount: 0, duplicateCount: 0, brokenRefCount: 0,
-              relationHealth: [], tierDist: [], carrierDist: [], docTypeDist: [],
-              supersedesChains: [], metaCompleteness: [], contentFillPct: 0, contentFilledCount: 0,
-              avgRelations: '0', issues: [], lifecycleDist: [], freshnessDist: [], ssotViolations: 0,
-              expiringDocs: [], domainDist: [],
-            };
+            if (totalDocs === 0)
+              return {
+                score: 0,
+                totalDocs: 0,
+                orphanCount: 0,
+                duplicateCount: 0,
+                brokenRefCount: 0,
+                relationHealth: [],
+                tierDist: [],
+                carrierDist: [],
+                docTypeDist: [],
+                supersedesChains: [],
+                metaCompleteness: [],
+                contentFillPct: 0,
+                contentFilledCount: 0,
+                avgRelations: '0',
+                issues: [],
+                lifecycleDist: [],
+                freshnessDist: [],
+                ssotViolations: 0,
+                expiringDocs: [],
+                domainDist: [],
+              };
 
             const issues = [];
 
             // 고아 문서
             const orphans = docs.filter(([, d]) => {
               const r = d.relations || {};
-              return !r.parent && (r.children || []).length === 0 && (r.siblings || []).length === 0 && (r.references || []).length === 0;
+              return (
+                !r.parent &&
+                (r.children || []).length === 0 &&
+                (r.siblings || []).length === 0 &&
+                (r.references || []).length === 0
+              );
             });
 
             // SSOT 위반 (동일 경로에 ACTIVE 2개 이상)
@@ -2958,10 +3111,28 @@
             let brokenRefs = 0;
             docs.forEach(([, d]) => {
               const r = d.relations || {};
-              if (r.parent && !store.documents[r.parent]) { brokenRefs++; issues.push({ severity: 'error', message: `"${d.name}" 부모 참조 끊김: ${r.parent}` }); }
-              (r.children || []).forEach(c => { if (!store.documents[c]) { brokenRefs++; issues.push({ severity: 'error', message: `"${d.name}" 자식 참조 끊김: ${c}` }); } });
-              (r.siblings || []).forEach(s => { if (!store.documents[s]) { brokenRefs++; issues.push({ severity: 'error', message: `"${d.name}" 형제 참조 끊김: ${s}` }); } });
-              (r.references || []).forEach(ref => { if (!store.documents[ref]) { brokenRefs++; issues.push({ severity: 'error', message: `"${d.name}" 참조 끊김: ${ref}` }); } });
+              if (r.parent && !store.documents[r.parent]) {
+                brokenRefs++;
+                issues.push({ severity: 'error', message: `"${d.name}" 부모 참조 끊김: ${r.parent}` });
+              }
+              (r.children || []).forEach((c) => {
+                if (!store.documents[c]) {
+                  brokenRefs++;
+                  issues.push({ severity: 'error', message: `"${d.name}" 자식 참조 끊김: ${c}` });
+                }
+              });
+              (r.siblings || []).forEach((s) => {
+                if (!store.documents[s]) {
+                  brokenRefs++;
+                  issues.push({ severity: 'error', message: `"${d.name}" 형제 참조 끊김: ${s}` });
+                }
+              });
+              (r.references || []).forEach((ref) => {
+                if (!store.documents[ref]) {
+                  brokenRefs++;
+                  issues.push({ severity: 'error', message: `"${d.name}" 참조 끊김: ${ref}` });
+                }
+              });
             });
 
             // 관계 건강도
@@ -2969,7 +3140,7 @@
             const withChildren = docs.filter(([, d]) => (d.relations?.children || []).length > 0).length;
             const withSiblings = docs.filter(([, d]) => (d.relations?.siblings || []).length > 0).length;
             const withRefs = docs.filter(([, d]) => (d.relations?.references || []).length > 0).length;
-            const pct = (n) => totalDocs > 0 ? Math.round(n / totalDocs * 100) : 0;
+            const pct = (n) => (totalDocs > 0 ? Math.round((n / totalDocs) * 100) : 0);
             const relationHealth = [
               { label: '부모 있음', count: withParent, pct: pct(withParent) },
               { label: '자식 있음', count: withChildren, pct: pct(withChildren) },
@@ -2981,53 +3152,89 @@
             let totalRels = 0;
             docs.forEach(([, d]) => {
               const r = d.relations || {};
-              totalRels += (r.parent ? 1 : 0) + (r.children || []).length + (r.siblings || []).length + (r.references || []).length;
+              totalRels +=
+                (r.parent ? 1 : 0) +
+                (r.children || []).length +
+                (r.siblings || []).length +
+                (r.references || []).length;
             });
 
             // Tier 분포
             const tierMap = { HOT: 0, WARM: 0, COLD: 0 };
-            docs.forEach(([, d]) => { if (tierMap[d.tier] !== undefined) tierMap[d.tier]++; });
+            docs.forEach(([, d]) => {
+              if (tierMap[d.tier] !== undefined) tierMap[d.tier]++;
+            });
             const tierDist = Object.entries(tierMap).map(([name, count]) => ({ name, count, pct: pct(count) }));
 
             // 라이프사이클 분포
             const lcMap = {};
-            docs.forEach(([, d]) => { const s = d.lifecycle || 'ACTIVE'; lcMap[s] = (lcMap[s] || 0) + 1; });
-            const lifecycleDist = Object.entries(lcMap).sort((a, b) => b[1] - a[1])
+            docs.forEach(([, d]) => {
+              const s = d.lifecycle || 'ACTIVE';
+              lcMap[s] = (lcMap[s] || 0) + 1;
+            });
+            const lifecycleDist = Object.entries(lcMap)
+              .sort((a, b) => b[1] - a[1])
               .map(([name, count]) => ({ name, count, pct: pct(count) }));
 
             // 신선도 분포
             const freshMap = { FRESH: 0, WARNING: 0, EXPIRED: 0 };
-            docs.forEach(([, d]) => { const f = calcFreshness(d); freshMap[f.status]++; });
+            docs.forEach(([, d]) => {
+              const f = calcFreshness(d);
+              freshMap[f.status]++;
+            });
             const freshnessDist = Object.entries(freshMap).map(([name, count]) => ({ name, count, pct: pct(count) }));
 
             // 만료 임박 문서 (7일 내)
-            const expiringDocs = docs.filter(([, d]) => {
-              const f = calcFreshness(d);
-              return f.status === 'WARNING' && (f.maxDays - f.daysSince) <= 7;
-            }).map(([id, d]) => ({ id, name: d.name, daysLeft: calcFreshness(d).maxDays - calcFreshness(d).daysSince }))
-              .sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 10);
+            const expiringDocs = docs
+              .filter(([, d]) => {
+                const f = calcFreshness(d);
+                return f.status === 'WARNING' && f.maxDays - f.daysSince <= 7;
+              })
+              .map(([id, d]) => ({ id, name: d.name, daysLeft: calcFreshness(d).maxDays - calcFreshness(d).daysSince }))
+              .sort((a, b) => a.daysLeft - b.daysLeft)
+              .slice(0, 10);
 
             // 도메인별 문서 수
             const domainMap = {};
-            docs.forEach(([, d]) => { const dm = d.domain || 'GA-SALES'; domainMap[dm] = (domainMap[dm] || 0) + 1; });
-            const domainDist = Object.entries(domainMap).sort((a, b) => b[1] - a[1])
+            docs.forEach(([, d]) => {
+              const dm = d.domain || 'GA-SALES';
+              domainMap[dm] = (domainMap[dm] || 0) + 1;
+            });
+            const domainDist = Object.entries(domainMap)
+              .sort((a, b) => b[1] - a[1])
               .map(([name, count]) => ({ name, count, pct: pct(count) }));
 
             // 보험사별 분포
             const carrierMap = {};
-            docs.forEach(([, d]) => { const c = getDocCarrier(d); carrierMap[c] = (carrierMap[c] || 0) + 1; });
+            docs.forEach(([, d]) => {
+              const c = getDocCarrier(d);
+              carrierMap[c] = (carrierMap[c] || 0) + 1;
+            });
             const maxCarrier = Math.max(...Object.values(carrierMap));
             const carrierDist = Object.entries(carrierMap)
               .sort((a, b) => b[1] - a[1])
-              .map(([id, count]) => ({ id, name: store.taxonomy.carriers[id]?.name || id, count, pct: Math.round(count / maxCarrier * 100) }));
+              .map(([id, count]) => ({
+                id,
+                name: store.taxonomy.carriers[id]?.name || id,
+                count,
+                pct: Math.round((count / maxCarrier) * 100),
+              }));
 
             // 문서유형별 분포
             const dtMap = {};
-            docs.forEach(([, d]) => { const dt = getDocDocType(d); dtMap[dt] = (dtMap[dt] || 0) + 1; });
+            docs.forEach(([, d]) => {
+              const dt = getDocDocType(d);
+              dtMap[dt] = (dtMap[dt] || 0) + 1;
+            });
             const maxDt = Math.max(...Object.values(dtMap));
             const docTypeDist = Object.entries(dtMap)
               .sort((a, b) => b[1] - a[1])
-              .map(([id, count]) => ({ id, name: store.taxonomy.docTypes[id]?.name || id, count, pct: Math.round(count / maxDt * 100) }));
+              .map(([id, count]) => ({
+                id,
+                name: store.taxonomy.docTypes[id]?.name || id,
+                count,
+                pct: Math.round((count / maxDt) * 100),
+              }));
 
             // SUPERSEDES 체인
             const supersedesChains = [];
@@ -3046,8 +3253,14 @@
             });
 
             // 메타데이터 완성도
-            const withProcess = docs.filter(([, d]) => { const p = getDocMeta(d, 'process'); return p && p !== 'BIZ-COMMON'; }).length;
-            const withAudience = docs.filter(([, d]) => { const a = getDocMeta(d, 'audience'); return a && a !== 'AUD-ALL'; }).length;
+            const withProcess = docs.filter(([, d]) => {
+              const p = getDocMeta(d, 'process');
+              return p && p !== 'BIZ-COMMON';
+            }).length;
+            const withAudience = docs.filter(([, d]) => {
+              const a = getDocMeta(d, 'audience');
+              return a && a !== 'AUD-ALL';
+            }).length;
             const withContent = docs.filter(([, d]) => d.content && d.content.trim().length > 0).length;
             const metaCompleteness = [
               { label: '프로세스', pct: pct(withProcess) },
@@ -3056,34 +3269,55 @@
             ];
 
             // 이슈 추가
-            if (dupes.length > 0) issues.push({ severity: 'error', message: `유니크 위반 ${dupes.length}건 (동일 보험사+상품+문서유형)` });
-            if (orphans.length > totalDocs * 0.5) issues.push({ severity: 'warning', message: `고아 문서 ${orphans.length}건 (${pct(orphans.length)}%) - 관계 설정 필요` });
-            if (withContent < totalDocs * 0.1) issues.push({ severity: 'warning', message: `본문 있는 문서 ${withContent}건 (${pct(withContent)}%) - 본문 입력 필요` });
+            if (dupes.length > 0)
+              issues.push({ severity: 'error', message: `유니크 위반 ${dupes.length}건 (동일 보험사+상품+문서유형)` });
+            if (orphans.length > totalDocs * 0.5)
+              issues.push({
+                severity: 'warning',
+                message: `고아 문서 ${orphans.length}건 (${pct(orphans.length)}%) - 관계 설정 필요`,
+              });
+            if (withContent < totalDocs * 0.1)
+              issues.push({
+                severity: 'warning',
+                message: `본문 있는 문서 ${withContent}건 (${pct(withContent)}%) - 본문 입력 필요`,
+              });
 
             // 보험사 균형 검사
             if (carrierDist.length > 1) {
               const minC = carrierDist[carrierDist.length - 1];
               const maxC = carrierDist[0];
-              if (maxC.count > minC.count * 5) issues.push({ severity: 'info', message: `보험사 불균형: ${maxC.name}(${maxC.count}건) vs ${minC.name}(${minC.count}건)` });
+              if (maxC.count > minC.count * 5)
+                issues.push({
+                  severity: 'info',
+                  message: `보험사 불균형: ${maxC.name}(${maxC.count}건) vs ${minC.name}(${minC.count}건)`,
+                });
             }
 
             // 점수 계산 (100점 만점)
             let score = 100;
-            score -= dupes.length * 10;                      // 유니크 위반 -10점/건
-            score -= brokenRefs * 5;                          // 끊어진 참조 -5점/건
-            score -= Math.max(0, pct(orphans.length) - 80);   // 고아 80% 초과 시 감점
-            if (withContent < totalDocs * 0.05) score -= 10;  // 본문 5% 미만 -10점
+            score -= dupes.length * 10; // 유니크 위반 -10점/건
+            score -= brokenRefs * 5; // 끊어진 참조 -5점/건
+            score -= Math.max(0, pct(orphans.length) - 80); // 고아 80% 초과 시 감점
+            if (withContent < totalDocs * 0.05) score -= 10; // 본문 5% 미만 -10점
             score = Math.max(0, Math.min(100, Math.round(score)));
 
             return {
-              score, totalDocs,
+              score,
+              totalDocs,
               orphanCount: orphans.length,
               duplicateCount: dupes.length,
               brokenRefCount: brokenRefs,
               ssotViolations: dupes.length,
-              relationHealth, tierDist, carrierDist, docTypeDist,
-              lifecycleDist, freshnessDist, expiringDocs, domainDist,
-              supersedesChains, metaCompleteness,
+              relationHealth,
+              tierDist,
+              carrierDist,
+              docTypeDist,
+              lifecycleDist,
+              freshnessDist,
+              expiringDocs,
+              domainDist,
+              supersedesChains,
+              metaCompleteness,
               avgRelations: (totalRels / totalDocs).toFixed(1),
               contentFillPct: pct(withContent),
               contentFilledCount: withContent,
@@ -3300,11 +3534,23 @@
 
               // 문서 라벨 생성 (이미 사용한 축 제외)
               const usedTypes = new Set(listDrillPath.map((p) => p.type));
-              const nameGetters = { carrier: getCarrierName, product: getProductName, docType: getDocTypeName, process: getProcessName, audience: getAudienceName };
-              const docGetters = { carrier: getDocCarrier, product: getDocProduct, docType: getDocDocType, process: (d) => getDocMeta(d, 'process'), audience: (d) => getDocMeta(d, 'audience') };
+              const nameGetters = {
+                carrier: getCarrierName,
+                product: getProductName,
+                docType: getDocTypeName,
+                process: getProcessName,
+                audience: getAudienceName,
+              };
+              const docGetters = {
+                carrier: getDocCarrier,
+                product: getDocProduct,
+                docType: getDocDocType,
+                process: (d) => getDocMeta(d, 'process'),
+                audience: (d) => getDocMeta(d, 'audience'),
+              };
               function docLabel(doc) {
                 const parts = [];
-                ['carrier', 'product', 'docType'].forEach(t => {
+                ['carrier', 'product', 'docType'].forEach((t) => {
                   if (!usedTypes.has(t)) parts.push(nameGetters[t](docGetters[t](doc)));
                 });
                 return (parts.length > 0 ? parts.join(' / ') + '\n' : '') + '[' + doc.tier + ']';
@@ -4007,7 +4253,13 @@
 
           // 하위 카테고리 이름 가져오기
           function getDrillCategoryName(type, id) {
-            const nameMap = { carrier: getCarrierName, product: getProductName, docType: getDocTypeName, process: getProcessName, audience: getAudienceName };
+            const nameMap = {
+              carrier: getCarrierName,
+              product: getProductName,
+              docType: getDocTypeName,
+              process: getProcessName,
+              audience: getAudienceName,
+            };
             return nameMap[type] ? nameMap[type](id) : id;
           }
 
@@ -4060,12 +4312,14 @@
             const ssotKey = domainDef?.ssotKey || ['carrier', 'product', 'docType'];
             const vals = { carrier, product, docType };
             // ssotKey의 모든 필드가 채워져야 검증
-            if (!ssotKey.every(k => vals[k])) {
+            if (!ssotKey.every((k) => vals[k])) {
               docModal.duplicateWarning = null;
               return;
             }
             const classification = {};
-            ssotKey.forEach(k => { classification[k] = vals[k]; });
+            ssotKey.forEach((k) => {
+              classification[k] = vals[k];
+            });
             const dup = checkSsotViolation(domain, classification);
             docModal.duplicateWarning = dup ? `SSOT 위반: ${dup.name} (ACTIVE)` : null;
           }
@@ -4166,8 +4420,14 @@
 
             // 스티키 컨텍스트: 파일명에서 못 잡은 항목은 이전 선택값 유지
             const sticky = uploadPreview.stickyContext;
-            if (!carrier && sticky.carrier) { carrier = sticky.carrier; carrierConf = 0; }
-            if (!product && sticky.product) { product = sticky.product; productConf = 0; }
+            if (!carrier && sticky.carrier) {
+              carrier = sticky.carrier;
+              carrierConf = 0;
+            }
+            if (!product && sticky.product) {
+              product = sticky.product;
+              productConf = 0;
+            }
 
             // 도메인 결정: docType 기반 또는 스티키
             const domain = store.docTypeDomainMap?.[docType] || sticky.domain || 'GA-SALES';
@@ -4238,7 +4498,14 @@
               meta: { process: '', audience: '' },
               tier: docTypeObj?.tier || 'COLD',
               content: '',
-              relations: { parent: null, children: [], siblings: [], references: [], supersedes: null, supersededBy: null },
+              relations: {
+                parent: null,
+                children: [],
+                siblings: [],
+                references: [],
+                supersedes: null,
+                supersededBy: null,
+              },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               reviewedAt: null,
@@ -4304,7 +4571,15 @@
 
           function showAddDocModal() {
             docModal.show = true;
-            docModal.data = { domain: 'GA-SALES', carrier: '', product: '', docType: '', process: '', audience: '', name: '' };
+            docModal.data = {
+              domain: 'GA-SALES',
+              carrier: '',
+              product: '',
+              docType: '',
+              process: '',
+              audience: '',
+              name: '',
+            };
             docModal.duplicateWarning = null;
           }
 
@@ -4365,7 +4640,14 @@
               meta: { process: process || '', audience: audience || '' },
               tier: docTypeObj?.tier || 'COLD',
               content: '',
-              relations: { parent: null, children: [], siblings: [], references: [], supersedes: null, supersededBy: null },
+              relations: {
+                parent: null,
+                children: [],
+                siblings: [],
+                references: [],
+                supersedes: null,
+                supersededBy: null,
+              },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               reviewedAt: null,
@@ -4392,7 +4674,7 @@
 
             // 제거될 classification 필드
             const removedFields = [];
-            Object.keys(doc.classification || {}).forEach(k => {
+            Object.keys(doc.classification || {}).forEach((k) => {
               if (!newFacets.has(k)) removedFields.push(k);
             });
             if (removedFields.length > 0) {
@@ -4430,7 +4712,7 @@
             // 자식 관계
             const children = relations.children || [];
             if (children.length > 0) {
-              const childNames = children.map(cid => store.documents[cid]?.name || cid).slice(0, 3);
+              const childNames = children.map((cid) => store.documents[cid]?.name || cid).slice(0, 3);
               const more = children.length > 3 ? ` 외 ${children.length - 3}건` : '';
               autoResolved.push({
                 type: 'children',
@@ -4441,7 +4723,7 @@
 
             // 형제 관계 → 컨플릭트
             const siblings = relations.siblings || [];
-            siblings.forEach(sibId => {
+            siblings.forEach((sibId) => {
               const sibDoc = store.documents[sibId];
               if (!sibDoc) return;
               const sibDomain = sibDoc.domain || 'GA-SALES';
@@ -4475,7 +4757,7 @@
                 incomingRefs.push({ id, name: d.name, domain: d.domain || 'GA-SALES' });
               }
             });
-            incomingRefs.forEach(ref => {
+            incomingRefs.forEach((ref) => {
               conflicts.push({
                 type: 'reference_in',
                 relType: 'reference_in',
@@ -4541,7 +4823,7 @@
             // 2. 컨플릭트 해결 적용
             let severedCount = 0;
             let keptCount = 0;
-            impact.conflicts.forEach(c => {
+            impact.conflicts.forEach((c) => {
               const key = `${c.relType}:${c.targetId}`;
               const action = resolutions[key] || c.defaultAction;
 
@@ -4552,20 +4834,20 @@
                   doc.relations.parent = null;
                   const parentDoc = store.documents[c.targetId];
                   if (parentDoc?.relations?.children) {
-                    parentDoc.relations.children = parentDoc.relations.children.filter(id => id !== docId);
+                    parentDoc.relations.children = parentDoc.relations.children.filter((id) => id !== docId);
                   }
                 } else if (c.relType === 'siblings') {
                   // 형제 관계 양방향 해제
-                  doc.relations.siblings = (doc.relations.siblings || []).filter(id => id !== c.targetId);
+                  doc.relations.siblings = (doc.relations.siblings || []).filter((id) => id !== c.targetId);
                   const sibDoc = store.documents[c.targetId];
                   if (sibDoc?.relations?.siblings) {
-                    sibDoc.relations.siblings = sibDoc.relations.siblings.filter(id => id !== docId);
+                    sibDoc.relations.siblings = sibDoc.relations.siblings.filter((id) => id !== docId);
                   }
                 } else if (c.relType === 'reference_in') {
                   // 들어오는 참조 해제
                   const refDoc = store.documents[c.targetId];
                   if (refDoc?.relations?.references) {
-                    refDoc.relations.references = refDoc.relations.references.filter(id => id !== docId);
+                    refDoc.relations.references = refDoc.relations.references.filter((id) => id !== docId);
                   }
                 }
               } else {
@@ -4575,7 +4857,7 @@
 
             // 3. 자식 문서도 도메인 이동 (자동)
             const children = doc.relations?.children || [];
-            children.forEach(childId => {
+            children.forEach((childId) => {
               const childDoc = store.documents[childId];
               if (childDoc) {
                 childDoc.domain = newDomain;
@@ -4592,7 +4874,8 @@
             saveStore();
             moveModal.show = false;
 
-            const msg = `이동 완료: ${oldDomain} → ${newDomain}` +
+            const msg =
+              `이동 완료: ${oldDomain} → ${newDomain}` +
               (severedCount > 0 ? ` (관계 해제 ${severedCount}건)` : '') +
               (keptCount > 0 ? ` (관계 유지 ${keptCount}건)` : '');
             showToast(msg, 'success');
@@ -4858,7 +5141,8 @@
           }
 
           function getDocCountByCarrierTier(carrierId, tier) {
-            return Object.values(store.documents).filter((d) => getDocCarrier(d) === carrierId && d.tier === tier).length;
+            return Object.values(store.documents).filter((d) => getDocCarrier(d) === carrierId && d.tier === tier)
+              .length;
           }
 
           function getDocCountByProcess(processId) {

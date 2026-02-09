@@ -1,0 +1,160 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Param,
+  Query,
+  Body,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Request,
+  Res,
+  StreamableFile,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger'
+import { ConfigService } from '@nestjs/config'
+import { Response } from 'express'
+import * as fs from 'fs'
+import * as path from 'path'
+import { DocumentsService } from './documents.service'
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../auth/guards/roles.guard'
+import { Roles } from '../auth/decorators/roles.decorator'
+import {
+  DocumentListQueryDto,
+  CreateDocumentBodyDto,
+  UpdateDocumentDto,
+  TransitionLifecycleDto,
+} from './dto/documents.dto'
+import type { UserRole } from '@kms/shared'
+
+interface AuthRequest {
+  user: { sub: string; email: string; role: UserRole }
+}
+
+@ApiTags('documents')
+@Controller('documents')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
+export class DocumentsController {
+  private readonly storagePath: string
+
+  constructor(
+    private readonly documentsService: DocumentsService,
+    private readonly config: ConfigService,
+  ) {
+    this.storagePath = path.resolve(
+      this.config.get('STORAGE_PATH', './storage/originals'),
+    )
+  }
+
+  @Post()
+  @ApiOperation({ summary: '문서 업로드' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  async create(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: CreateDocumentBodyDto,
+    @Request() req: AuthRequest,
+  ) {
+    let classifications: Record<string, string>
+    try {
+      const parsed: unknown = JSON.parse(body.classifications)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error()
+      }
+      // 모든 값이 문자열인지 검증
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof key !== 'string' || typeof value !== 'string') {
+          throw new Error()
+        }
+      }
+      classifications = parsed as Record<string, string>
+    } catch {
+      throw new BadRequestException('classifications은 유효한 JSON 객체여야 합니다')
+    }
+
+    return this.documentsService.create(
+      { domain: body.domain, classifications, securityLevel: body.securityLevel },
+      file,
+      req.user.sub,
+    )
+  }
+
+  @Get()
+  @ApiOperation({ summary: '문서 목록 조회' })
+  async findAll(@Query() query: DocumentListQueryDto, @Request() req: AuthRequest) {
+    return this.documentsService.findAll(query, req.user.role)
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: '문서 상세 조회' })
+  async findOne(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.documentsService.findOne(id, req.user.role)
+  }
+
+  @Put(':id')
+  @ApiOperation({ summary: '문서 수정 (낙관적 잠금)' })
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateDocumentDto,
+    @Request() req: AuthRequest,
+  ) {
+    return this.documentsService.update(id, body, req.user.sub, req.user.role)
+  }
+
+  @Patch(':id/lifecycle')
+  @ApiOperation({ summary: '라이프사이클 전환' })
+  async transitionLifecycle(
+    @Param('id') id: string,
+    @Body() body: TransitionLifecycleDto,
+    @Request() req: AuthRequest,
+  ) {
+    return this.documentsService.transitionLifecycle(id, body.lifecycle, req.user.sub, req.user.role)
+  }
+
+  @Delete(':id')
+  @Roles('TEAM_LEAD')
+  @ApiOperation({ summary: '문서 논리 삭제 (팀장 이상)' })
+  async remove(@Param('id') id: string, @Request() req: AuthRequest) {
+    await this.documentsService.softDelete(id, req.user.sub, req.user.role)
+    return { message: '삭제되었습니다' }
+  }
+
+  @Get(':id/file')
+  @ApiOperation({ summary: '파일 다운로드' })
+  async downloadFile(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const doc = await this.documentsService.findOneInternal(id, req.user.role)
+    if (!doc.filePath) {
+      throw new NotFoundException('파일 경로를 찾을 수 없습니다')
+    }
+
+    // Path traversal 방지: 스토리지 디렉토리 내 파일인지 확인
+    const resolved = path.resolve(doc.filePath)
+    if (!resolved.startsWith(this.storagePath)) {
+      throw new BadRequestException('허용되지 않는 파일 경로입니다')
+    }
+
+    if (!fs.existsSync(resolved)) {
+      throw new NotFoundException('파일이 존재하지 않습니다')
+    }
+
+    const stream = fs.createReadStream(resolved)
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.fileName)}"`,
+    })
+    return new StreamableFile(stream)
+  }
+}

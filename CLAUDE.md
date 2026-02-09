@@ -13,7 +13,7 @@
 | 단계 | 목표 | 상태 | 기술 |
 |------|------|------|------|
 | **Phase 1** | 분류체계 검증 | **완료** | Python + JSON + HTML |
-| **Phase 2** | 체계 관리 시스템 | **현재** | .NET Core + Vue 3 + PostgreSQL |
+| **Phase 2** | 체계 관리 시스템 | **현재** | NestJS + Vue 3 + TypeScript + PostgreSQL |
 | **Phase 3** | 데이터 처리 확장 | 선택적 | Python 추가 (조건부) |
 
 ---
@@ -90,12 +90,14 @@
 
 | 영역 | 기술 | 버전 |
 |------|------|------|
-| Frontend | Vue 3 | 3.4+ |
+| 언어 | TypeScript (풀스택) | 5.7+ |
+| Frontend | Vue 3 + Composition API | 3.5+ |
 | UI | Element Plus | 2.x |
-| 빌드 | Vite | 5.x |
-| Backend | ASP.NET Core | 8.0 LTS |
-| ORM | EF Core | 8.x |
+| 빌드 | Vite | 6.x |
+| Backend | NestJS | 10.x |
+| ORM | Prisma | 6.x |
 | Database | PostgreSQL | 16 |
+| Monorepo | pnpm workspace + Turbo | - |
 | PDF 뷰어 | pdf.js | - |
 | MD 뷰어 | marked.js | - |
 | 그래프 | vis-network | 9.x |
@@ -117,31 +119,53 @@
 /
 ├── CLAUDE.md                        # 프로젝트 규칙 (이 파일)
 ├── README.md                        # 프로젝트 소개
+├── pnpm-workspace.yaml              # Monorepo 설정
+├── turbo.json                       # Turbo 빌드 파이프라인
+├── docker-compose.yml               # PostgreSQL + pgAdmin
 │
-├── src/                             # Phase 1 Python 소스
-│   ├── taxonomy.py                  # 마스터 데이터 정의
-│   ├── ontology.py                  # 온톨로지 메타데이터
-│   ├── simulator.py                 # 데이터 시뮬레이터
-│   ├── verifier.py                  # 데이터 무결성 검증
-│   └── ontology_validator.py        # 온톨로지 구조 검증
+├── packages/
+│   ├── shared/                      # @kms/shared (타입 + 상수)
+│   │   └── src/
+│   │       ├── types.ts             # 엔티티, DTO, Enum
+│   │       ├── constants.ts         # 도메인, 권한, 관계 정의
+│   │       └── index.ts
+│   ├── api/                         # @kms/api (NestJS 백엔드)
+│   │   ├── src/
+│   │   │   ├── prisma/              # DB 서비스
+│   │   │   ├── auth/                # 인증 + 권한 (JWT, API Key, 역할, 보안등급)
+│   │   │   ├── documents/           # 문서 CRUD + 업로드 + 라이프사이클
+│   │   │   ├── relations/           # 관계 관리 (순환 방지, scope 검증)
+│   │   │   ├── taxonomy/            # 마스터 데이터 API
+│   │   │   └── common/              # 필터, 인터셉터
+│   │   └── prisma/
+│   │       ├── schema.prisma        # DB 스키마
+│   │       ├── triggers.sql         # 트리거 (SSOT, 순환방지)
+│   │       └── seed.ts              # 초기 데이터
+│   └── web/                         # @kms/web (Vue 3 프론트엔드)
+│       └── src/
+│           ├── router/              # 라우터 + 라우트 가드
+│           ├── stores/              # Pinia 상태관리
+│           ├── api/                 # API 클라이언트
+│           ├── views/               # 페이지 컴포넌트
+│           ├── components/          # 공통 컴포넌트
+│           └── composables/         # 재사용 로직
 │
-├── data/                            # 생성 데이터
-│   ├── taxonomy.json
-│   ├── knowledge-graph.json
-│   └── knowledge-graph-ontology.json
+├── scripts/                         # Python 코어 검증 도구
+│   ├── taxonomy.py
+│   ├── simulator.py
+│   ├── verifier.py
+│   └── ontology_validator.py
 │
-├── ui/                              # Phase 1 프론트엔드
-│   ├── admin.html
-│   └── viewer.html
+├── legacy/                          # Phase 1 아카이브
+│   ├── ui/                          # Phase 1 HTML UI
+│   └── data/                        # Phase 1 생성 데이터
 │
 └── docs/                            # 문서
-    ├── README.md                    # 문서 인덱스
-    ├── phase1/                      # Phase 1 문서
-    ├── phase2/                      # Phase 2 문서
-    ├── phase3/                      # Phase 3 문서
-    ├── architecture/                # 아키텍처 문서
-    ├── problems/                    # CEO 보고용
-    └── shared/                      # 공유 문서
+    ├── phase1/
+    ├── phase2/
+    │   └── database-schema.md       # DB 스키마 정본
+    ├── phase3/
+    └── architecture/
 ```
 
 ---
@@ -192,6 +216,25 @@ DRAFT → ACTIVE → DEPRECATED
 
 동일 분류 경로에 ACTIVE 문서 1개만 허용
 
+### 권한 체계 (문서 보안 등급 + 사용자 역할)
+
+**문서 보안 등급:**
+| 등급 | 설명 | 접근 가능 역할 |
+|------|------|---------------|
+| PUBLIC | 공개 | 외부업체 포함 전체 |
+| INTERNAL | 사내용 | 직원 이상 |
+| CONFIDENTIAL | 대외비(2급) | 팀장 이상 |
+| SECRET | 기밀(1급) | 임원 이상 |
+
+**사용자 역할:**
+| 역할 | 설명 | 수준 |
+|------|------|------|
+| EXTERNAL | 외부업체 (RAG 구축용) | 0 |
+| EMPLOYEE | 일반 직원 | 1 |
+| TEAM_LEAD | 팀장급 | 2 |
+| EXECUTIVE | 임원급 | 3 |
+| ADMIN | 시스템 관리자 | 4 |
+
 ---
 
 ## 데이터베이스 설계 (Phase 2)
@@ -240,29 +283,184 @@ DRAFT → ACTIVE → DEPRECATED
 
 ## 주요 명령어
 
-### Phase 1 (검증용)
+### Phase 2 (개발)
 
 ```bash
-# 데이터 생성
-python src/taxonomy.py
-python src/simulator.py
+# 환경 구축
+pnpm install                          # 의존성 설치
+docker compose up -d postgres         # DB 시작
+pnpm db:migrate                       # 마이그레이션
+pnpm db:seed                          # 시드 데이터
 
-# 검증
-python src/verifier.py
-python src/ontology_validator.py
+# 개발 서버
+pnpm dev                              # API + Web 동시 실행
+pnpm --filter @kms/api dev            # API만
+pnpm --filter @kms/web dev            # Web만
 
-# UI 확인
-npx serve . -p 8080
+# 빌드
+pnpm build                            # 전체 빌드
+pnpm --filter @kms/shared build       # shared만
+
+# Prisma
+pnpm --filter @kms/api prisma studio  # DB GUI
 ```
 
-### Phase 2 (개발 시)
+### Python 검증 도구
 
 ```bash
-# Backend
-dotnet run --project src/KMS.Api
+# 프로젝트 루트에서 실행
+python scripts/taxonomy.py
+python scripts/simulator.py
+python scripts/verifier.py
+python scripts/ontology_validator.py
+```
 
-# Frontend
-cd frontend && npm run dev
+---
+
+## 배포 가이드
+
+### 백엔드 (Docker)
+
+#### 사전 준비
+- Docker + Docker Compose 설치
+- Node.js 20+ / pnpm 9+ (빌드용)
+
+#### 1. 환경변수 설정
+
+```bash
+# packages/api/.env 생성 (프로덕션)
+cp .env.example packages/api/.env
+```
+
+필수 환경변수:
+| 변수 | 설명 | 예시 |
+|------|------|------|
+| `DATABASE_URL` | PostgreSQL 접속 URL | `postgresql://kms:비밀번호@호스트:5432/kms?schema=public` |
+| `JWT_SECRET` | JWT 서명 키 (필수, 하드코딩 금지) | 32자 이상 랜덤 문자열 |
+| `JWT_EXPIRES_IN` | 액세스 토큰 만료 | `1h` |
+| `JWT_REFRESH_EXPIRES_IN` | 리프레시 토큰 만료 | `7d` |
+| `API_PORT` | 서버 포트 | `3000` |
+| `STORAGE_PATH` | 파일 저장 경로 | `/app/storage/originals` |
+| `CORS_ORIGIN` | 허용 Origin | `https://your-domain.vercel.app` |
+
+#### 2. 빌드
+
+```bash
+# 의존성 설치 + shared 빌드
+pnpm install
+pnpm --filter @kms/shared build
+
+# Prisma 클라이언트 생성
+pnpm --filter @kms/api exec prisma generate
+
+# API 빌드
+pnpm --filter @kms/api build
+```
+
+빌드 결과: `packages/api/dist/`
+
+#### 3. DB 마이그레이션
+
+```bash
+# 개발용 (자동 생성)
+pnpm --filter @kms/api exec prisma migrate dev
+
+# 프로덕션 (적용만)
+pnpm --filter @kms/api exec prisma migrate deploy
+
+# 시드 데이터 (최초 1회)
+pnpm --filter @kms/api exec prisma db seed
+```
+
+마이그레이션 후 트리거 적용:
+```bash
+# PostgreSQL에 직접 실행
+psql $DATABASE_URL -f packages/api/prisma/triggers.sql
+```
+
+#### 4. Docker 실행
+
+```bash
+# PostgreSQL + pgAdmin 시작
+docker compose up -d
+
+# API 서버 실행 (로컬)
+pnpm --filter @kms/api start:prod
+
+# 또는 Docker로 API 실행 (Dockerfile 작성 필요 시)
+# packages/api/Dockerfile 참고
+```
+
+#### 5. 확인
+
+```bash
+# 헬스체크
+curl http://localhost:3000/api
+
+# Swagger 문서
+# http://localhost:3000/api/docs
+
+# pgAdmin
+# http://localhost:5050 (admin@kms.local / admin)
+```
+
+#### 초기 관리자 계정
+- 이메일: `admin@company.com`
+- 비밀번호: `admin123`
+- 역할: `ADMIN`
+
+> 프로덕션 배포 후 반드시 비밀번호 변경
+
+---
+
+### 프론트엔드 (Vercel)
+
+#### 1. Vercel 프로젝트 설정
+
+| 설정 | 값 |
+|------|-----|
+| Framework Preset | Vue.js |
+| Root Directory | `packages/web` |
+| Build Command | `cd ../.. && pnpm install && pnpm --filter @kms/shared build && cd packages/web && npx vite build` |
+| Output Directory | `dist` |
+| Install Command | (비워두기 — Build Command에서 처리) |
+
+#### 2. 환경변수 (Vercel Dashboard)
+
+| 변수 | 값 |
+|------|-----|
+| `VITE_API_BASE_URL` | 백엔드 API URL (예: `https://api.your-domain.com/api`) |
+
+#### 3. API 프록시 설정
+
+`packages/web/vercel.json` 생성:
+```json
+{
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://api.your-domain.com/api/:path*" }
+  ]
+}
+```
+
+또는 Vite 설정에서 프록시를 유지하되, 프로덕션에서는 Vercel rewrites로 처리.
+
+#### 4. 배포
+
+```bash
+# Vercel CLI
+npx vercel --prod
+
+# 또는 GitHub 연동 시 push하면 자동 배포
+```
+
+#### 5. 빌드 순서 주의사항
+
+Vercel에서 빌드 시 `@kms/shared`가 먼저 빌드되어야 합니다.
+Build Command에서 shared를 먼저 빌드하는 이유:
+```
+pnpm --filter @kms/shared build → packages/shared/dist/ 생성
+→ @kms/web의 tsconfig paths가 ../shared/dist 참조
+→ vite build 성공
 ```
 
 ---
@@ -281,4 +479,4 @@ cd frontend && npm run dev
 2. **허용 형식 제한**: PDF, Markdown, CSV만 (Word/PPT 차단)
 3. **데이터 주권 확보**: 원본 + 분류체계 100% 소유
 4. **확장성 열어두기**: Phase 3 인터페이스 정의만
-5. **IT팀 운영 가능**: .NET Core + Vue 3 (Python 없음)
+5. **풀스택 TypeScript**: NestJS + Vue 3 (타입 공유)
