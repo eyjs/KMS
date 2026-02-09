@@ -419,11 +419,13 @@ curl http://localhost:3000/api
 
 | 설정 | 값 |
 |------|-----|
-| Framework Preset | Vue.js |
-| Root Directory | `packages/web` |
-| Build Command | `cd ../.. && pnpm install && pnpm --filter @kms/shared build && cd packages/web && npx vite build` |
-| Output Directory | `dist` |
-| Install Command | (비워두기 — Build Command에서 처리) |
+| Framework Preset | Other |
+| Root Directory | `.` (레포 루트, 비워두기) |
+| Build Command | (자동 — vercel.json에 정의됨) |
+| Output Directory | (자동 — vercel.json에 정의됨) |
+| Install Command | (자동 — vercel.json에 정의됨) |
+
+> `vercel.json`이 레포 루트에 모든 설정을 포함하고 있음
 
 #### 2. 환경변수 (Vercel Dashboard)
 
@@ -434,14 +436,7 @@ curl http://localhost:3000/api
 #### 3. API 프록시 설정
 
 `packages/web/vercel.json` 생성:
-`packages/web/vercel.json`에 이미 설정됨:
-```json
-{
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "https://kms.joonbi.co.kr/api/:path*" }
-  ]
-}
-```
+레포 루트 `vercel.json`에 이미 설정됨 (빌드, 출력, API 프록시 포함)
 
 #### 4. 배포
 
