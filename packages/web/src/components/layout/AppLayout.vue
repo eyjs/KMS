@@ -1,16 +1,13 @@
 <script setup lang="ts">
+import { onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
+import { useDomainStore } from '@/stores/domain'
+import { useRoute, useRouter } from 'vue-router'
 
 const auth = useAuthStore()
+const domainStore = useDomainStore()
+const route = useRoute()
 const router = useRouter()
-
-const menuItems = [
-  { path: '/', label: '대시보드', icon: 'Monitor' },
-  { path: '/documents', label: '문서 목록', icon: 'Document' },
-  { path: '/upload', label: '업로드', icon: 'Upload' },
-  { path: '/graph', label: '관계 그래프', icon: 'Share' },
-]
 
 const ROLE_LABELS: Record<string, string> = {
   EXTERNAL: '외부업체',
@@ -20,6 +17,20 @@ const ROLE_LABELS: Record<string, string> = {
   ADMIN: '관리자',
 }
 
+const activeMenu = computed(() => {
+  const path = route.path
+  if (path.startsWith('/d/')) {
+    const domainCode = route.params.domainCode as string
+    return `/d/${domainCode}`
+  }
+  if (path.startsWith('/admin/')) return path
+  return path
+})
+
+onMounted(() => {
+  domainStore.loadDomains()
+})
+
 function handleLogout() {
   auth.logout()
 }
@@ -27,43 +38,86 @@ function handleLogout() {
 
 <template>
   <el-container style="min-height: 100vh">
-    <el-aside width="220px" style="background: #304156">
-      <div style="padding: 20px; color: #fff; font-size: 18px; font-weight: bold; text-align: center">
+    <el-aside width="220px" style="background: #1d1e2c; overflow-y: auto">
+      <div style="padding: 20px 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.06)">
         KMS
       </div>
+
       <el-menu
-        :default-active="$route.path"
+        :default-active="activeMenu"
         :router="true"
-        background-color="#304156"
-        text-color="#bfcbd9"
+        background-color="#1d1e2c"
+        text-color="#a3a6b4"
         active-text-color="#409eff"
+        style="border-right: none"
       >
-        <el-menu-item
-          v-for="item in menuItems"
-          :key="item.path"
-          :index="item.path"
-        >
-          <span>{{ item.label }}</span>
+        <!-- SYSTEM -->
+        <div style="padding: 16px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
+          System
+        </div>
+        <el-menu-item index="/">
+          <el-icon><component is="Monitor" /></el-icon>
+          <span>대시보드</span>
         </el-menu-item>
-        <el-menu-item
-          v-if="auth.hasMinRole('ADMIN')"
-          index="/settings"
-        >
-          <span>설정</span>
+        <el-menu-item index="/search">
+          <el-icon><component is="Search" /></el-icon>
+          <span>통합 검색</span>
         </el-menu-item>
+
+        <!-- DOMAINS -->
+        <div style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
+          Domains
+        </div>
+        <el-menu-item
+          v-for="d in domainStore.domains"
+          :key="d.code"
+          :index="`/d/${d.code}`"
+        >
+          <el-icon><component is="Folder" /></el-icon>
+          <span>{{ d.displayName }}</span>
+        </el-menu-item>
+
+        <!-- ADMIN -->
+        <template v-if="auth.hasMinRole('ADMIN')">
+          <div style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
+            Admin
+          </div>
+          <el-menu-item index="/admin/domains">
+            <el-icon><component is="Setting" /></el-icon>
+            <span>도메인 관리</span>
+          </el-menu-item>
+          <el-menu-item index="/admin/users">
+            <el-icon><component is="User" /></el-icon>
+            <span>사용자 관리</span>
+          </el-menu-item>
+        </template>
       </el-menu>
+
+      <!-- 하단 사용자 정보 -->
+      <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.06); background: #1d1e2c">
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+            <el-avatar :size="28" style="background: #409eff; flex-shrink: 0">
+              {{ auth.user?.name?.charAt(0) ?? '' }}
+            </el-avatar>
+            <div style="min-width: 0">
+              <div style="color: #e0e0e0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+                {{ auth.user?.name }}
+              </div>
+              <div style="color: #6b6e7e; font-size: 11px">
+                {{ ROLE_LABELS[auth.user?.role ?? ''] ?? auth.user?.role }}
+              </div>
+            </div>
+          </div>
+          <el-button text size="small" style="color: #6b6e7e" @click="handleLogout">
+            로그아웃
+          </el-button>
+        </div>
+      </div>
     </el-aside>
 
     <el-container>
-      <el-header style="display: flex; align-items: center; justify-content: flex-end; gap: 16px; border-bottom: 1px solid #e6e6e6">
-        <el-tag size="small" :type="auth.user?.role === 'ADMIN' ? 'danger' : 'info'">
-          {{ ROLE_LABELS[auth.user?.role ?? ''] ?? auth.user?.role }}
-        </el-tag>
-        <span>{{ auth.user?.name }}</span>
-        <el-button size="small" @click="handleLogout">로그아웃</el-button>
-      </el-header>
-
-      <el-main>
+      <el-main style="padding: 20px; background: #f5f7fa">
         <router-view />
       </el-main>
     </el-container>

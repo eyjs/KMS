@@ -1,6 +1,46 @@
 import { client } from './client'
 import type { DocumentEntity, DocumentListQuery, PaginatedResponse } from '@kms/shared'
 
+export interface DocumentStats {
+  total: number
+  active: number
+  draft: number
+  deprecated: number
+  freshnessWarning: number
+  byDomain: Array<{
+    domain: string
+    displayName: string
+    total: number
+    active: number
+    draft: number
+    deprecated: number
+    warning: number
+  }>
+}
+
+export interface RecentActivity {
+  id: string
+  documentId: string
+  fileName: string
+  domain: string
+  action: string
+  changes: Record<string, unknown> | null
+  userName: string | null
+  createdAt: string
+}
+
+export interface DocumentHistoryEntry {
+  id: string
+  action: string
+  changes: Record<string, unknown> | null
+  userName: string | null
+  createdAt: string
+}
+
+export interface DocumentCounts {
+  [key: string]: number
+}
+
 export const documentsApi = {
   list(query: DocumentListQuery) {
     return client.get<PaginatedResponse<DocumentEntity>>('/documents', { params: query })
@@ -35,5 +75,30 @@ export const documentsApi = {
 
   downloadFile(id: string) {
     return client.get(`/documents/${id}/file`, { responseType: 'blob' })
+  },
+
+  getStats() {
+    return client.get<DocumentStats>('/documents/stats')
+  },
+
+  getRecent(limit = 10) {
+    return client.get<RecentActivity[]>('/documents/recent', { params: { limit } })
+  },
+
+  getCounts(params: { domain: string; groupBy: string }) {
+    return client.get<DocumentCounts>('/documents/counts', { params })
+  },
+
+  getHistory(id: string) {
+    return client.get<DocumentHistoryEntry[]>(`/documents/${id}/history`)
+  },
+
+  getPreviewUrl(id: string): string {
+    const baseURL = client.defaults.baseURL || '/api'
+    return `${baseURL}/documents/${id}/preview`
+  },
+
+  search(params: { q?: string; domain?: string; lifecycle?: string; page?: number; size?: number }) {
+    return client.get<PaginatedResponse<DocumentEntity>>('/documents/search', { params })
   },
 }

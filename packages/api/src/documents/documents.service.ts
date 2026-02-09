@@ -127,7 +127,7 @@ export class DocumentsService {
     ])
 
     return {
-      data: data.map((d) => this.formatDocument(d)),
+      data: data.map((d: Parameters<DocumentsService['formatDocument']>[0]) => this.formatDocument(d)),
       meta: { total, page, size, totalPages: Math.ceil(total / size) },
     }
   }
@@ -197,7 +197,7 @@ export class DocumentsService {
     }
 
     // 트랜잭션으로 분류 업데이트 + 문서 업데이트 원자적 실행
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx: typeof this.prisma) => {
       if (data.classifications) {
         await tx.classification.deleteMany({ where: { documentId: id } })
         await tx.classification.createMany({
@@ -306,6 +306,176 @@ export class DocumentsService {
     await this.prisma.documentHistory.create({
       data: { documentId: id, action: 'DELETE', userId },
     })
+  }
+
+  async getStats(userRole: UserRole) {
+    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
+    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
+      .filter(([, level]) => level <= maxLevel)
+      .map(([name]) => name)
+
+    const where = { isDeleted: false, securityLevel: { in: allowedLevels } }
+
+    const [total, active, draft, deprecated] = await Promise.all([
+      this.prisma.document.count({ where }),
+      this.prisma.document.count({ where: { ...where, lifecycle: 'ACTIVE' } }),
+      this.prisma.document.count({ where: { ...where, lifecycle: 'DRAFT' } }),
+      this.prisma.document.count({ where: { ...where, lifecycle: 'DEPRECATED' } }),
+    ])
+
+    // 도메인별 통계
+    const domains = await this.prisma.domainMaster.findMany({ where: { isActive: true } })
+    const byDomain = await Promise.all(
+      domains.map(async (d: { code: string; displayName: string }) => {
+        const dWhere = { ...where, domain: d.code }
+        const [dTotal, dActive, dDraft, dDeprecated] = await Promise.all([
+          this.prisma.document.count({ where: dWhere }),
+          this.prisma.document.count({ where: { ...dWhere, lifecycle: 'ACTIVE' } }),
+          this.prisma.document.count({ where: { ...dWhere, lifecycle: 'DRAFT' } }),
+          this.prisma.document.count({ where: { ...dWhere, lifecycle: 'DEPRECATED' } }),
+        ])
+        return {
+          domain: d.code,
+          displayName: d.displayName,
+          total: dTotal,
+          active: dActive,
+          draft: dDraft,
+          deprecated: dDeprecated,
+          warning: 0, // 신선도 경고는 별도 계산 필요
+        }
+      }),
+    )
+
+    return {
+      total,
+      active,
+      draft,
+      deprecated,
+      freshnessWarning: 0,
+      byDomain,
+    }
+  }
+
+  async getRecent(limit: number, userRole: UserRole) {
+    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
+    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
+      .filter(([, level]) => level <= maxLevel)
+      .map(([name]) => name)
+
+    const histories = await this.prisma.documentHistory.findMany({
+      take: Math.min(limit, 50),
+      orderBy: { createdAt: 'desc' },
+      include: {
+        document: { select: { fileName: true, domain: true, securityLevel: true, isDeleted: true } },
+        user: { select: { name: true } },
+      },
+    })
+
+    return histories
+      .filter((h: { document: { isDeleted: boolean; securityLevel: string } }) =>
+        !h.document.isDeleted && allowedLevels.includes(h.document.securityLevel),
+      )
+      .map((h: {
+        id: string; documentId: string; action: string; changes: unknown;
+        createdAt: Date; document: { fileName: string; domain: string };
+        user: { name: string } | null;
+      }) => ({
+        id: h.id,
+        documentId: h.documentId,
+        fileName: h.document.fileName,
+        domain: h.document.domain,
+        action: h.action,
+        changes: h.changes as Record<string, unknown> | null,
+        userName: h.user?.name ?? null,
+        createdAt: h.createdAt.toISOString(),
+      }))
+  }
+
+  async getCounts(domain: string, groupBy: string, userRole: UserRole) {
+    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
+    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
+      .filter(([, level]) => level <= maxLevel)
+      .map(([name]) => name)
+
+    const docs = await this.prisma.document.findMany({
+      where: {
+        domain,
+        isDeleted: false,
+        securityLevel: { in: allowedLevels },
+      },
+      include: { classifications: true },
+    })
+
+    const counts: Record<string, number> = {}
+    for (const doc of docs) {
+      const classification = doc.classifications.find((c: { facetType: string; facetValue: string }) => c.facetType === groupBy)
+      if (classification) {
+        counts[classification.facetValue] = (counts[classification.facetValue] ?? 0) + 1
+      }
+    }
+    return counts
+  }
+
+  async search(
+    params: { q?: string; domain?: string; lifecycle?: string; page: number; size: number },
+    userRole: UserRole,
+  ) {
+    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
+    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
+      .filter(([, level]) => level <= maxLevel)
+      .map(([name]) => name)
+
+    const { q, domain, lifecycle, page = 1, size = 20 } = params
+
+    const where = {
+      isDeleted: false,
+      securityLevel: { in: allowedLevels },
+      ...(q && { fileName: { contains: q, mode: 'insensitive' as const } }),
+      ...(domain && { domain }),
+      ...(lifecycle && { lifecycle }),
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where,
+        include: { classifications: true },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * size,
+        take: size,
+      }),
+      this.prisma.document.count({ where }),
+    ])
+
+    return {
+      data: data.map((d: Parameters<DocumentsService['formatDocument']>[0]) => this.formatDocument(d)),
+      meta: { total, page, size, totalPages: Math.ceil(total / size) },
+    }
+  }
+
+  async getHistory(id: string, userRole: UserRole) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id, isDeleted: false },
+    })
+
+    if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
+
+    if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
+      throw new ForbiddenException('접근 권한이 없습니다')
+    }
+
+    const history = await this.prisma.documentHistory.findMany({
+      where: { documentId: id },
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { name: true } } },
+    })
+
+    return history.map((h: { id: string; action: string; changes: unknown; createdAt: Date; user: { name: string } | null }) => ({
+      id: h.id,
+      action: h.action,
+      changes: h.changes as Record<string, unknown> | null,
+      userName: h.user?.name ?? null,
+      createdAt: h.createdAt.toISOString(),
+    }))
   }
 
   /** API 응답 포맷 (filePath 미노출, downloadUrl 제공) */

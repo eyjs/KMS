@@ -1,0 +1,53 @@
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { documentsApi } from '@/api/documents'
+
+const props = defineProps<{
+  documentId: string
+}>()
+
+const objectUrl = ref<string | null>(null)
+const loading = ref(false)
+const error = ref<string | null>(null)
+
+async function loadPdf() {
+  loading.value = true
+  error.value = null
+  if (objectUrl.value) {
+    URL.revokeObjectURL(objectUrl.value)
+    objectUrl.value = null
+  }
+  try {
+    const { data } = await documentsApi.downloadFile(props.documentId)
+    objectUrl.value = URL.createObjectURL(data)
+  } catch {
+    error.value = 'PDF 로드에 실패했습니다'
+  } finally {
+    loading.value = false
+  }
+}
+
+watch(() => props.documentId, loadPdf)
+onMounted(loadPdf)
+onUnmounted(() => {
+  if (objectUrl.value) {
+    URL.revokeObjectURL(objectUrl.value)
+  }
+})
+</script>
+
+<template>
+  <div style="height: 100%; display: flex; flex-direction: column">
+    <div v-if="loading" style="display: flex; align-items: center; justify-content: center; height: 100%">
+      <el-icon class="is-loading" :size="24" />
+    </div>
+    <div v-else-if="error" style="display: flex; align-items: center; justify-content: center; height: 100%; color: #f56c6c">
+      {{ error }}
+    </div>
+    <iframe
+      v-else-if="objectUrl"
+      :src="objectUrl"
+      style="width: 100%; flex: 1; border: none; min-height: 300px"
+    />
+  </div>
+</template>

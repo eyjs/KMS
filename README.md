@@ -19,8 +19,65 @@
 | 단계 | 목표 | 상태 | 기술 |
 |------|------|------|------|
 | **Phase 1** | 분류체계 검증 | **완료** | Python + JSON + HTML |
-| **Phase 2** | 체계 관리 시스템 | **현재** | .NET Core + Vue 3 + PostgreSQL |
+| **Phase 2** | 체계 관리 시스템 | **현재** | NestJS + Vue 3 + TypeScript + PostgreSQL |
 | **Phase 3** | 데이터 처리 확장 | 선택적 | Python 추가 (조건부) |
+
+---
+
+## Phase 2: 체계 관리 시스템 (현재)
+
+### 기술 스택
+
+| 영역 | 기술 | 버전 |
+|------|------|------|
+| 언어 | TypeScript (풀스택) | 5.7+ |
+| Frontend | Vue 3 + Composition API | 3.5+ |
+| UI | Element Plus | 2.x |
+| 빌드 | Vite | 6.x |
+| Backend | NestJS | 10.x |
+| ORM | Prisma | 6.x |
+| Database | PostgreSQL | 16 |
+| PDF 뷰어 | pdf.js (iframe) | - |
+| MD 뷰어 | marked.js | - |
+| 그래프 | vis-network | 9.x |
+
+### 범위
+
+**포함 (직접 구현):**
+- 파일 업로드 (PDF, Markdown, CSV만)
+- 분류 선택 (보험사/상품/문서유형)
+- 관계 관리 (부모-자식, 참조, 대체)
+- 라이프사이클 (DRAFT → ACTIVE → DEPRECATED)
+- 문서 뷰어 (PDF, Markdown, CSV 미리보기)
+- 도메인 워크스페이스 (3-패널 레이아웃)
+- 통합 검색
+- 외부 API (REST + API Key)
+
+**제외 (외주 위임):**
+- PDF 텍스트 추출
+- 한글 NLP
+- 벡터 DB
+- RAG/챗봇
+
+### 허용 파일 형식
+
+| 형식 | 허용 | 뷰어 |
+|------|------|------|
+| PDF | O | iframe (브라우저 내장) |
+| Markdown | O | marked.js |
+| CSV | O | 테이블 렌더링 |
+| Word/PPT/Excel | **X** | 업로드 차단 |
+
+### 프론트엔드 구조
+
+```
+/ (대시보드)          → 프레임워크 전체 현황
+/search              → 통합 검색
+/d/:domainCode       → 도메인 워크스페이스 (3-패널: 트리|목록|미리보기)
+/d/:domainCode/doc/:id → 문서 상세 (뷰어+이력+관계)
+/admin/domains       → 도메인/분류 관리
+/admin/users         → 사용자 관리
+```
 
 ---
 
@@ -35,56 +92,12 @@
 ### 실행 방법
 
 ```bash
-# 데이터 생성
-python src/taxonomy.py              # 분류체계 JSON
-python src/simulator.py             # 지식 그래프 생성
-python src/simulator_ontology.py    # 온톨로지 그래프 생성
-
-# 검증
-python src/verifier.py              # 데이터 무결성 검증
-python src/ontology_validator.py    # 온톨로지 구조 검증
-
-# Admin UI
-npx serve . -p 8080
-# http://localhost:8080/ui/admin-v3.html
+# 프로젝트 루트에서 실행
+python scripts/taxonomy.py
+python scripts/simulator.py
+python scripts/verifier.py
+python scripts/ontology_validator.py
 ```
-
----
-
-## Phase 2: 체계 관리 시스템 (현재)
-
-### 범위
-
-**포함 (직접 구현):**
-- 파일 업로드 (PDF, Markdown, CSV만)
-- 분류 선택 (보험사/상품/문서유형)
-- 관계 관리 (부모-자식, 참조, 대체)
-- 라이프사이클 (DRAFT → ACTIVE → DEPRECATED)
-- 문서 뷰어 (pdf.js, marked.js, 테이블)
-- 외부 API (REST + API Key)
-
-**제외 (외주 위임):**
-- PDF 텍스트 추출
-- 한글 NLP
-- 벡터 DB
-- RAG/챗봇
-
-### 허용 파일 형식
-
-| 형식 | 허용 | 뷰어 |
-|------|------|------|
-| PDF | O | pdf.js |
-| Markdown | O | marked.js |
-| CSV | O | 테이블 렌더링 |
-| Word/PPT/Excel | **X** | 업로드 차단 |
-
-### 기술 스택
-
-| 영역 | 기술 |
-|------|------|
-| Frontend | Vue 3 + Element Plus |
-| Backend | ASP.NET Core 8 |
-| Database | PostgreSQL 16 |
 
 ---
 
@@ -102,41 +115,104 @@ npx serve . -p 8080
 ## 디렉토리 구조
 
 ```
-KMS/
-├── CLAUDE.md               # 프로젝트 규칙
-├── README.md               # 이 파일
+/
+├── CLAUDE.md                        # 프로젝트 규칙
+├── README.md                        # 이 파일
+├── vercel.json                      # Vercel 배포 설정
+├── docker-compose.yml               # PostgreSQL + pgAdmin
 │
-├── src/                    # Phase 1 Python 소스
-│   ├── taxonomy.py         # 분류체계 정의
-│   ├── simulator.py        # 데이터 시뮬레이터
-│   └── verifier.py         # 무결성 검증
+├── packages/
+│   ├── shared/                      # @kms/shared (타입 + 상수)
+│   │   └── src/
+│   │       ├── types.ts             # 엔티티, DTO, Enum
+│   │       ├── constants.ts         # 도메인, 권한, 관계 정의
+│   │       └── index.ts
+│   ├── api/                         # @kms/api (NestJS 백엔드)
+│   │   ├── src/
+│   │   │   ├── prisma/              # DB 서비스
+│   │   │   ├── auth/                # 인증 + 권한
+│   │   │   ├── documents/           # 문서 CRUD + 통계 + 검색
+│   │   │   ├── relations/           # 관계 관리
+│   │   │   ├── taxonomy/            # 마스터 데이터 API
+│   │   │   └── common/              # 필터, 인터셉터
+│   │   └── prisma/
+│   │       ├── schema.prisma        # DB 스키마
+│   │       ├── triggers.sql         # 트리거
+│   │       └── seed.ts              # 초기 데이터
+│   └── web/                         # @kms/web (Vue 3 프론트엔드)
+│       └── src/
+│           ├── router/              # 라우터 + 라우트 가드
+│           ├── stores/              # Pinia (auth, domain)
+│           ├── api/                 # API 클라이언트
+│           ├── views/               # 페이지 (Dashboard, DomainWorkspace, ...)
+│           ├── components/          # 컴포넌트 (layout, domain, document, viewer)
+│           └── composables/         # 재사용 로직
 │
-├── ui/                     # Phase 1 Admin UI
-│   ├── admin-v3.html       # 계층 탐색 페이지
-│   └── viewer.html         # 그래프 뷰어
+├── scripts/                         # Phase 1 Python 검증 도구
 │
-├── tests/                  # 테스트
-│   └── scenarios.js        # Playwright 시나리오
+├── legacy/                          # Phase 1 아카이브
 │
-└── docs/                   # 문서
-    ├── README.md           # 문서 인덱스
-    ├── phase1/             # Phase 1 문서
-    ├── phase2/             # Phase 2 설계
-    ├── phase3/             # Phase 3 계획
-    ├── reports/            # 주체별 보고서
-    ├── problems/           # 프로젝트 분석
-    └── architecture/       # 기술 결정
+└── docs/                            # 문서
 ```
 
 ---
 
-## 문서 안내
+## 개발 환경
 
-| 대상 | 문서 |
-|------|------|
-| 임원/결정권자 | `docs/reports/report-executive.md` |
-| 현업 담당자 | `docs/reports/report-field-user.md` |
-| IT팀/개발자 | `docs/reports/report-developer.md` |
+### 사전 요구사항
+- Node.js 20+
+- PostgreSQL 16 (또는 Docker)
+
+### 설치 및 실행
+
+```bash
+# 의존성 설치
+npm install
+npm --prefix packages/shared install
+npm --prefix packages/api install
+npm --prefix packages/web install
+
+# shared 빌드 (먼저)
+npm --prefix packages/shared run build
+
+# DB 시작
+docker compose up -d postgres
+
+# Prisma 마이그레이션
+npm --prefix packages/api exec prisma migrate dev
+npm --prefix packages/api exec prisma db seed
+
+# API 개발 서버
+npm --prefix packages/api run dev
+
+# Web 개발 서버
+npm --prefix packages/web run dev
+```
+
+### 빌드
+
+```bash
+npm --prefix packages/shared run build
+npm --prefix packages/web run build
+npm --prefix packages/api run build
+```
+
+---
+
+## 배포
+
+| 영역 | 플랫폼 | URL |
+|------|--------|-----|
+| Backend | Docker (Mac Studio) | `https://kms.joonbi.co.kr` |
+| Frontend | Vercel | Vercel 자동 배포 |
+| API Proxy | Vercel rewrites | `/api/*` → Backend |
+
+### 초기 관리자 계정
+- 이메일: `admin@company.com`
+- 비밀번호: `admin123`
+- 역할: `ADMIN`
+
+> 프로덕션 배포 후 반드시 비밀번호 변경
 
 ---
 

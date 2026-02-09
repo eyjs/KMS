@@ -16,30 +16,52 @@ const router = createRouter({
       component: () => import('@/views/DashboardView.vue'),
     },
     {
-      path: '/documents',
-      name: 'Documents',
-      component: () => import('@/views/DocumentListView.vue'),
+      path: '/search',
+      name: 'Search',
+      component: () => import('@/views/SearchView.vue'),
     },
     {
-      path: '/documents/:id',
+      path: '/d/:domainCode',
+      name: 'DomainWorkspace',
+      component: () => import('@/views/DomainWorkspace.vue'),
+    },
+    {
+      path: '/d/:domainCode/doc/:id',
       name: 'DocumentDetail',
       component: () => import('@/views/DocumentDetailView.vue'),
     },
     {
+      path: '/admin/domains',
+      name: 'AdminDomains',
+      component: () => import('@/views/AdminDomainsView.vue'),
+      meta: { roles: ['ADMIN'] },
+    },
+    {
+      path: '/admin/users',
+      name: 'AdminUsers',
+      component: () => import('@/views/AdminUsersView.vue'),
+      meta: { roles: ['ADMIN'] },
+    },
+    // 기존 라우트 리다이렉트
+    {
+      path: '/documents',
+      redirect: '/',
+    },
+    {
+      path: '/documents/:id',
+      redirect: (to) => `/d/_/doc/${to.params.id}`,
+    },
+    {
       path: '/upload',
-      name: 'Upload',
-      component: () => import('@/views/UploadView.vue'),
+      redirect: '/',
     },
     {
       path: '/graph',
-      name: 'Graph',
-      component: () => import('@/views/GraphView.vue'),
+      redirect: '/',
     },
     {
       path: '/settings',
-      name: 'Settings',
-      component: () => import('@/views/SettingsView.vue'),
-      meta: { roles: ['ADMIN'] },
+      redirect: '/admin/users',
     },
   ],
 })
@@ -53,7 +75,6 @@ router.beforeEach((to) => {
     return { name: 'Login', query: { redirect: to.fullPath } }
   }
 
-  // 역할 기반 라우트 가드
   const requiredRoles = to.meta.roles as string[] | undefined
   if (requiredRoles && !requiredRoles.includes(auth.user?.role ?? '')) {
     return { name: 'Dashboard' }

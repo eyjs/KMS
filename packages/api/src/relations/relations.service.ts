@@ -39,10 +39,10 @@ export class RelationsService {
     ])
 
     // 사용자 역할로 접근 가능한 관계 문서만 필터
-    const filteredSource = asSource.filter((r) =>
+    const filteredSource = asSource.filter((r: { target: { securityLevel: string } }) =>
       SecurityLevelGuard.canAccess(userRole, r.target.securityLevel as SecurityLevel),
     )
-    const filteredTarget = asTarget.filter((r) =>
+    const filteredTarget = asTarget.filter((r: { source: { securityLevel: string } }) =>
       SecurityLevelGuard.canAccess(userRole, r.source.securityLevel as SecurityLevel),
     )
 

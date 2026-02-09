@@ -95,12 +95,12 @@ async function main() {
   console.log(`  ${docTypes.length} doc types seeded`)
 
   // 5. 기본 관리자 사용자
-  const adminPassword = await bcrypt.hash('admin123', 10)
+  const adminPassword = await bcrypt.hash('admin', 10)
   await prisma.user.upsert({
-    where: { email: 'admin@company.com' },
+    where: { email: 'admin' },
     update: {},
     create: {
-      email: 'admin@company.com',
+      email: 'admin',
       passwordHash: adminPassword,
       name: '관리자',
       role: 'ADMIN',

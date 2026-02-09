@@ -94,6 +94,51 @@ export class DocumentsController {
     return this.documentsService.findAll(query, req.user.role)
   }
 
+  // 정적 라우트는 :id 파라미터 라우트보다 먼저 선언해야 함
+  @Get('stats')
+  @ApiOperation({ summary: '전체 문서 통계 (대시보드용)' })
+  async getStats(@Request() req: AuthRequest) {
+    return this.documentsService.getStats(req.user.role)
+  }
+
+  @Get('recent')
+  @ApiOperation({ summary: '최근 활동 목록' })
+  async getRecent(
+    @Query('limit') limit?: string,
+    @Request() req?: AuthRequest,
+  ) {
+    return this.documentsService.getRecent(
+      parseInt(limit ?? '10', 10),
+      req?.user.role ?? 'EXTERNAL',
+    )
+  }
+
+  @Get('counts')
+  @ApiOperation({ summary: '분류별 문서 수' })
+  async getCounts(
+    @Query('domain') domain: string,
+    @Query('groupBy') groupBy: string,
+    @Request() req?: AuthRequest,
+  ) {
+    return this.documentsService.getCounts(domain, groupBy, req?.user.role ?? 'EXTERNAL')
+  }
+
+  @Get('search')
+  @ApiOperation({ summary: '통합 검색' })
+  async search(
+    @Query('q') q?: string,
+    @Query('domain') domain?: string,
+    @Query('lifecycle') lifecycle?: string,
+    @Query('page') page?: string,
+    @Query('size') size?: string,
+    @Request() req?: AuthRequest,
+  ) {
+    return this.documentsService.search(
+      { q, domain, lifecycle, page: parseInt(page ?? '1', 10), size: parseInt(size ?? '20', 10) },
+      req?.user.role ?? 'EXTERNAL',
+    )
+  }
+
   @Get(':id')
   @ApiOperation({ summary: '문서 상세 조회' })
   async findOne(@Param('id') id: string, @Request() req: AuthRequest) {
@@ -126,6 +171,12 @@ export class DocumentsController {
   async remove(@Param('id') id: string, @Request() req: AuthRequest) {
     await this.documentsService.softDelete(id, req.user.sub, req.user.role)
     return { message: '삭제되었습니다' }
+  }
+
+  @Get(':id/history')
+  @ApiOperation({ summary: '문서 변경 이력' })
+  async getHistory(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.documentsService.getHistory(id, req.user.role)
   }
 
   @Get(':id/file')
