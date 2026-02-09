@@ -1,0 +1,59 @@
+flowchart LR
+    subgraph roles [역할]
+        EXT((EXTERNAL<br/>외부업체))
+        EMP((EMPLOYEE<br/>직원))
+        TL((TEAM_LEAD<br/>팀장))
+        EXEC((EXECUTIVE<br/>임원))
+        ADM((ADMIN<br/>관리자))
+    end
+
+    subgraph security [문서 보안 등급]
+        PUB[PUBLIC<br/>공개]
+        INT[INTERNAL<br/>사내용]
+        CONF[CONFIDENTIAL<br/>대외비 2급]
+        SEC[SECRET<br/>기밀 1급]
+    end
+
+    subgraph actions [기능]
+        READ[문서 조회<br/>검색 · 다운로드]
+        WRITE[문서 생성<br/>업로드 · 수정 · 전환]
+        REL[관계 관리<br/>생성 · 삭제]
+        DEL[문서 삭제<br/>soft delete]
+        SYS[시스템 관리<br/>도메인 · 사용자 · API Key]
+    end
+
+    EXT --> PUB
+    EXT --> READ
+
+    EMP --> PUB
+    EMP --> INT
+    EMP --> READ
+    EMP --> WRITE
+    EMP --> REL
+
+    TL --> PUB
+    TL --> INT
+    TL --> CONF
+    TL --> READ
+    TL --> WRITE
+    TL --> REL
+    TL --> DEL
+
+    EXEC --> PUB
+    EXEC --> INT
+    EXEC --> CONF
+    EXEC --> SEC
+    EXEC --> READ
+    EXEC --> WRITE
+    EXEC --> REL
+    EXEC --> DEL
+
+    ADM --> PUB
+    ADM --> INT
+    ADM --> CONF
+    ADM --> SEC
+    ADM --> READ
+    ADM --> WRITE
+    ADM --> REL
+    ADM --> DEL
+    ADM --> SYS

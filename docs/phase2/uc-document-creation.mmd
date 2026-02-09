@@ -1,0 +1,30 @@
+flowchart TD
+    START((문서 추가<br/>다이얼로그)) --> MODE{추가 방식 선택}
+
+    MODE -->|파일 업로드| UPLOAD[파일 선택<br/>PDF · MD · CSV만 허용<br/>50MB 제한]
+    MODE -->|메타데이터만| META[문서 제목 입력<br/>체계 설계용 껍데기]
+
+    UPLOAD --> DOMAIN[도메인 확인<br/>자동 지정됨]
+    META --> DOMAIN
+
+    DOMAIN --> FACET[필수 facet 선택<br/>도메인별 동적 구성<br/>requiredFacets 기반]
+
+    FACET --> SEC[보안 등급 선택<br/>PUBLIC · INTERNAL<br/>CONFIDENTIAL · SECRET]
+
+    SEC --> VALIDATE{필수값 검증}
+    VALIDATE -->|실패| ERR[에러 메시지 표시]
+    ERR --> FACET
+
+    VALIDATE -->|성공| API{API 호출}
+    API -->|파일 있음| POST_FILE[POST /documents<br/>multipart/form-data<br/>file + classifications JSON]
+    API -->|파일 없음| POST_META[POST /documents<br/>multipart/form-data<br/>title + classifications JSON]
+
+    POST_FILE --> CREATED[문서 생성 완료<br/>DRAFT 상태]
+    POST_META --> CREATED
+
+    CREATED --> VIEW{파일 존재?}
+    VIEW -->|예| VIEWER[문서 뷰어 활성화<br/>PDF · MD · CSV]
+    VIEW -->|아니오| SHELL[파일 미첨부 상태<br/>뷰어에 첨부 버튼 표시]
+
+    SHELL --> ATTACH[파일 후속 첨부<br/>PATCH /documents/:id/file]
+    ATTACH --> VIEWER

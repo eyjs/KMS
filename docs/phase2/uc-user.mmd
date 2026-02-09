@@ -1,0 +1,74 @@
+graph TB
+    subgraph 액터
+        U((일반 사용자<br/>EMPLOYEE))
+    end
+
+    subgraph 인증
+        UC1[UC1: 로그인]
+        UC2[UC2: 토큰 갱신]
+    end
+
+    subgraph 문서 조회
+        UC3[UC3: 대시보드 확인<br/>통계 · 도메인 현황 · 최근 활동]
+        UC4[UC4: 도메인 워크스페이스 탐색<br/>3패널 레이아웃]
+        UC5[UC5: 분류 트리 탐색<br/>동적 facet 계층]
+        UC6[UC6: 문서 목록 필터링<br/>상태 · 정렬 · 페이지네이션]
+        UC7[UC7: 통합 검색<br/>키워드 · 도메인 · 상태]
+        UC8[UC8: 문서 상세 보기<br/>메타 · 뷰어 · 이력 · 관계]
+    end
+
+    subgraph 문서 뷰어
+        UC9[UC9: PDF 뷰어<br/>pdf.js]
+        UC10[UC10: Markdown 뷰어<br/>marked.js]
+        UC11[UC11: CSV 뷰어<br/>테이블 렌더링]
+    end
+
+    subgraph 문서 생성
+        UC12[UC12: 파일 업로드<br/>PDF · MD · CSV]
+        UC13[UC13: 메타데이터만 생성<br/>문서 껍데기]
+        UC14[UC14: 파일 후속 첨부<br/>PATCH /documents/:id/file]
+    end
+
+    subgraph 문서 관리
+        UC15[UC15: 라이프사이클 전환<br/>DRAFT→ACTIVE→DEPRECATED]
+        UC16[UC16: 분류 수정<br/>낙관적 잠금]
+        UC17[UC17: 파일 다운로드]
+        UC18[UC18: 변경 이력 조회<br/>타임라인]
+    end
+
+    subgraph 관계 관리
+        UC19[UC19: 관계 생성<br/>PARENT · CHILD · SIBLING · REF · SUPERSEDES]
+        UC20[UC20: 관련 문서 탐색]
+    end
+
+    U --> UC1
+    U --> UC2
+    U --> UC3
+    U --> UC4
+    U --> UC7
+    U --> UC12
+    U --> UC13
+    U --> UC19
+
+    UC3 -->|도메인 클릭| UC4
+    UC4 --> UC5
+    UC5 -->|노드 선택| UC6
+    UC6 -->|더블클릭| UC8
+    UC7 -->|결과 클릭| UC8
+
+    UC8 --> UC9
+    UC8 --> UC10
+    UC8 --> UC11
+    UC8 --> UC17
+    UC8 --> UC18
+    UC8 --> UC20
+    UC8 --> UC15
+    UC8 --> UC16
+
+    UC13 -->|파일 없는 문서| UC14
+    UC14 -->|첨부 완료| UC8
+
+    UC20 -->|문서 클릭| UC8
+
+    UC15 -.->|SSOT 검증| UC15
+    UC16 -.->|rowVersion 충돌| UC16
