@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "npm run build:web",
+  "buildCommand": "npm --prefix packages/shared run build && npm --prefix packages/web run build",
   "outputDirectory": "packages/web/dist",
   "framework": null,
   "rewrites": [
