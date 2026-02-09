@@ -1,24 +1,26 @@
 {
   "name": "kms",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "vercel-build": "cd packages/shared && npx tsc && cd ../web && npx vue-tsc -b && npx vite build --outDir ../../dist",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "db:migrate": "pnpm --filter @kms/api prisma migrate dev",
-    "db:seed": "pnpm --filter @kms/api prisma db seed",
-    "db:studio": "pnpm --filter @kms/api prisma studio"
+    "db:migrate": "npm --prefix packages/api run prisma migrate dev",
+    "db:seed": "npm --prefix packages/api run prisma db seed",
+    "db:studio": "npm --prefix packages/api run prisma studio"
   },
   "devDependencies": {
     "turbo": "^2.4.0",
     "typescript": "^5.7.0"
   },
   "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
-  },
-  "packageManager": "pnpm@9.15.0"
+    "node": ">=20.0.0"
+  }
 }
