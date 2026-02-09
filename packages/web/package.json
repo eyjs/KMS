@@ -10,7 +10,6 @@
     "lint": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@kms/shared": "*",
     "axios": "^1.7.0",
     "element-plus": "^2.9.0",
     "marked": "^15.0.0",

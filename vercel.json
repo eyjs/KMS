@@ -1,6 +1,6 @@
 {
-  "installCommand": "npm install",
-  "buildCommand": "npm --prefix packages/shared run build && npm --prefix packages/web run build",
+  "installCommand": "cd packages/shared && npm install && npm run build && cd ../web && npm install",
+  "buildCommand": "cd packages/web && npx vue-tsc -b && npx vite build",
   "outputDirectory": "packages/web/dist",
   "framework": null,
   "rewrites": [

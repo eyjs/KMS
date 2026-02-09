@@ -1,9 +1,6 @@
 {
   "name": "kms",
   "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
     "dev:api": "npm --prefix packages/api run dev",
     "dev:web": "npm --prefix packages/web run dev",
