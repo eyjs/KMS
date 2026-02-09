@@ -1,27 +1,50 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { taxonomyApi } from '@/api/taxonomy'
 import type { DomainMasterEntity, FacetMasterEntity } from '@kms/shared'
 
-const domains = ref<DomainMasterEntity[]>([])
+const domainTree = ref<DomainMasterEntity[]>([])
+const domainsFlat = ref<DomainMasterEntity[]>([])
 const facets = ref<Record<string, FacetMasterEntity[]>>({})
 const loading = ref(true)
 const selectedDomain = ref<string | null>(null)
 
+interface FlatDomainRow extends DomainMasterEntity {
+  depth: number
+}
+
+// 트리를 flat으로 변환 (들여쓰기용)
+const domainsWithDepth = computed<FlatDomainRow[]>(() => {
+  const result: FlatDomainRow[] = []
+  function walk(nodes: DomainMasterEntity[], depth: number) {
+    for (const node of nodes) {
+      result.push({ ...node, depth })
+      if (node.children?.length) {
+        walk(node.children, depth + 1)
+      }
+    }
+  }
+  walk(domainTree.value, 0)
+  return result
+})
+
 onMounted(async () => {
   try {
-    const { data } = await taxonomyApi.getDomains()
-    domains.value = data
+    const [treeRes, flatRes] = await Promise.all([
+      taxonomyApi.getDomains(),
+      taxonomyApi.getDomainsFlat(),
+    ])
+    domainTree.value = treeRes.data
+    domainsFlat.value = flatRes.data
   } finally {
     loading.value = false
   }
 })
 
-async function handleDomainClick(domain: DomainMasterEntity) {
+async function handleDomainClick(domain: FlatDomainRow) {
   selectedDomain.value = domain.code
   const required = domain.requiredFacets as string[]
 
-  // 도메인별 복합 키로 캐싱, 병렬 로딩
   const missing = required.filter((ft) => !facets.value[`${domain.code}:${ft}`])
   if (missing.length > 0) {
     const results = await Promise.all(
@@ -36,7 +59,7 @@ async function handleDomainClick(domain: DomainMasterEntity) {
 }
 
 function getSelectedDomain(): DomainMasterEntity | undefined {
-  return domains.value.find((d) => d.code === selectedDomain.value)
+  return domainsFlat.value.find((d) => d.code === selectedDomain.value)
 }
 
 function getFacetData(facetType: string): FacetMasterEntity[] {
@@ -50,20 +73,27 @@ function getFacetData(facetType: string): FacetMasterEntity[] {
 
     <div style="display: flex; gap: 20px">
       <!-- 도메인 목록 -->
-      <el-card shadow="never" style="width: 400px">
+      <el-card shadow="never" style="width: 500px">
         <template #header>
           <span style="font-weight: 600">도메인 목록</span>
         </template>
         <el-table
-          :data="domains"
+          :data="domainsWithDepth"
           size="small"
           highlight-current-row
           @row-click="handleDomainClick"
           :header-cell-style="{ background: '#fafafa' }"
           style="cursor: pointer"
         >
-          <el-table-column prop="code" label="코드" width="140" />
+          <el-table-column label="코드" width="140">
+            <template #default="{ row }">
+              <span :style="{ paddingLeft: row.depth * 16 + 'px' }">
+                {{ row.code }}
+              </span>
+            </template>
+          </el-table-column>
           <el-table-column prop="displayName" label="이름" min-width="120" />
+          <el-table-column prop="sortOrder" label="순서" width="60" align="center" />
           <el-table-column label="상태" width="70" align="center">
             <template #default="{ row }">
               <el-tag :type="row.isActive ? 'success' : 'danger'" size="small">

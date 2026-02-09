@@ -27,7 +27,7 @@ const domain = ref<DomainMasterEntity | null>(null)
 async function loadRoot() {
   loading.value = true
   try {
-    const { data: domains } = await taxonomyApi.getDomains()
+    const { data: domains } = await taxonomyApi.getDomainsFlat()
     domain.value = domains.find((d) => d.code === props.domainCode) ?? null
     if (!domain.value) return
 

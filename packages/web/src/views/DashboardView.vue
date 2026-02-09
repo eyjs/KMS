@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useDomainStore } from '@/stores/domain'
 import { documentsApi } from '@/api/documents'
 import type { DocumentStats, RecentActivity } from '@/api/documents'
+import type { DomainMasterEntity } from '@kms/shared'
 
 const router = useRouter()
+const domainStore = useDomainStore()
 
 const stats = ref<DocumentStats | null>(null)
 const recentActivities = ref<RecentActivity[]>([])
@@ -17,16 +20,63 @@ const ACTION_LABELS: Record<string, string> = {
   DELETE: '삭제',
 }
 
+interface FlatDomainRow {
+  domain: string
+  displayName: string
+  total: number
+  active: number
+  draft: number
+  deprecated: number
+  warning: number
+  depth: number
+}
+
+// byDomain 통계를 트리 순서 + depth로 변환
+const byDomainFlat = computed<FlatDomainRow[]>(() => {
+  if (!stats.value?.byDomain?.length) return []
+  const statsMap = new Map(stats.value.byDomain.map((s) => [s.domain, s]))
+  const result: FlatDomainRow[] = []
+
+  function walk(nodes: DomainMasterEntity[], depth: number) {
+    for (const node of nodes) {
+      const s = statsMap.get(node.code)
+      result.push({
+        domain: node.code,
+        displayName: node.displayName,
+        total: s?.total ?? 0,
+        active: s?.active ?? 0,
+        draft: s?.draft ?? 0,
+        deprecated: s?.deprecated ?? 0,
+        warning: s?.warning ?? 0,
+        depth,
+      })
+      if (node.children?.length) {
+        walk(node.children, depth + 1)
+      }
+    }
+  }
+
+  if (domainStore.domainTree.length) {
+    walk(domainStore.domainTree, 0)
+  } else {
+    // 트리 미로딩 시 flat fallback
+    for (const s of stats.value.byDomain) {
+      result.push({ ...s, depth: 0 })
+    }
+  }
+  return result
+})
+
 onMounted(async () => {
   try {
-    const [statsRes, recentRes] = await Promise.all([
+    const [, statsRes, recentRes] = await Promise.all([
+      domainStore.loadDomains(),
       documentsApi.getStats(),
       documentsApi.getRecent(10),
     ])
     stats.value = statsRes.data
     recentActivities.value = recentRes.data
   } catch {
-    // stats/recent API가 아직 없을 수 있으므로 fallback
     stats.value = {
       total: 0,
       active: 0,
@@ -106,13 +156,19 @@ function formatTimeAgo(dateStr: string): string {
         <span style="font-weight: 600">도메인별 문서 현황</span>
       </template>
       <el-table
-        :data="stats?.byDomain ?? []"
+        :data="byDomainFlat"
         size="small"
         style="cursor: pointer"
         @row-click="handleDomainRowClick"
         :header-cell-style="{ background: '#fafafa' }"
       >
-        <el-table-column prop="displayName" label="도메인" min-width="160" />
+        <el-table-column label="도메인" min-width="160">
+          <template #default="{ row }">
+            <span :style="{ paddingLeft: row.depth * 20 + 'px' }">
+              {{ row.displayName }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column prop="total" label="전체" width="80" align="center" />
         <el-table-column label="ACTIVE" width="80" align="center">
           <template #default="{ row }">

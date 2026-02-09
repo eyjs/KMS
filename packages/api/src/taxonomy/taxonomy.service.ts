@@ -4,16 +4,40 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import type { DomainMasterEntity } from '@kms/shared'
 
 @Injectable()
 export class TaxonomyService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getDomains() {
+  async getDomains(): Promise<DomainMasterEntity[]> {
+    const all = await this.prisma.domainMaster.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    })
+    return this.buildTree(all as DomainMasterEntity[])
+  }
+
+  async getDomainsFlat(): Promise<DomainMasterEntity[]> {
     return this.prisma.domainMaster.findMany({
       where: { isActive: true },
-      orderBy: { code: 'asc' },
-    })
+      orderBy: { sortOrder: 'asc' },
+    }) as unknown as DomainMasterEntity[]
+  }
+
+  private buildTree(domains: DomainMasterEntity[]): DomainMasterEntity[] {
+    const map = new Map<string, DomainMasterEntity>(
+      domains.map((d) => [d.code, { ...d, children: [] }]),
+    )
+    const roots: DomainMasterEntity[] = []
+    for (const d of map.values()) {
+      if (d.parentCode && map.has(d.parentCode)) {
+        map.get(d.parentCode)!.children!.push(d)
+      } else {
+        roots.push(d)
+      }
+    }
+    return roots
   }
 
   async getDomain(code: string) {

@@ -3,6 +3,7 @@ import { onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
 import { useRoute, useRouter } from 'vue-router'
+import DomainMenuItem from './DomainMenuItem.vue'
 
 const auth = useAuthStore()
 const domainStore = useDomainStore()
@@ -68,14 +69,11 @@ function handleLogout() {
         <div style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
           Domains
         </div>
-        <el-menu-item
-          v-for="d in domainStore.domains"
+        <domain-menu-item
+          v-for="d in domainStore.domainTree"
           :key="d.code"
-          :index="`/d/${d.code}`"
-        >
-          <el-icon><component is="Folder" /></el-icon>
-          <span>{{ d.displayName }}</span>
-        </el-menu-item>
+          :domain="d"
+        />
 
         <!-- ADMIN -->
         <template v-if="auth.hasMinRole('ADMIN')">

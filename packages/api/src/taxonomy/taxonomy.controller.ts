@@ -11,9 +11,15 @@ export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomyService) {}
 
   @Get('domains')
-  @ApiOperation({ summary: '도메인 목록 조회' })
+  @ApiOperation({ summary: '도메인 목록 조회 (트리 구조)' })
   async getDomains() {
     return this.taxonomyService.getDomains()
+  }
+
+  @Get('domains/flat')
+  @ApiOperation({ summary: '도메인 목록 조회 (flat)' })
+  async getDomainsFlat() {
+    return this.taxonomyService.getDomainsFlat()
   }
 
   @Get('domains/:code')

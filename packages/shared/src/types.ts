@@ -108,9 +108,13 @@ export interface RelationEntity {
 export interface DomainMasterEntity {
   code: string
   displayName: string
+  parentCode: string | null
+  description: string | null
   requiredFacets: string[]
   ssotKey: string[]
   isActive: boolean
+  sortOrder: number
+  children?: DomainMasterEntity[]
 }
 
 export interface FacetMasterEntity {

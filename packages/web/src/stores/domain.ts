@@ -12,21 +12,29 @@ interface TreeNode {
 }
 
 export const useDomainStore = defineStore('domain', () => {
-  const domains = ref<DomainMasterEntity[]>([])
+  const domainTree = ref<DomainMasterEntity[]>([])
+  const domainsFlat = ref<DomainMasterEntity[]>([])
   const currentDomainCode = ref<string | null>(null)
   const selectedTreeNode = ref<TreeNode | null>(null)
   const treeFilters = ref<Record<string, string>>({})
   const domainsLoaded = ref(false)
 
+  // 하위 호환: flat 목록 (기존 코드에서 domains로 참조하는 곳 대응)
+  const domains = domainsFlat
+
   const currentDomain = computed(() =>
-    domains.value.find((d) => d.code === currentDomainCode.value) ?? null,
+    domainsFlat.value.find((d) => d.code === currentDomainCode.value) ?? null,
   )
 
   async function loadDomains() {
     if (domainsLoaded.value) return
     try {
-      const { data } = await taxonomyApi.getDomains()
-      domains.value = data
+      const [treeRes, flatRes] = await Promise.all([
+        taxonomyApi.getDomains(),
+        taxonomyApi.getDomainsFlat(),
+      ])
+      domainTree.value = treeRes.data
+      domainsFlat.value = flatRes.data
       domainsLoaded.value = true
     } catch (e) {
       console.error('도메인 목록 로드 실패:', e)
@@ -62,6 +70,8 @@ export const useDomainStore = defineStore('domain', () => {
 
   return {
     domains,
+    domainTree,
+    domainsFlat,
     currentDomainCode,
     currentDomain,
     selectedTreeNode,

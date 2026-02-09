@@ -36,14 +36,20 @@ model User {
 model DomainMaster {
   code          String   @id @db.VarChar(20)
   displayName   String   @map("display_name") @db.VarChar(100)
+  parentCode    String?  @map("parent_code") @db.VarChar(20)
+  description   String?  @db.VarChar(500)
   requiredFacets Json    @default("[]") @map("required_facets")
   ssotKey       Json     @default("[]") @map("ssot_key")
   isActive      Boolean  @default(true) @map("is_active")
+  sortOrder     Int      @default(0) @map("sort_order")
   createdAt     DateTime @default(now()) @map("created_at")
 
+  parent       DomainMaster?  @relation("DomainTree", fields: [parentCode], references: [code])
+  children     DomainMaster[] @relation("DomainTree")
   documents    Document[]
   facetMasters FacetMaster[]
 
+  @@index([parentCode])
   @@map("domain_master")
 }
 

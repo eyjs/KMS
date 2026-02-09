@@ -39,7 +39,7 @@ watch(
   () => props.visible,
   async (visible) => {
     if (visible) {
-      const { data: domains } = await taxonomyApi.getDomains()
+      const { data: domains } = await taxonomyApi.getDomainsFlat()
       domain.value = domains.find((dm) => dm.code === props.domainCode) ?? null
 
       if (!domain.value) {

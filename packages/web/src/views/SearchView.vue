@@ -32,7 +32,7 @@ const SECURITY_TAG: Record<string, { type: string; label: string }> = {
 }
 
 onMounted(async () => {
-  const { data } = await taxonomyApi.getDomains()
+  const { data } = await taxonomyApi.getDomainsFlat()
   domains.value = data
 })
 
