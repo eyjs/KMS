@@ -4,8 +4,10 @@ import {
   IsOptional,
   IsArray,
   IsInt,
+  IsIn,
   MaxLength,
   Matches,
+  Min,
 } from 'class-validator'
 
 export class CreateDomainDto {
@@ -50,6 +52,76 @@ export class CreateDomainDto {
   sortOrder?: number
 }
 
+export class CreateFacetDto {
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(50)
+  facetType!: string
+
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(50)
+  code!: string
+
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(100)
+  displayName!: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  parentCode?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  domain?: string
+
+  @IsOptional()
+  @IsIn(['HOT', 'WARM', 'COLD'])
+  tier?: string
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxAgeDays?: number
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number
+}
+
+export class UpdateFacetDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  displayName?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  parentCode?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  domain?: string
+
+  @IsOptional()
+  @IsIn(['HOT', 'WARM', 'COLD'])
+  tier?: string
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxAgeDays?: number
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number
+}
+
 export class UpdateDomainDto {
   @IsOptional()
   @IsString()
@@ -75,3 +147,4 @@ export class UpdateDomainDto {
   @IsInt()
   sortOrder?: number
 }
+

@@ -4,6 +4,8 @@ import type {
   FacetMasterEntity,
   CreateDomainDto,
   UpdateDomainDto,
+  CreateFacetDto,
+  UpdateFacetDto,
 } from '@kms/shared'
 
 export const taxonomyApi = {
@@ -31,5 +33,17 @@ export const taxonomyApi = {
 
   deleteDomain(code: string) {
     return client.delete(`/domains/${code}`)
+  },
+
+  createFacet(data: CreateFacetDto) {
+    return client.post<FacetMasterEntity>('/taxonomy', data)
+  },
+
+  updateFacet(id: number, data: UpdateFacetDto) {
+    return client.put<FacetMasterEntity>(`/taxonomy/${id}`, data)
+  },
+
+  deleteFacet(id: number) {
+    return client.delete(`/taxonomy/${id}`)
   },
 }

@@ -32,6 +32,7 @@ import {
   CreateDocumentBodyDto,
   UpdateDocumentDto,
   TransitionLifecycleDto,
+  IssueQueryDto,
 } from './dto/documents.dto'
 import type { UserRole } from '@kms/shared'
 
@@ -139,6 +140,26 @@ export class DocumentsController {
     @Request() req?: AuthRequest,
   ) {
     return this.documentsService.getCounts(domain, groupBy, req?.user.role ?? 'EXTERNAL')
+  }
+
+  @Get('issues')
+  @ApiOperation({ summary: '문제 문서 목록 (대시보드용)' })
+  async getIssues(
+    @Query() query: IssueQueryDto,
+    @Request() req: AuthRequest,
+  ) {
+    return this.documentsService.getIssueDocuments(
+      query.type,
+      query.page ?? 1,
+      query.size ?? 10,
+      req.user.role,
+    )
+  }
+
+  @Get('issues/counts')
+  @ApiOperation({ summary: '문제 유형별 건수 (대시보드용)' })
+  async getIssueCounts(@Request() req: AuthRequest) {
+    return this.documentsService.getIssueCounts(req.user.role)
   }
 
   @Get('search')

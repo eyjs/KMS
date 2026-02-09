@@ -3,9 +3,11 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
+import { taxonomyApi } from '@/api/taxonomy'
 import { useAuthStore } from '@/stores/auth'
+import { useDomainStore } from '@/stores/domain'
 import { LIFECYCLE_TRANSITIONS } from '@kms/shared'
-import type { DocumentEntity, Lifecycle, RelationEntity } from '@kms/shared'
+import type { DocumentEntity, Lifecycle, RelationEntity, RelationType, FacetMasterEntity } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
 import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
@@ -18,6 +20,7 @@ const attachLoading = ref(false)
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const domainStore = useDomainStore()
 
 const doc = ref<DocumentEntity | null>(null)
 const relations = ref<{ asSource: RelationEntity[]; asTarget: RelationEntity[] }>({ asSource: [], asTarget: [] })
@@ -37,6 +40,21 @@ const RELATION_LABELS: Record<string, string> = {
   REFERENCE: '참조',
   SUPERSEDES: '대체',
 }
+
+const RELATION_TYPES: Array<{ value: RelationType; label: string }> = [
+  { value: 'PARENT_OF', label: '상위 문서 (PARENT_OF)' },
+  { value: 'CHILD_OF', label: '하위 문서 (CHILD_OF)' },
+  { value: 'SIBLING', label: '형제 문서 (SIBLING)' },
+  { value: 'REFERENCE', label: '참조 (REFERENCE)' },
+  { value: 'SUPERSEDES', label: '대체 (SUPERSEDES)' },
+]
+
+const SECURITY_OPTIONS = [
+  { value: 'PUBLIC', label: '공개 (PUBLIC)' },
+  { value: 'INTERNAL', label: '사내용 (INTERNAL)' },
+  { value: 'CONFIDENTIAL', label: '대외비 (CONFIDENTIAL)' },
+  { value: 'SECRET', label: '기밀 (SECRET)' },
+]
 
 const id = computed(() => route.params.id as string)
 const domainCode = computed(() => route.params.domainCode as string)
@@ -60,6 +78,7 @@ onMounted(async () => {
     const [docRes, relRes] = await Promise.all([
       documentsApi.get(id.value),
       relationsApi.getByDocument(id.value),
+      domainStore.loadDomains(),
     ])
     doc.value = docRes.data
     relations.value = relRes.data
@@ -171,6 +190,151 @@ const allRelations = computed(() => {
   }
   return result
 })
+
+// ============================================================
+// 관계 추가/삭제
+// ============================================================
+
+const relationDialogVisible = ref(false)
+const relationForm = ref<{ relationType: RelationType; targetId: string }>({
+  relationType: 'REFERENCE',
+  targetId: '',
+})
+const relationLoading = ref(false)
+
+// 대상 문서 검색 (remote select, debounce 적용)
+const searchResults = ref<DocumentEntity[]>([])
+const searchLoading = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+function handleDocumentSearch(query: string) {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (!query || query.length < 1) {
+    searchResults.value = []
+    return
+  }
+  searchLoading.value = true
+  searchTimer = setTimeout(async () => {
+    try {
+      const { data } = await documentsApi.search({ q: query, size: 20 })
+      // 현재 문서 제외
+      searchResults.value = data.data.filter((d: DocumentEntity) => d.id !== id.value)
+    } catch {
+      searchResults.value = []
+    } finally {
+      searchLoading.value = false
+    }
+  }, 300)
+}
+
+function openRelationDialog() {
+  relationForm.value = { relationType: 'REFERENCE', targetId: '' }
+  searchResults.value = []
+  relationDialogVisible.value = true
+}
+
+async function handleRelationSubmit() {
+  if (!relationForm.value.targetId) {
+    ElMessage.warning('대상 문서를 선택하세요')
+    return
+  }
+  relationLoading.value = true
+  try {
+    await relationsApi.create(id.value, relationForm.value.targetId, relationForm.value.relationType)
+    ElMessage.success('관계가 추가되었습니다')
+    relationDialogVisible.value = false
+    // 관계 새로고침
+    const { data } = await relationsApi.getByDocument(id.value)
+    relations.value = data
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '관계 추가에 실패했습니다'
+    ElMessage.error(msg)
+  } finally {
+    relationLoading.value = false
+  }
+}
+
+async function handleRelationDelete(relationId: string) {
+  try {
+    await ElMessageBox.confirm('이 관계를 삭제하시겠습니까?', '관계 삭제', { type: 'warning' })
+    await relationsApi.delete(relationId)
+    ElMessage.success('관계가 삭제되었습니다')
+    const { data } = await relationsApi.getByDocument(id.value)
+    relations.value = data
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('관계 삭제에 실패했습니다')
+  }
+}
+
+// ============================================================
+// 문서 분류/보안등급 수정
+// ============================================================
+
+const editDialogVisible = ref(false)
+const editLoading = ref(false)
+const editForm = ref<{
+  classifications: Record<string, string>
+  securityLevel: string
+}>({
+  classifications: {},
+  securityLevel: 'INTERNAL',
+})
+const facetOptions = ref<Record<string, FacetMasterEntity[]>>({})
+
+async function openEditDialog() {
+  if (!doc.value) return
+
+  // 현재 값으로 폼 초기화
+  editForm.value = {
+    classifications: { ...doc.value.classifications },
+    securityLevel: doc.value.securityLevel,
+  }
+
+  // 도메인의 requiredFacets 가져와서 각 facet 옵션 로드
+  const domain = domainStore.domainsFlat.find((d) => d.code === doc.value!.domain)
+  if (domain) {
+    const requiredFacets = (domain.requiredFacets ?? []) as string[]
+    const loadPromises = requiredFacets
+      .map(async (ft) => {
+        const { data } = await taxonomyApi.getFacets(ft, domain.code)
+        facetOptions.value[`${domain.code}:${ft}`] = data
+      })
+    await Promise.all(loadPromises)
+  }
+
+  editDialogVisible.value = true
+}
+
+function getEditFacetOptions(facetType: string): FacetMasterEntity[] {
+  if (!doc.value) return []
+  return (facetOptions.value[`${doc.value.domain}:${facetType}`] ?? []).filter((f) => f.isActive)
+}
+
+const editRequiredFacets = computed<string[]>(() => {
+  if (!doc.value) return []
+  const domain = domainStore.domainsFlat.find((d) => d.code === doc.value!.domain)
+  return (domain?.requiredFacets ?? []) as string[]
+})
+
+async function handleEditSubmit() {
+  if (!doc.value) return
+  editLoading.value = true
+  try {
+    const { data } = await documentsApi.update(id.value, {
+      classifications: editForm.value.classifications,
+      securityLevel: editForm.value.securityLevel,
+      rowVersion: doc.value.rowVersion,
+    })
+    doc.value = data
+    editDialogVisible.value = false
+    ElMessage.success('수정되었습니다')
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '수정에 실패했습니다'
+    ElMessage.error(msg)
+  } finally {
+    editLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -227,7 +391,18 @@ const allRelations = computed(() => {
           <!-- 분류 -->
           <el-divider />
           <div style="font-size: 13px">
-            <strong style="color: #303133">분류</strong>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+              <strong style="color: #303133">분류</strong>
+              <el-button
+                v-if="auth.hasMinRole('EMPLOYEE')"
+                text
+                size="small"
+                type="primary"
+                @click="openEditDialog"
+              >
+                수정
+              </el-button>
+            </div>
             <div v-for="(value, key) in doc.classifications" :key="key" style="margin: 6px 0 6px 8px; color: #606266">
               <span style="color: #909399">{{ key }}:</span> {{ value }}
             </div>
@@ -292,22 +467,139 @@ const allRelations = computed(() => {
         <!-- 관련 문서 -->
         <el-card shadow="never">
           <template #header>
-            <span style="font-weight: 600">관련 문서</span>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span style="font-weight: 600">관련 문서</span>
+              <el-button
+                v-if="auth.hasMinRole('EMPLOYEE')"
+                type="primary"
+                size="small"
+                @click="openRelationDialog"
+              >
+                + 관계 추가
+              </el-button>
+            </div>
           </template>
           <div v-if="allRelations.length > 0">
             <div
               v-for="rel in allRelations"
               :key="rel.id"
-              style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f2f3f5; cursor: pointer"
-              @click="router.push(`/d/${doc!.domain}/doc/${rel.docId}`)"
+              style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f2f3f5"
             >
               <el-tag size="small" type="info">{{ RELATION_LABELS[rel.type] ?? rel.type }}</el-tag>
-              <span style="font-size: 13px; color: #303133">{{ rel.fileName }}</span>
+              <span
+                style="font-size: 13px; color: #303133; flex: 1; cursor: pointer"
+                @click="router.push(`/d/${doc!.domain}/doc/${rel.docId}`)"
+              >
+                {{ rel.fileName }}
+              </span>
+              <el-button
+                v-if="auth.hasMinRole('EMPLOYEE')"
+                text
+                size="small"
+                type="danger"
+                @click="handleRelationDelete(rel.id)"
+              >
+                삭제
+              </el-button>
             </div>
           </div>
           <el-empty v-else description="관련 문서가 없습니다" :image-size="60" />
         </el-card>
       </div>
     </div>
+
+    <!-- 관계 추가 다이얼로그 -->
+    <el-dialog
+      v-model="relationDialogVisible"
+      title="관계 추가"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="90px" label-position="left">
+        <el-form-item label="관계 유형" required>
+          <el-select v-model="relationForm.relationType" style="width: 100%">
+            <el-option
+              v-for="rt in RELATION_TYPES"
+              :key="rt.value"
+              :label="rt.label"
+              :value="rt.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="대상 문서" required>
+          <el-select
+            v-model="relationForm.targetId"
+            filterable
+            remote
+            :remote-method="handleDocumentSearch"
+            :loading="searchLoading"
+            placeholder="문서 이름으로 검색..."
+            style="width: 100%"
+          >
+            <el-option
+              v-for="d in searchResults"
+              :key="d.id"
+              :label="`${d.fileName ?? d.id} (${d.domain})`"
+              :value="d.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="relationDialogVisible = false">취소</el-button>
+        <el-button type="primary" :loading="relationLoading" @click="handleRelationSubmit">추가</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 문서 정보 수정 다이얼로그 -->
+    <el-dialog
+      v-model="editDialogVisible"
+      title="문서 정보 수정"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="90px" label-position="left">
+        <el-form-item
+          v-for="facetType in editRequiredFacets"
+          :key="facetType"
+          :label="facetType"
+          required
+        >
+          <el-select
+            v-model="editForm.classifications[facetType]"
+            placeholder="선택..."
+            style="width: 100%"
+          >
+            <el-option
+              v-for="opt in getEditFacetOptions(facetType)"
+              :key="opt.code"
+              :label="opt.displayName"
+              :value="opt.code"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="보안등급">
+          <el-select
+            v-model="editForm.securityLevel"
+            style="width: 100%"
+            :disabled="!auth.hasMinRole('ADMIN')"
+          >
+            <el-option
+              v-for="opt in SECURITY_OPTIONS"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+          <div v-if="!auth.hasMinRole('ADMIN')" style="font-size: 12px; color: #909399; margin-top: 4px">
+            보안등급 변경은 ADMIN만 가능합니다
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">취소</el-button>
+        <el-button type="primary" :loading="editLoading" @click="handleEditSubmit">저장</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>

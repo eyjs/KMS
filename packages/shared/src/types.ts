@@ -213,6 +213,26 @@ export interface CreateApiKeyDto {
   expiresAt?: string
 }
 
+export interface CreateFacetDto {
+  facetType: string
+  code: string
+  displayName: string
+  parentCode?: string
+  domain?: string
+  tier?: Tier
+  maxAgeDays?: number
+  sortOrder?: number
+}
+
+export interface UpdateFacetDto {
+  displayName?: string
+  parentCode?: string
+  domain?: string
+  tier?: Tier
+  maxAgeDays?: number
+  sortOrder?: number
+}
+
 export interface CreateDomainDto {
   code: string
   displayName: string

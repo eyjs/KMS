@@ -41,6 +41,13 @@ export interface DocumentCounts {
   [key: string]: number
 }
 
+export interface IssueCounts {
+  warning: number
+  expired: number
+  noFile: number
+  staleDraft: number
+}
+
 export const documentsApi = {
   list(query: DocumentListQuery) {
     return client.get<PaginatedResponse<DocumentEntity>>('/documents', { params: query })
@@ -119,5 +126,15 @@ export const documentsApi = {
 
   search(params: { q?: string; domain?: string; lifecycle?: string; page?: number; size?: number }) {
     return client.get<PaginatedResponse<DocumentEntity>>('/documents/search', { params })
+  },
+
+  getIssues(type: string, page = 1, size = 10) {
+    return client.get<PaginatedResponse<DocumentEntity>>('/documents/issues', {
+      params: { type, page, size },
+    })
+  },
+
+  getIssueCounts() {
+    return client.get<IssueCounts>('/documents/issues/counts')
   },
 }

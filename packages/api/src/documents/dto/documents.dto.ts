@@ -90,6 +90,29 @@ export class UpdateDocumentDto {
   rowVersion!: number
 }
 
+const VALID_ISSUE_TYPES = ['warning', 'expired', 'no_file', 'stale_draft'] as const
+
+export class IssueQueryDto {
+  @ApiProperty({ enum: VALID_ISSUE_TYPES })
+  @IsEnum(VALID_ISSUE_TYPES, { message: '유효한 이슈 유형이 아닙니다 (warning, expired, no_file, stale_draft)' })
+  type!: (typeof VALID_ISSUE_TYPES)[number]
+
+  @ApiProperty({ required: false, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number
+
+  @ApiProperty({ required: false, default: 10 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  size?: number
+}
+
 export class TransitionLifecycleDto {
   @ApiProperty({ enum: VALID_LIFECYCLES })
   @IsEnum(VALID_LIFECYCLES, { message: '유효한 라이프사이클 상태가 아닙니다' })

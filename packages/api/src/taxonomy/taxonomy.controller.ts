@@ -10,13 +10,14 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  ParseIntPipe,
 } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger'
 import { TaxonomyService } from './taxonomy.service'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
-import { CreateDomainDto, UpdateDomainDto } from './dto/taxonomy.dto'
+import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from './dto/taxonomy.dto'
 
 @ApiTags('taxonomy')
 @Controller()
@@ -78,5 +79,33 @@ export class TaxonomyController {
     @Query('domain') domain?: string,
   ) {
     return this.taxonomyService.getFacets(facetType, domain)
+  }
+
+  @Post('taxonomy')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Facet 생성 (ADMIN)' })
+  async createFacet(@Body() dto: CreateFacetDto) {
+    return this.taxonomyService.createFacet(dto)
+  }
+
+  @Put('taxonomy/:id')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Facet 수정 (ADMIN)' })
+  async updateFacet(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateFacetDto,
+  ) {
+    return this.taxonomyService.updateFacet(id, dto)
+  }
+
+  @Delete('taxonomy/:id')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Facet 삭제 (ADMIN, soft delete)' })
+  async deleteFacet(@Param('id', ParseIntPipe) id: number) {
+    await this.taxonomyService.deleteFacet(id)
   }
 }

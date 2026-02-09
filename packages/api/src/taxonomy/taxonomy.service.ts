@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { DomainMasterEntity } from '@kms/shared'
-import { CreateDomainDto, UpdateDomainDto } from './dto/taxonomy.dto'
+import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from './dto/taxonomy.dto'
 
 @Injectable()
 export class TaxonomyService {
@@ -150,6 +150,70 @@ export class TaxonomyService {
 
     await this.prisma.domainMaster.update({
       where: { code },
+      data: { isActive: false },
+    })
+  }
+
+  async createFacet(dto: CreateFacetDto) {
+    try {
+      return await this.prisma.facetMaster.create({
+        data: {
+          facetType: dto.facetType,
+          code: dto.code,
+          displayName: dto.displayName,
+          parentCode: dto.parentCode ?? null,
+          domain: dto.domain ?? null,
+          tier: dto.tier ?? null,
+          maxAgeDays: dto.maxAgeDays ?? null,
+          sortOrder: dto.sortOrder ?? 0,
+        },
+      })
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code: string }).code === 'P2002'
+      ) {
+        throw new ConflictException(`이미 존재하는 분류 코드입니다: ${dto.facetType}/${dto.code}`)
+      }
+      throw error
+    }
+  }
+
+  async updateFacet(id: number, dto: UpdateFacetDto) {
+    const facet = await this.prisma.facetMaster.findUnique({ where: { id } })
+    if (!facet) throw new NotFoundException(`분류를 찾을 수 없습니다: ${id}`)
+
+    return this.prisma.facetMaster.update({
+      where: { id },
+      data: {
+        ...(dto.displayName !== undefined && { displayName: dto.displayName }),
+        ...(dto.parentCode !== undefined && { parentCode: dto.parentCode }),
+        ...(dto.domain !== undefined && { domain: dto.domain }),
+        ...(dto.tier !== undefined && { tier: dto.tier }),
+        ...(dto.maxAgeDays !== undefined && { maxAgeDays: dto.maxAgeDays }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+      },
+    })
+  }
+
+  async deleteFacet(id: number): Promise<void> {
+    const facet = await this.prisma.facetMaster.findUnique({ where: { id } })
+    if (!facet) throw new NotFoundException(`분류를 찾을 수 없습니다: ${id}`)
+
+    // 해당 facet을 사용하는 문서가 있는지 확인
+    const usageCount = await this.prisma.classification.count({
+      where: { facetType: facet.facetType, facetValue: facet.code },
+    })
+    if (usageCount > 0) {
+      throw new BadRequestException(
+        `이 분류를 사용하는 문서가 ${usageCount}건 있습니다. 먼저 문서의 분류를 변경하세요.`,
+      )
+    }
+
+    await this.prisma.facetMaster.update({
+      where: { id },
       data: { isActive: false },
     })
   }

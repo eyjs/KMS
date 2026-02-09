@@ -3,8 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDomainStore } from '@/stores/domain'
 import { documentsApi } from '@/api/documents'
-import type { DocumentStats, RecentActivity } from '@/api/documents'
-import type { DomainMasterEntity } from '@kms/shared'
+import type { DocumentStats, RecentActivity, IssueCounts } from '@/api/documents'
+import type { DomainMasterEntity, DocumentEntity } from '@kms/shared'
 
 const router = useRouter()
 const domainStore = useDomainStore()
@@ -67,15 +67,79 @@ const byDomainFlat = computed<FlatDomainRow[]>(() => {
   return result
 })
 
+// ============================================================
+// 조치 필요 문서
+// ============================================================
+
+const ISSUE_TABS = [
+  { key: 'warning', label: '경고' },
+  { key: 'expired', label: '만료' },
+  { key: 'no_file', label: '파일없음' },
+  { key: 'stale_draft', label: 'DRAFT 장기' },
+] as const
+
+const activeIssueTab = ref('warning')
+const issueCounts = ref<IssueCounts>({ warning: 0, expired: 0, noFile: 0, staleDraft: 0 })
+const issueDocuments = ref<DocumentEntity[]>([])
+const issueLoading = ref(false)
+const issuePage = ref(1)
+const issueTotal = ref(0)
+const ISSUE_PAGE_SIZE = 10
+
+function getIssueCount(key: string): number {
+  switch (key) {
+    case 'warning': return issueCounts.value.warning
+    case 'expired': return issueCounts.value.expired
+    case 'no_file': return issueCounts.value.noFile
+    case 'stale_draft': return issueCounts.value.staleDraft
+    default: return 0
+  }
+}
+
+const totalIssues = computed(() =>
+  issueCounts.value.warning + issueCounts.value.expired + issueCounts.value.noFile + issueCounts.value.staleDraft,
+)
+
+async function loadIssues() {
+  issueLoading.value = true
+  try {
+    const { data } = await documentsApi.getIssues(activeIssueTab.value, issuePage.value, ISSUE_PAGE_SIZE)
+    issueDocuments.value = data.data
+    issueTotal.value = data.meta.total
+  } catch {
+    issueDocuments.value = []
+    issueTotal.value = 0
+  } finally {
+    issueLoading.value = false
+  }
+}
+
+async function handleIssueTabChange() {
+  issuePage.value = 1
+  await loadIssues()
+}
+
+async function handleIssuePageChange(page: number) {
+  issuePage.value = page
+  await loadIssues()
+}
+
+function goToDocument(doc: DocumentEntity) {
+  router.push(`/d/${doc.domain}/doc/${doc.id}`)
+}
+
 onMounted(async () => {
   try {
-    const [, statsRes, recentRes] = await Promise.all([
+    const [, statsRes, recentRes, issueCountsRes] = await Promise.all([
       domainStore.loadDomains(),
       documentsApi.getStats(),
       documentsApi.getRecent(10),
+      documentsApi.getIssueCounts(),
     ])
     stats.value = statsRes.data
     recentActivities.value = recentRes.data
+    issueCounts.value = issueCountsRes.data
+    await loadIssues()
   } catch {
     stats.value = {
       total: 0,
@@ -142,13 +206,82 @@ function formatTimeAgo(dateStr: string): string {
       </el-col>
       <el-col :span="6">
         <el-card shadow="never" :body-style="{ padding: '20px' }">
-          <div style="font-size: 13px; color: #909399">신선도 경고</div>
-          <div style="font-size: 28px; font-weight: 700; color: #e6a23c; margin-top: 4px">
-            {{ stats?.freshnessWarning ?? 0 }}
+          <div style="font-size: 13px; color: #909399">조치 필요</div>
+          <div style="font-size: 28px; font-weight: 700; color: #f56c6c; margin-top: 4px">
+            {{ totalIssues }}
           </div>
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 조치 필요 문서 -->
+    <el-card v-if="totalIssues > 0" shadow="never" style="margin-bottom: 24px">
+      <template #header>
+        <span style="font-weight: 600">조치 필요 문서</span>
+      </template>
+      <el-tabs v-model="activeIssueTab" @tab-change="handleIssueTabChange">
+        <el-tab-pane
+          v-for="tab in ISSUE_TABS"
+          :key="tab.key"
+          :name="tab.key"
+        >
+          <template #label>
+            {{ tab.label }}
+            <el-badge
+              v-if="getIssueCount(tab.key) > 0"
+              :value="getIssueCount(tab.key)"
+              :type="tab.key === 'expired' ? 'danger' : 'warning'"
+              style="margin-left: 4px"
+            />
+          </template>
+        </el-tab-pane>
+      </el-tabs>
+      <el-table
+        v-loading="issueLoading"
+        :data="issueDocuments"
+        size="small"
+        :header-cell-style="{ background: '#fafafa' }"
+      >
+        <el-table-column label="파일명" min-width="200">
+          <template #default="{ row }">
+            <span style="color: #303133">{{ row.fileName ?? row.id }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="domain" label="도메인" width="120" />
+        <el-table-column label="상태" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag
+              :type="row.lifecycle === 'ACTIVE' ? 'success' : row.lifecycle === 'DRAFT' ? 'info' : 'danger'"
+              size="small"
+            >
+              {{ row.lifecycle }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="최종수정" width="100" align="center">
+          <template #default="{ row }">
+            {{ formatTimeAgo(row.updatedAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="" width="60" align="center">
+          <template #default="{ row }">
+            <el-button text size="small" type="primary" @click="goToDocument(row)">
+              이동
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="issueTotal > ISSUE_PAGE_SIZE" style="margin-top: 12px; text-align: right">
+        <el-pagination
+          small
+          layout="prev, pager, next"
+          :total="issueTotal"
+          :page-size="ISSUE_PAGE_SIZE"
+          :current-page="issuePage"
+          @current-change="handleIssuePageChange"
+        />
+      </div>
+    </el-card>
 
     <!-- 도메인별 현황 -->
     <el-card shadow="never" style="margin-bottom: 24px">

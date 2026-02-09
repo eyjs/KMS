@@ -21,12 +21,68 @@ import type {
   DocumentListQuery,
 } from '@kms/shared'
 
+type IssueType = 'warning' | 'expired' | 'no_file' | 'stale_draft'
+
 @Injectable()
 export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly taxonomy: TaxonomyService,
   ) {}
+
+  /** 역할별 접근 가능 보안등급 목록 */
+  private getAllowedLevels(userRole: UserRole): string[] {
+    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
+    return Object.entries(SECURITY_LEVEL_ORDER)
+      .filter(([, level]) => level <= maxLevel)
+      .map(([name]) => name)
+  }
+
+  /** 이슈 유형별 Prisma where 조건 빌더 (reviewedAt ?? updatedAt 기준) */
+  private buildIssueWhere(type: IssueType, allowedLevels: string[]) {
+    const baseWhere = {
+      isDeleted: false,
+      securityLevel: { in: allowedLevels },
+    }
+
+    const hotDate = new Date(Date.now() - FRESHNESS_THRESHOLDS.HOT * 86400000)
+    const warmDate = new Date(Date.now() - FRESHNESS_THRESHOLDS.WARM * 86400000)
+
+    switch (type) {
+      case 'warning':
+        // ACTIVE 문서 중 신선도 WARNING: COALESCE(reviewedAt, updatedAt)가 HOT~WARM 사이
+        return {
+          ...baseWhere,
+          lifecycle: 'ACTIVE',
+          OR: [
+            { reviewedAt: { lt: hotDate, gte: warmDate } },
+            { reviewedAt: null, updatedAt: { lt: hotDate, gte: warmDate } },
+          ],
+        }
+      case 'expired':
+        // ACTIVE 문서 중 신선도 EXPIRED: COALESCE(reviewedAt, updatedAt) >= WARM
+        return {
+          ...baseWhere,
+          lifecycle: 'ACTIVE',
+          OR: [
+            { reviewedAt: { lt: warmDate } },
+            { reviewedAt: null, updatedAt: { lt: warmDate } },
+          ],
+        }
+      case 'no_file':
+        return {
+          ...baseWhere,
+          filePath: null,
+          lifecycle: { not: 'DEPRECATED' },
+        }
+      case 'stale_draft':
+        return {
+          ...baseWhere,
+          lifecycle: 'DRAFT',
+          updatedAt: { lt: new Date(Date.now() - 30 * 86400000) },
+        }
+    }
+  }
 
   async create(
     data: {
@@ -253,7 +309,7 @@ export class DocumentsService {
     }
 
     // 트랜잭션으로 분류 업데이트 + 문서 업데이트 원자적 실행
-    const updated = await this.prisma.$transaction(async (tx: typeof this.prisma) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       if (data.classifications) {
         await tx.classification.deleteMany({ where: { documentId: id } })
         await tx.classification.createMany({
@@ -433,7 +489,7 @@ export class DocumentsService {
       )
       .map((h: {
         id: string; documentId: string; action: string; changes: unknown;
-        createdAt: Date; document: { fileName: string; domain: string };
+        createdAt: Date; document: { fileName: string | null; domain: string };
         user: { name: string } | null;
       }) => ({
         id: h.id,
@@ -532,6 +588,42 @@ export class DocumentsService {
       userName: h.user?.name ?? null,
       createdAt: h.createdAt.toISOString(),
     }))
+  }
+
+  async getIssueDocuments(
+    type: IssueType,
+    page: number,
+    size: number,
+    userRole: UserRole,
+  ) {
+    const where = this.buildIssueWhere(type, this.getAllowedLevels(userRole))
+
+    const [data, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where,
+        include: { classifications: true },
+        orderBy: { updatedAt: 'asc' },
+        skip: (page - 1) * size,
+        take: size,
+      }),
+      this.prisma.document.count({ where }),
+    ])
+
+    return {
+      data: data.map((d: Parameters<DocumentsService['formatDocument']>[0]) => this.formatDocument(d)),
+      meta: { total, page, size, totalPages: Math.ceil(total / size) },
+    }
+  }
+
+  async getIssueCounts(userRole: UserRole) {
+    const allowedLevels = this.getAllowedLevels(userRole)
+    const issueTypes: IssueType[] = ['warning', 'expired', 'no_file', 'stale_draft']
+
+    const [warning, expired, noFile, staleDraft] = await Promise.all(
+      issueTypes.map((t) => this.prisma.document.count({ where: this.buildIssueWhere(t, allowedLevels) })),
+    )
+
+    return { warning, expired, noFile, staleDraft }
   }
 
   /** API 응답 포맷 (filePath 미노출, downloadUrl 제공) */
