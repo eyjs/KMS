@@ -14,7 +14,7 @@ const loading = ref(false)
 
 async function handleLogin() {
   if (!email.value || !password.value) {
-    ElMessage.warning('이메일과 비밀번호를 입력하세요')
+    ElMessage.warning('아이디와 비밀번호를 입력하세요')
     return
   }
 
@@ -40,8 +40,8 @@ async function handleLogin() {
         <h2 style="text-align: center; margin: 0">KMS 문서관리 시스템</h2>
       </template>
       <el-form @submit.prevent="handleLogin">
-        <el-form-item label="이메일">
-          <el-input v-model="email" type="email" placeholder="admin@company.com" />
+        <el-form-item label="아이디">
+          <el-input v-model="email" placeholder="admin" />
         </el-form-item>
         <el-form-item label="비밀번호">
           <el-input v-model="password" type="password" placeholder="비밀번호" show-password />
