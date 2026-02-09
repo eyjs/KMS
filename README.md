@@ -19,7 +19,7 @@
 | 단계 | 목표 | 상태 | 기술 |
 |------|------|------|------|
 | **Phase 1** | 분류체계 검증 | **완료** | Python + JSON + HTML |
-| **Phase 2** | 체계 관리 시스템 | **현재** | NestJS + Vue 3 + TypeScript + PostgreSQL |
+| **Phase 2** | 체계 관리 시스템 | **구현 완료** | NestJS + Vue 3 + TypeScript + PostgreSQL |
 | **Phase 3** | 데이터 처리 확장 | 선택적 | Python 추가 (조건부) |
 
 ---
@@ -208,8 +208,8 @@ npm --prefix packages/api run build
 | API Proxy | Vercel rewrites | `/api/*` → Backend |
 
 ### 초기 관리자 계정
-- 이메일: `admin@company.com`
-- 비밀번호: `admin123`
+- 이메일: `admin`
+- 비밀번호: `admin`
 - 역할: `ADMIN`
 
 > 프로덕션 배포 후 반드시 비밀번호 변경

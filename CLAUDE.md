@@ -39,6 +39,18 @@
 ### 목표
 문서 업로드, 분류, 관계 관리, 뷰어, 외부 API 제공
 
+### 구현 완료 기능
+- 파일 업로드 (PDF, Markdown, CSV) + 분류 선택
+- 도메인 CRUD (무제한 깊이 트리 구조)
+- Facet CRUD (보험사/상품/문서유형 관리)
+- 문서 목록/검색/필터 + 도메인 워크스페이스
+- 문서 상세 뷰어 (PDF, Markdown, CSV 미리보기)
+- 관계 추가/삭제 UI (부모-자식, 참조, 대체)
+- 문서 분류/보안등급 수정 다이얼로그
+- 라이프사이클 전환 (DRAFT → ACTIVE → DEPRECATED)
+- 대시보드 (통계 + 도메인 현황 + 조치 필요 문서 + 최근 활동)
+- 사용자 관리 (JWT 인증, 역할 기반 접근 제어)
+
 ### 범위
 
 **포함 (직접 구현):**
@@ -47,7 +59,6 @@
 - 관계 관리 (부모-자식, 참조, 대체)
 - 라이프사이클 (DRAFT → ACTIVE → DEPRECATED)
 - 문서 뷰어 (pdf.js, marked.js, 테이블)
-- 관계 그래프 (vis-network)
 - 외부 API (REST + API Key)
 
 **제외 (외주 위임):**
@@ -97,7 +108,7 @@
 | Backend | NestJS | 10.x |
 | ORM | Prisma | 6.x |
 | Database | PostgreSQL | 16 |
-| Monorepo | pnpm workspace + Turbo | - |
+| Monorepo | npm (workspaces 미사용) | - |
 | PDF 뷰어 | pdf.js | - |
 | MD 뷰어 | marked.js | - |
 | 그래프 | vis-network | 9.x |
@@ -119,8 +130,7 @@
 /
 ├── CLAUDE.md                        # 프로젝트 규칙 (이 파일)
 ├── README.md                        # 프로젝트 소개
-├── pnpm-workspace.yaml              # Monorepo 설정
-├── turbo.json                       # Turbo 빌드 파이프라인
+├── vercel.json                      # Vercel 배포 설정
 ├── docker-compose.yml               # PostgreSQL + pgAdmin
 │
 ├── packages/
@@ -184,9 +194,12 @@ SYSTEM FRAMEWORK (불변)
 └── 버전 (Major.Minor)
 
 DOMAIN (가변)
-├── GA-SALES: carrier × product × docType
-├── GA-COMM: carrier × product × docType
-└── ... (도메인별 facet 정의)
+└── GA (루트)
+    ├── SALES: carrier × product × docType
+    ├── COMM: carrier × product × docType
+    ├── CONTRACT: carrier × product × docType
+    ├── COMP: carrier × docType
+    └── EDU: docType
 ```
 
 ### 라이프사이클 상태 머신
@@ -287,22 +300,30 @@ DRAFT → ACTIVE → DEPRECATED
 
 ```bash
 # 환경 구축
-pnpm install                          # 의존성 설치
-docker compose up -d postgres         # DB 시작
-pnpm db:migrate                       # 마이그레이션
-pnpm db:seed                          # 시드 데이터
+npm install                                    # 루트 의존성
+npm --prefix packages/shared install           # shared 의존성
+npm --prefix packages/api install              # api 의존성
+npm --prefix packages/web install              # web 의존성
+docker compose up -d postgres                  # DB 시작
+
+# shared 빌드 (먼저)
+npm --prefix packages/shared run build
+
+# DB 마이그레이션 + 시드
+npm --prefix packages/api exec prisma migrate dev
+npm --prefix packages/api exec prisma db seed
 
 # 개발 서버
-pnpm dev                              # API + Web 동시 실행
-pnpm --filter @kms/api dev            # API만
-pnpm --filter @kms/web dev            # Web만
+npm --prefix packages/api run dev              # API (localhost:3000)
+npm --prefix packages/web run dev              # Web (localhost:5173)
 
-# 빌드
-pnpm build                            # 전체 빌드
-pnpm --filter @kms/shared build       # shared만
+# 빌드 (순서 중요)
+npm --prefix packages/shared run build         # 1. shared 먼저
+npm --prefix packages/api run build            # 2. API
+npm --prefix packages/web run build            # 3. Web
 
 # Prisma
-pnpm --filter @kms/api prisma studio  # DB GUI
+npm --prefix packages/api exec prisma studio   # DB GUI
 ```
 
 ### Python 검증 도구
@@ -323,7 +344,7 @@ python scripts/ontology_validator.py
 
 #### 사전 준비
 - Docker + Docker Compose 설치
-- Node.js 20+ / pnpm 9+ (빌드용)
+- Node.js 20+ (빌드용)
 
 #### 1. 환경변수 설정
 
@@ -347,14 +368,14 @@ cp .env.example packages/api/.env
 
 ```bash
 # 의존성 설치 + shared 빌드
-pnpm install
-pnpm --filter @kms/shared build
+npm install
+npm --prefix packages/shared run build
 
 # Prisma 클라이언트 생성
-pnpm --filter @kms/api exec prisma generate
+npm --prefix packages/api exec prisma generate
 
 # API 빌드
-pnpm --filter @kms/api build
+npm --prefix packages/api run build
 ```
 
 빌드 결과: `packages/api/dist/`
@@ -363,13 +384,13 @@ pnpm --filter @kms/api build
 
 ```bash
 # 개발용 (자동 생성)
-pnpm --filter @kms/api exec prisma migrate dev
+npm --prefix packages/api exec prisma migrate dev
 
 # 프로덕션 (적용만)
-pnpm --filter @kms/api exec prisma migrate deploy
+npm --prefix packages/api exec prisma migrate deploy
 
 # 시드 데이터 (최초 1회)
-pnpm --filter @kms/api exec prisma db seed
+npm --prefix packages/api exec prisma db seed
 ```
 
 마이그레이션 후 트리거 적용:
@@ -385,9 +406,9 @@ psql $DATABASE_URL -f packages/api/prisma/triggers.sql
 docker compose up -d
 
 # API 서버 실행 (로컬)
-pnpm --filter @kms/api start:prod
+npm --prefix packages/api run start:prod
 
-# 또는 Docker로 API 실행 (Dockerfile 작성 필요 시)
+# 또는 Docker로 API 실행
 # packages/api/Dockerfile 참고
 ```
 
@@ -405,8 +426,8 @@ curl http://localhost:3000/api
 ```
 
 #### 초기 관리자 계정
-- 이메일: `admin@company.com`
-- 비밀번호: `admin123`
+- 이메일: `admin`
+- 비밀번호: `admin`
 - 역할: `ADMIN`
 
 > 프로덕션 배포 후 반드시 비밀번호 변경
@@ -450,12 +471,8 @@ npx vercel --prod
 #### 5. 빌드 순서 주의사항
 
 Vercel에서 빌드 시 `@kms/shared`가 먼저 빌드되어야 합니다.
-Build Command에서 shared를 먼저 빌드하는 이유:
-```
-pnpm --filter @kms/shared build → packages/shared/dist/ 생성
-→ @kms/web의 tsconfig paths가 ../shared/dist 참조
-→ vite build 성공
-```
+`vercel.json`의 Build Command에서 shared → web 순서로 빌드합니다.
+Web은 vite alias로 shared 소스를 직접 읽으므로 ESM/CJS 충돌이 없습니다.
 
 ---
 

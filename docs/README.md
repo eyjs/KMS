@@ -60,7 +60,7 @@ docs/
 | Phase | 목표 | 상태 | 문서 |
 |-------|------|------|------|
 | **Phase 1** | 분류체계 검증 | **완료** | `phase1/` |
-| **Phase 2** | 체계 관리 시스템 | **현재** | `phase2/` |
+| **Phase 2** | 체계 관리 시스템 | **구현 완료** | `phase2/` |
 | **Phase 3** | 데이터 처리 확장 | 선택적 | `phase3/` |
 
 ---
@@ -75,7 +75,7 @@ docs/
 | 영역 | 기술 |
 |------|------|
 | Frontend | Vue 3 + Element Plus |
-| Backend | ASP.NET Core 8 |
+| Backend | NestJS 10.x |
 | Database | PostgreSQL 16 |
 | 뷰어 | pdf.js, marked.js |
 
@@ -136,8 +136,9 @@ docs/
 ## 관련 파일
 
 - `/CLAUDE.md` - 프로젝트 규칙
-- `/src/` - Phase 1 Python 소스
-- `/ui/` - Phase 1 Admin HTML
+- `/scripts/` - Phase 1 Python 검증 도구
+- `/legacy/` - Phase 1 아카이브 (HTML UI + 데이터)
+- `/packages/` - Phase 2 소스 (api, web, shared)
 
 ---
 
