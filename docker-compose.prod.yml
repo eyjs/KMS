@@ -1,0 +1,44 @@
+services:
+  kms-postgres:
+    image: postgres:16-alpine
+    container_name: kms-postgres
+    restart: unless-stopped
+    ports:
+      - '5436:5432'
+    environment:
+      POSTGRES_DB: kms
+      POSTGRES_USER: kms
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kms_secure_2024}
+    volumes:
+      - kms-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kms']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kms-api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: kms-api
+    restart: unless-stopped
+    ports:
+      - '3001:3000'
+    environment:
+      DATABASE_URL: postgresql://kms:${DB_PASSWORD:-kms_secure_2024}@kms-postgres:5432/kms?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      API_PORT: 3000
+      STORAGE_PATH: /app/storage/originals
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    volumes:
+      - kms-storage:/app/storage
+    depends_on:
+      kms-postgres:
+        condition: service_healthy
+
+volumes:
+  kms-pgdata:
+  kms-storage:
