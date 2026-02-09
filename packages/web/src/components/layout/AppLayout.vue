@@ -39,8 +39,8 @@ function handleLogout() {
 
 <template>
   <el-container style="min-height: 100vh">
-    <el-aside width="220px" style="background: #1d1e2c; overflow-y: auto">
-      <div style="padding: 20px 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.06)">
+    <el-aside width="220px" style="background: #1d1e2c; display: flex; flex-direction: column; overflow: hidden">
+      <div style="padding: 20px 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0">
         KMS
       </div>
 
@@ -50,7 +50,7 @@ function handleLogout() {
         background-color="#1d1e2c"
         text-color="#a3a6b4"
         active-text-color="#409eff"
-        style="border-right: none"
+        style="border-right: none; flex: 1; overflow-y: auto"
       >
         <!-- SYSTEM -->
         <div style="padding: 16px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
@@ -92,7 +92,7 @@ function handleLogout() {
       </el-menu>
 
       <!-- 하단 사용자 정보 -->
-      <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.06); background: #1d1e2c">
+      <div style="flex-shrink: 0; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.06); background: #1d1e2c">
         <div style="display: flex; align-items: center; justify-content: space-between">
           <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
             <el-avatar :size="28" style="background: #409eff; flex-shrink: 0">

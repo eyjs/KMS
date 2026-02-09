@@ -2,9 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import type { DomainMasterEntity } from '@kms/shared'
+import { CreateDomainDto, UpdateDomainDto } from './dto/taxonomy.dto'
 
 @Injectable()
 export class TaxonomyService {
@@ -67,6 +69,89 @@ export class TaxonomyService {
       throw new BadRequestException(`유효하지 않은 도메인입니다: ${code}`)
     }
     return domain
+  }
+
+  async createDomain(dto: CreateDomainDto) {
+    if (dto.parentCode) {
+      const parent = await this.prisma.domainMaster.findUnique({
+        where: { code: dto.parentCode },
+      })
+      if (!parent || !parent.isActive) {
+        throw new BadRequestException(`부모 도메인을 찾을 수 없습니다: ${dto.parentCode}`)
+      }
+    }
+
+    try {
+      return await this.prisma.domainMaster.create({
+        data: {
+          code: dto.code,
+          displayName: dto.displayName,
+          parentCode: dto.parentCode ?? null,
+          description: dto.description ?? null,
+          requiredFacets: dto.requiredFacets ?? [],
+          ssotKey: dto.ssotKey ?? [],
+          sortOrder: dto.sortOrder ?? 0,
+        },
+      })
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code: string }).code === 'P2002'
+      ) {
+        throw new ConflictException(`이미 존재하는 도메인 코드입니다: ${dto.code}`)
+      }
+      throw error
+    }
+  }
+
+  async updateDomain(code: string, dto: UpdateDomainDto) {
+    const domain = await this.prisma.domainMaster.findUnique({
+      where: { code },
+    })
+    if (!domain) {
+      throw new NotFoundException(`도메인을 찾을 수 없습니다: ${code}`)
+    }
+
+    return this.prisma.domainMaster.update({
+      where: { code },
+      data: {
+        ...(dto.displayName !== undefined && { displayName: dto.displayName }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.requiredFacets !== undefined && { requiredFacets: dto.requiredFacets }),
+        ...(dto.ssotKey !== undefined && { ssotKey: dto.ssotKey }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+      },
+    })
+  }
+
+  async deleteDomain(code: string): Promise<void> {
+    const domain = await this.prisma.domainMaster.findUnique({
+      where: { code },
+    })
+    if (!domain) {
+      throw new NotFoundException(`도메인을 찾을 수 없습니다: ${code}`)
+    }
+
+    const children = await this.prisma.domainMaster.count({
+      where: { parentCode: code, isActive: true },
+    })
+    if (children > 0) {
+      throw new BadRequestException('하위 도메인이 존재합니다. 먼저 삭제하세요.')
+    }
+
+    const docs = await this.prisma.document.count({
+      where: { domain: code, isDeleted: false },
+    })
+    if (docs > 0) {
+      throw new BadRequestException('해당 도메인에 문서가 존재합니다. 먼저 문서를 이동하거나 삭제하세요.')
+    }
+
+    await this.prisma.domainMaster.update({
+      where: { code },
+      data: { isActive: false },
+    })
   }
 
   async validateClassifications(domainCode: string, classifications: Record<string, string>) {

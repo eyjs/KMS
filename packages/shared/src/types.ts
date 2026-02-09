@@ -213,6 +213,24 @@ export interface CreateApiKeyDto {
   expiresAt?: string
 }
 
+export interface CreateDomainDto {
+  code: string
+  displayName: string
+  parentCode?: string
+  description?: string
+  requiredFacets?: string[]
+  ssotKey?: string[]
+  sortOrder?: number
+}
+
+export interface UpdateDomainDto {
+  displayName?: string
+  description?: string
+  requiredFacets?: string[]
+  ssotKey?: string[]
+  sortOrder?: number
+}
+
 // ============================================================
 // 페이지네이션
 // ============================================================

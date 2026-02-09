@@ -68,6 +68,11 @@ export const useDomainStore = defineStore('domain', () => {
     treeFilters.value = {}
   }
 
+  async function reloadDomains() {
+    domainsLoaded.value = false
+    await loadDomains()
+  }
+
   return {
     domains,
     domainTree,
@@ -78,6 +83,7 @@ export const useDomainStore = defineStore('domain', () => {
     treeFilters,
     domainsLoaded,
     loadDomains,
+    reloadDomains,
     setCurrentDomain,
     selectTreeNode,
     setTreeFilters,

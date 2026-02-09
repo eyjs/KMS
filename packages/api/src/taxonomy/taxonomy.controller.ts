@@ -1,7 +1,22 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Query,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common'
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger'
 import { TaxonomyService } from './taxonomy.service'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { RolesGuard } from '../auth/guards/roles.guard'
+import { Roles } from '../auth/decorators/roles.decorator'
+import { CreateDomainDto, UpdateDomainDto } from './dto/taxonomy.dto'
 
 @ApiTags('taxonomy')
 @Controller()
@@ -26,6 +41,34 @@ export class TaxonomyController {
   @ApiOperation({ summary: '도메인 상세 조회' })
   async getDomain(@Param('code') code: string) {
     return this.taxonomyService.getDomain(code)
+  }
+
+  @Post('domains')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: '도메인 생성 (ADMIN)' })
+  async createDomain(@Body() dto: CreateDomainDto) {
+    return this.taxonomyService.createDomain(dto)
+  }
+
+  @Put('domains/:code')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: '도메인 수정 (ADMIN)' })
+  async updateDomain(
+    @Param('code') code: string,
+    @Body() dto: UpdateDomainDto,
+  ) {
+    return this.taxonomyService.updateDomain(code, dto)
+  }
+
+  @Delete('domains/:code')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: '도메인 삭제 (ADMIN, soft delete)' })
+  async deleteDomain(@Param('code') code: string) {
+    await this.taxonomyService.deleteDomain(code)
   }
 
   @Get('taxonomy/:facetType')
