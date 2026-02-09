@@ -5,10 +5,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
+    "dev:api": "npm --prefix packages/api run dev",
+    "dev:web": "npm --prefix packages/web run dev",
+    "build:shared": "npm --prefix packages/shared run build",
+    "build:api": "npm run build:shared && npm --prefix packages/api run build",
+    "build:web": "npm run build:shared && npm --prefix packages/web run build",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:migrate": "npm --prefix packages/api run prisma migrate dev",
@@ -16,7 +17,6 @@
     "db:studio": "npm --prefix packages/api run prisma studio"
   },
   "devDependencies": {
-    "turbo": "^2.4.0",
     "typescript": "^5.7.0"
   },
   "engines": {

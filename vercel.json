@@ -1,7 +1,7 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "bash -c 'ROOT=$PWD && cd $ROOT/packages/shared && npx tsc && cd $ROOT/packages/web && npx vue-tsc -b && npx vite build --outDir $ROOT/dist'",
-  "outputDirectory": "dist",
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "packages/web/dist",
   "framework": null,
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://kms.joonbi.co.kr/api/:path*" }
