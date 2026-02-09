@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
-      '@kms/shared': resolve(__dirname, '../shared/dist'),
+      '@kms/shared': resolve(__dirname, '../shared/src'),
     },
   },
   server: {

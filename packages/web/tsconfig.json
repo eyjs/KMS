@@ -15,7 +15,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@kms/shared": ["../shared/dist"]
+      "@kms/shared": ["../shared/src"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts"],

@@ -1,40 +1,42 @@
-FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare pnpm@9 --activate
+# ── shared 빌드 ──
+FROM node:20-alpine AS shared-build
+WORKDIR /app
+COPY packages/shared/ ./packages/shared/
+RUN cd packages/shared && npm install && npm run build
+
+# ── API 빌드 ──
+FROM node:20-alpine AS api-build
 WORKDIR /app
 
-# 의존성 설치
-FROM base AS deps
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
-COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
-COPY packages/api/package.json packages/api/tsconfig.json packages/api/nest-cli.json ./packages/api/
-RUN pnpm install --frozen-lockfile
+# shared 빌드 결과 복사
+COPY --from=shared-build /app/packages/shared ./packages/shared
 
-# shared 빌드
-FROM deps AS shared-build
-COPY packages/shared/src ./packages/shared/src
-RUN pnpm --filter @kms/shared build
+# API 의존성 설치 (file:../shared 해결을 위해 shared가 먼저 있어야 함)
+COPY packages/api/package.json packages/api/package-lock.json* ./packages/api/
+RUN cd packages/api && npm install
 
-# Prisma 생성 + API 빌드
-FROM shared-build AS api-build
+# Prisma 생성
 COPY packages/api/prisma ./packages/api/prisma
-RUN pnpm --filter @kms/api exec prisma generate
-COPY packages/api/src ./packages/api/src
-RUN pnpm --filter @kms/api build
+RUN cd packages/api && npx prisma generate
 
-# 프로덕션 런타임
+# API 소스 빌드
+COPY packages/api/tsconfig.json packages/api/nest-cli.json ./packages/api/
+COPY packages/api/src ./packages/api/src
+RUN cd packages/api && npm run build
+
+# ── 프로덕션 런타임 ──
 FROM node:20-alpine AS runner
-RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
-COPY --from=api-build /app/pnpm-workspace.yaml /app/pnpm-lock.yaml /app/package.json ./
+# shared dist만 복사
 COPY --from=api-build /app/packages/shared/package.json ./packages/shared/
 COPY --from=api-build /app/packages/shared/dist ./packages/shared/dist
+
+# API dist + node_modules + prisma 복사
 COPY --from=api-build /app/packages/api/package.json ./packages/api/
 COPY --from=api-build /app/packages/api/dist ./packages/api/dist
-COPY --from=api-build /app/packages/api/prisma ./packages/api/prisma
-COPY --from=api-build /app/node_modules ./node_modules
 COPY --from=api-build /app/packages/api/node_modules ./packages/api/node_modules
-COPY --from=api-build /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=api-build /app/packages/api/prisma ./packages/api/prisma
 
 # 파일 저장 디렉토리
 RUN mkdir -p /app/storage/originals
