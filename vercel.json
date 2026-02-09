@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm --filter @kms/shared build && pnpm --filter @kms/web build && cp -r packages/web/dist ./dist",
+  "buildCommand": "pnpm --filter @kms/shared build && cd packages/web && npx vue-tsc -b && npx vite build --outDir ../../dist",
   "outputDirectory": "dist",
   "installCommand": "pnpm install",
   "framework": null,
