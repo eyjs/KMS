@@ -9,7 +9,6 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "vercel-build": "cd packages/shared && npx tsc && cd ../web && npx vue-tsc -b && npx vite build --outDir ../../dist",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:migrate": "npm --prefix packages/api run prisma migrate dev",

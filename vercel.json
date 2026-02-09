@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "npm run vercel-build",
+  "buildCommand": "bash -c 'ROOT=$PWD && cd $ROOT/packages/shared && npx tsc && cd $ROOT/packages/web && npx vue-tsc -b && npx vite build --outDir $ROOT/dist'",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
