@@ -1,0 +1,29 @@
+sequenceDiagram
+    actor 외부 as 외부업체
+    participant API as KMS API
+    participant 관리자
+
+    Note over 외부, 관리자: 1. API Key 받기
+
+    외부->>관리자: API Key 요청
+    관리자->>API: Key 생성 + EXTERNAL 역할 지정
+    관리자-->>외부: API Key 전달
+
+    Note over 외부, API: 2. 문서 조회
+
+    외부->>API: GET /documents (API Key 헤더)
+    API->>API: 권한 확인 (PUBLIC만 허용)
+    API-->>외부: 문서 목록
+
+    외부->>API: GET /documents/:id
+    API-->>외부: 문서 상세
+
+    Note over 외부, API: 3. 파일 다운로드
+
+    외부->>API: GET /documents/:id/download
+    API-->>외부: 파일 전송
+
+    Note over 외부, API: 4. 제한사항
+
+    외부->>API: 문서 생성/수정/삭제 시도
+    API-->>외부: 403 Forbidden
