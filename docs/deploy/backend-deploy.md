@@ -248,8 +248,8 @@ docker exec -it kms-postgres psql -U kms -d kms
 
 ## 접속 URL
 
-| 서비스 | URL |
-|--------|-----|
-| API | http://localhost:3001/api |
-| Swagger | http://localhost:3001/api/docs |
-| DB (외부) | postgresql://kms:kms_secure_2024@localhost:5436/kms |
+| 서비스 | 로컬 | 프로덕션 |
+|--------|------|---------|
+| API | http://localhost:3001/api | https://kms.joonbi.co.kr/api |
+| Swagger | http://localhost:3001/api/docs | https://kms.joonbi.co.kr/api/docs |
+| DB (내부) | localhost:5436 | kms-postgres:5432 |

@@ -341,7 +341,7 @@ cp .env.example packages/api/.env
 | `JWT_REFRESH_EXPIRES_IN` | 리프레시 토큰 만료 | `7d` |
 | `API_PORT` | 서버 포트 | `3000` |
 | `STORAGE_PATH` | 파일 저장 경로 | `/app/storage/originals` |
-| `CORS_ORIGIN` | 허용 Origin | `https://your-domain.vercel.app` |
+| `CORS_ORIGIN` | 허용 Origin | `https://kms-web.vercel.app` (Vercel 배포 후 실제 도메인으로 변경) |
 
 #### 2. 빌드
 
@@ -429,20 +429,19 @@ curl http://localhost:3000/api
 
 | 변수 | 값 |
 |------|-----|
-| `VITE_API_BASE_URL` | 백엔드 API URL (예: `https://api.your-domain.com/api`) |
+| `VITE_API_BASE_URL` | `https://kms.joonbi.co.kr/api` |
 
 #### 3. API 프록시 설정
 
 `packages/web/vercel.json` 생성:
+`packages/web/vercel.json`에 이미 설정됨:
 ```json
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://api.your-domain.com/api/:path*" }
+    { "source": "/api/:path*", "destination": "https://kms.joonbi.co.kr/api/:path*" }
   ]
 }
 ```
-
-또는 Vite 설정에서 프록시를 유지하되, 프로덕션에서는 Vercel rewrites로 처리.
 
 #### 4. 배포
 
