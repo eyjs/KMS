@@ -42,9 +42,9 @@ async function fetchDocuments() {
     const query: DocumentListQuery = {
       domain: props.domainCode,
       lifecycle: lifecycleFilter.value as DocumentListQuery['lifecycle'],
-      carrier: props.filters?.carrier,
-      product: props.filters?.product,
-      docType: props.filters?.docType,
+      classifications: props.filters && Object.keys(props.filters).length > 0
+        ? JSON.stringify(props.filters)
+        : undefined,
       page: page.value,
       size: size.value,
       sort: sortField.value,
@@ -133,7 +133,11 @@ defineExpose({ refresh: fetchDocuments })
       style="cursor: pointer"
       :header-cell-style="{ background: '#fafafa', color: '#606266' }"
     >
-      <el-table-column prop="fileName" label="파일명" min-width="200" sortable="custom" show-overflow-tooltip />
+      <el-table-column label="파일명" min-width="200" sortable="custom" prop="fileName" show-overflow-tooltip>
+        <template #default="{ row }">
+          {{ row.fileName ?? '(메타데이터만)' }}
+        </template>
+      </el-table-column>
       <el-table-column label="상태" width="90">
         <template #default="{ row }">
           <el-tag :type="LIFECYCLE_TAG[row.lifecycle] ?? 'info'" size="small">

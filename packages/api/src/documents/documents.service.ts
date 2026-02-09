@@ -34,16 +34,30 @@ export class DocumentsService {
       classifications: Record<string, string>
       securityLevel?: SecurityLevel
       lifecycle?: Lifecycle
+      title?: string
     },
-    file: Express.Multer.File,
+    file: Express.Multer.File | null,
     userId: string,
   ) {
     await this.taxonomy.validateDomain(data.domain)
     await this.taxonomy.validateClassifications(data.domain, data.classifications)
 
-    const ext = file.originalname.split('.').pop()?.toLowerCase()
-    if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
-      throw new BadRequestException('허용되지 않는 파일 형식입니다')
+    let filePath: string | null = null
+    let fileName: string | null = null
+    let fileType: string | null = null
+    let fileSize: number = 0
+
+    if (file) {
+      const ext = file.originalname.split('.').pop()?.toLowerCase()
+      if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
+        throw new BadRequestException('허용되지 않는 파일 형식입니다')
+      }
+      filePath = file.path
+      fileName = file.originalname
+      fileType = ext
+      fileSize = file.size
+    } else if (data.title) {
+      fileName = data.title
     }
 
     const document = await this.prisma.document.create({
@@ -51,10 +65,10 @@ export class DocumentsService {
         domain: data.domain,
         lifecycle: data.lifecycle ?? 'DRAFT',
         securityLevel: data.securityLevel ?? 'INTERNAL',
-        filePath: file.path,
-        fileName: file.originalname,
-        fileType: ext,
-        fileSize: file.size,
+        filePath,
+        fileName,
+        fileType,
+        fileSize,
         createdById: userId,
         updatedById: userId,
         classifications: {
@@ -80,7 +94,7 @@ export class DocumentsService {
   }
 
   async findAll(query: DocumentListQuery, userRole: UserRole) {
-    const { domain, lifecycle, securityLevel, carrier, product, docType, page = 1, size = 20, sort = 'createdAt', order = 'desc' } = query
+    const { domain, lifecycle, securityLevel, classifications, page = 1, size = 20, sort = 'createdAt', order = 'desc' } = query
 
     // 보안 등급 필터: 사용자 역할에 따라 접근 가능한 문서만
     const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
@@ -93,26 +107,28 @@ export class DocumentsService {
       ? { equals: securityLevel }
       : { in: allowedLevels }
 
+    // 동적 facet 필터: classifications JSON → AND 조건
+    let parsed: Record<string, string> = {}
+    if (classifications) {
+      try {
+        const raw: unknown = JSON.parse(classifications)
+        if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+          parsed = raw as Record<string, string>
+        }
+      } catch {
+        throw new BadRequestException('classifications는 유효한 JSON이어야 합니다')
+      }
+    }
+    const facetFilters = Object.entries(parsed).map(([type, value]) => ({
+      classifications: { some: { facetType: type, facetValue: String(value) } },
+    }))
+
     const where = {
       isDeleted: false,
       ...(domain && { domain }),
       ...(lifecycle && { lifecycle }),
       securityLevel: effectiveSecurityLevel,
-      ...(carrier && {
-        classifications: {
-          some: { facetType: 'carrier', facetValue: carrier },
-        },
-      }),
-      ...(product && {
-        classifications: {
-          some: { facetType: 'product', facetValue: product },
-        },
-      }),
-      ...(docType && {
-        classifications: {
-          some: { facetType: 'docType', facetValue: docType },
-        },
-      }),
+      ...(facetFilters.length > 0 && { AND: facetFilters }),
     }
 
     const [data, total] = await Promise.all([
@@ -162,6 +178,46 @@ export class DocumentsService {
     }
 
     return doc
+  }
+
+  async attachFile(id: string, file: Express.Multer.File, userId: string, userRole: UserRole) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id, isDeleted: false },
+    })
+
+    if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
+
+    if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
+      throw new ForbiddenException('접근 권한이 없습니다')
+    }
+
+    const ext = file.originalname.split('.').pop()?.toLowerCase()
+    if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
+      throw new BadRequestException('허용되지 않는 파일 형식입니다')
+    }
+
+    const updated = await this.prisma.document.update({
+      where: { id },
+      data: {
+        filePath: file.path,
+        fileName: file.originalname,
+        fileType: ext,
+        fileSize: file.size,
+        updatedBy: { connect: { id: userId } },
+      },
+      include: { classifications: true },
+    })
+
+    await this.prisma.documentHistory.create({
+      data: {
+        documentId: id,
+        action: 'FILE_ATTACH',
+        changes: { fileName: file.originalname, fileType: ext },
+        userId,
+      },
+    })
+
+    return this.formatDocument(updated)
   }
 
   async update(
@@ -485,9 +541,10 @@ export class DocumentsService {
       domain: string
       lifecycle: string
       securityLevel: string
-      fileName: string
-      fileType: string
+      fileName: string | null
+      fileType: string | null
       fileSize: bigint | null
+      filePath?: string | null
       versionMajor: number
       versionMinor: number
       classificationHash: string | null
@@ -512,7 +569,7 @@ export class DocumentsService {
       fileName: doc.fileName,
       fileType: doc.fileType,
       fileSize: Number(doc.fileSize ?? 0),
-      downloadUrl: `/api/documents/${doc.id}/file`,
+      downloadUrl: doc.filePath ? `/api/documents/${doc.id}/file` : null,
       versionMajor: doc.versionMajor,
       versionMinor: doc.versionMinor,
       classificationHash: doc.classificationHash,

@@ -82,8 +82,8 @@ model Document {
   lifecycle          String   @default("DRAFT") @db.VarChar(20)
   securityLevel      String   @default("INTERNAL") @map("security_level") @db.VarChar(20)
   filePath           String?  @map("file_path")
-  fileName           String   @map("file_name")
-  fileType           String   @map("file_type") @db.VarChar(10)
+  fileName           String?  @map("file_name")
+  fileType           String?  @map("file_type") @db.VarChar(10)
   fileSize           BigInt?  @map("file_size")
   versionMajor       Int      @default(1) @map("version_major")
   versionMinor       Int      @default(0) @map("version_minor")
@@ -92,7 +92,7 @@ model Document {
   createdById        String?  @map("created_by") @db.Uuid
   updatedById        String?  @map("updated_by") @db.Uuid
   createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @default(now()) @map("updated_at")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
   isDeleted          Boolean  @default(false) @map("is_deleted")
   rowVersion         Int      @default(1) @map("row_version")
 

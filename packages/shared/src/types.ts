@@ -81,10 +81,10 @@ export interface DocumentEntity {
   domain: string
   lifecycle: Lifecycle
   securityLevel: SecurityLevel
-  fileName: string
-  fileType: FileType
+  fileName: string | null
+  fileType: FileType | null
   fileSize: number
-  downloadUrl: string
+  downloadUrl: string | null
   versionMajor: number
   versionMinor: number
   classificationHash: string
@@ -94,7 +94,7 @@ export interface DocumentEntity {
   createdAt: string
   updatedAt: string
   classifications: Record<string, string>
-  freshness: Freshness | null  // 계산 필드
+  freshness: Freshness | null
 }
 
 export interface RelationEntity {
@@ -160,6 +160,7 @@ export interface CreateDocumentDto {
   classifications: Record<string, string>
   securityLevel?: SecurityLevel
   lifecycle?: Lifecycle
+  title?: string
 }
 
 export interface UpdateDocumentDto {
@@ -182,9 +183,7 @@ export interface DocumentListQuery {
   domain?: string
   lifecycle?: Lifecycle
   securityLevel?: SecurityLevel
-  carrier?: string
-  product?: string
-  docType?: string
+  classifications?: string
   page?: number
   size?: number
   sort?: string
@@ -224,14 +223,3 @@ export interface PaginatedResponse<T> {
   }
 }
 
-// ============================================================
-// 도메인 정의
-// ============================================================
-
-export interface DomainDefinition {
-  code: string
-  name: string
-  facets: string[]
-  ssotKey: string[]
-  freshnessOverrides?: Record<string, number>
-}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
 import type { FacetMasterEntity, SecurityLevel, DomainMasterEntity } from '@kms/shared'
@@ -16,20 +16,17 @@ const emit = defineEmits<{
   success: []
 }>()
 
-const domains = ref<DomainMasterEntity[]>([])
-const carriers = ref<FacetMasterEntity[]>([])
-const products = ref<FacetMasterEntity[]>([])
-const docTypes = ref<FacetMasterEntity[]>([])
 const domain = ref<DomainMasterEntity | null>(null)
+const facetOptions = ref<Record<string, FacetMasterEntity[]>>({})
+const formValues = reactive<Record<string, string>>({})
 
 const file = ref<File | null>(null)
-const form = reactive({
-  carrier: '',
-  product: '',
-  docType: '',
-  securityLevel: 'INTERNAL' as SecurityLevel,
-})
+const title = ref('')
+const securityLevel = ref<SecurityLevel>('INTERNAL')
 const loading = ref(false)
+
+type CreateMode = 'upload' | 'metadata'
+const createMode = ref<CreateMode>('upload')
 
 const SECURITY_OPTIONS = [
   { value: 'PUBLIC', label: '공개 - 외부업체 포함' },
@@ -42,30 +39,40 @@ watch(
   () => props.visible,
   async (visible) => {
     if (visible) {
-      const [d, c, p, dt] = await Promise.all([
-        taxonomyApi.getDomains(),
-        taxonomyApi.getFacets('carrier', props.domainCode),
-        taxonomyApi.getFacets('product', props.domainCode),
-        taxonomyApi.getFacets('docType', props.domainCode),
-      ])
-      domains.value = d.data
-      domain.value = d.data.find((dm) => dm.code === props.domainCode) ?? null
-      carriers.value = c.data.filter((f) => f.isActive)
-      products.value = p.data.filter((f) => f.isActive)
-      docTypes.value = dt.data.filter((f) => f.isActive)
+      const { data: domains } = await taxonomyApi.getDomains()
+      domain.value = domains.find((dm) => dm.code === props.domainCode) ?? null
 
-      // 트리에서 선택된 값 자동 채움
-      if (props.initialFilters) {
-        form.carrier = props.initialFilters.carrier ?? ''
-        form.product = props.initialFilters.product ?? ''
-        form.docType = props.initialFilters.docType ?? ''
+      if (!domain.value) {
+        ElMessage.error(`도메인 '${props.domainCode}'을(를) 찾을 수 없습니다`)
+        emit('update:visible', false)
+        return
+      }
+
+      const required = requiredFacets()
+      const fetches = required.map((facetType) =>
+        taxonomyApi.getFacets(facetType, props.domainCode).then(({ data }) => ({ facetType, data })),
+      )
+      const results = await Promise.all(fetches)
+      const opts: Record<string, FacetMasterEntity[]> = {}
+      for (const { facetType, data } of results) {
+        opts[facetType] = data.filter((f) => f.isActive)
+      }
+      facetOptions.value = opts
+
+      // 초기값 채우기
+      for (const facetType of required) {
+        formValues[facetType] = props.initialFilters?.[facetType] ?? ''
       }
     } else {
+      // 리셋
       file.value = null
-      form.carrier = ''
-      form.product = ''
-      form.docType = ''
-      form.securityLevel = 'INTERNAL'
+      title.value = ''
+      securityLevel.value = 'INTERNAL'
+      createMode.value = 'upload'
+      for (const key of Object.keys(formValues)) {
+        delete formValues[key]
+      }
+      facetOptions.value = {}
     }
   },
 )
@@ -88,38 +95,51 @@ function handleFileChange(uploadFile: { raw: File }) {
   file.value = f
 }
 
-async function handleUpload() {
-  if (!file.value) {
-    ElMessage.warning('파일을 선택하세요')
-    return
-  }
-
+async function handleSubmit() {
   const required = requiredFacets()
   for (const facet of required) {
-    const val = form[facet as keyof typeof form]
-    if (!val) {
+    if (!formValues[facet]) {
       ElMessage.warning(`${facet}을(를) 선택하세요`)
       return
     }
   }
 
+  if (createMode.value === 'upload' && !file.value) {
+    ElMessage.warning('파일을 선택하세요')
+    return
+  }
+
+  if (createMode.value === 'metadata' && !title.value.trim()) {
+    ElMessage.warning('문서 제목을 입력하세요')
+    return
+  }
+
   const classifications: Record<string, string> = {}
-  if (form.carrier) classifications.carrier = form.carrier
-  if (form.product) classifications.product = form.product
-  if (form.docType) classifications.docType = form.docType
+  for (const [key, val] of Object.entries(formValues)) {
+    if (val) classifications[key] = val
+  }
 
   loading.value = true
   try {
-    await documentsApi.upload(file.value, {
-      domain: props.domainCode,
-      classifications,
-      securityLevel: form.securityLevel,
-    })
-    ElMessage.success('업로드 완료')
+    if (createMode.value === 'upload' && file.value) {
+      await documentsApi.upload(file.value, {
+        domain: props.domainCode,
+        classifications,
+        securityLevel: securityLevel.value,
+      })
+    } else {
+      await documentsApi.createMetadata({
+        domain: props.domainCode,
+        classifications,
+        securityLevel: securityLevel.value,
+        title: title.value.trim(),
+      })
+    }
+    ElMessage.success(createMode.value === 'upload' ? '업로드 완료' : '문서 생성 완료')
     emit('success')
     emit('update:visible', false)
   } catch (err: unknown) {
-    const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '업로드에 실패했습니다'
+    const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '처리에 실패했습니다'
     ElMessage.error(message)
   } finally {
     loading.value = false
@@ -131,73 +151,53 @@ async function handleUpload() {
   <el-dialog
     :model-value="visible"
     @update:model-value="emit('update:visible', $event)"
-    title="문서 업로드"
-    width="500px"
+    title="문서 추가"
+    width="520px"
     :close-on-click-modal="false"
   >
     <template #header>
-      <span>문서 업로드 — {{ domain?.displayName ?? domainCode }}</span>
+      <span>문서 추가 — {{ domain?.displayName ?? domainCode }}</span>
     </template>
 
-    <el-form label-width="80px">
+    <el-form label-width="90px">
+      <!-- 생성 방식 -->
+      <el-form-item label="추가 방식">
+        <el-radio-group v-model="createMode">
+          <el-radio-button value="upload">파일 업로드</el-radio-button>
+          <el-radio-button value="metadata">메타데이터만</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+
       <el-form-item label="도메인">
         <el-input :model-value="domain?.displayName ?? domainCode" disabled />
       </el-form-item>
 
-      <!-- 보험사 -->
+      <!-- 동적 facet 필드 -->
       <el-form-item
-        v-if="requiredFacets().includes('carrier')"
-        label="보험사"
+        v-for="facetType in requiredFacets()"
+        :key="facetType"
+        :label="facetType"
         :required="true"
       >
         <el-select
-          v-model="form.carrier"
-          placeholder="보험사 선택"
-          :disabled="isLocked('carrier')"
+          v-model="formValues[facetType]"
+          :placeholder="`${facetType} 선택`"
+          :disabled="isLocked(facetType)"
           filterable
           style="width: 100%"
         >
-          <el-option v-for="c in carriers" :key="c.code" :label="c.displayName" :value="c.code" />
-        </el-select>
-      </el-form-item>
-
-      <!-- 상품 -->
-      <el-form-item
-        v-if="requiredFacets().includes('product')"
-        label="상품"
-        :required="true"
-      >
-        <el-select
-          v-model="form.product"
-          placeholder="상품 선택"
-          :disabled="isLocked('product')"
-          filterable
-          style="width: 100%"
-        >
-          <el-option v-for="p in products" :key="p.code" :label="p.displayName" :value="p.code" />
-        </el-select>
-      </el-form-item>
-
-      <!-- 문서유형 -->
-      <el-form-item
-        v-if="requiredFacets().includes('docType')"
-        label="문서유형"
-        :required="true"
-      >
-        <el-select
-          v-model="form.docType"
-          placeholder="문서유형 선택"
-          :disabled="isLocked('docType')"
-          filterable
-          style="width: 100%"
-        >
-          <el-option v-for="dt in docTypes" :key="dt.code" :label="dt.displayName" :value="dt.code" />
+          <el-option
+            v-for="opt in (facetOptions[facetType] ?? [])"
+            :key="opt.code"
+            :label="opt.displayName"
+            :value="opt.code"
+          />
         </el-select>
       </el-form-item>
 
       <!-- 보안등급 -->
       <el-form-item label="보안등급">
-        <el-select v-model="form.securityLevel" style="width: 100%">
+        <el-select v-model="securityLevel" style="width: 100%">
           <el-option
             v-for="opt in SECURITY_OPTIONS"
             :key="opt.value"
@@ -207,8 +207,8 @@ async function handleUpload() {
         </el-select>
       </el-form-item>
 
-      <!-- 파일 -->
-      <el-form-item label="파일" required>
+      <!-- 파일 업로드 모드 -->
+      <el-form-item v-if="createMode === 'upload'" label="파일" required>
         <el-upload
           :auto-upload="false"
           :limit="1"
@@ -223,11 +223,21 @@ async function handleUpload() {
           </div>
         </el-upload>
       </el-form-item>
+
+      <!-- 메타데이터 모드: 제목 -->
+      <el-form-item v-if="createMode === 'metadata'" label="문서 제목" required>
+        <el-input v-model="title" placeholder="문서 제목을 입력하세요" />
+        <div style="font-size: 12px; color: #909399; margin-top: 4px">
+          파일은 나중에 첨부할 수 있습니다
+        </div>
+      </el-form-item>
     </el-form>
 
     <template #footer>
       <el-button @click="emit('update:visible', false)">취소</el-button>
-      <el-button type="primary" :loading="loading" @click="handleUpload">업로드</el-button>
+      <el-button type="primary" :loading="loading" @click="handleSubmit">
+        {{ createMode === 'upload' ? '업로드' : '생성' }}
+      </el-button>
     </template>
   </el-dialog>
 </template>

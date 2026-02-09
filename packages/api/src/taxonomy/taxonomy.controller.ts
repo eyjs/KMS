@@ -23,7 +23,7 @@ export class TaxonomyController {
   }
 
   @Get('taxonomy/:facetType')
-  @ApiOperation({ summary: '분류 마스터 조회 (carriers, products, docTypes)' })
+  @ApiOperation({ summary: '분류 마스터 조회 (facetType별)' })
   async getFacets(
     @Param('facetType') facetType: string,
     @Query('domain') domain?: string,

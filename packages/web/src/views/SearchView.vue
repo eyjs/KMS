@@ -61,7 +61,7 @@ async function handleSearch() {
       // 키워드 필터링 (클라이언트 사이드)
       if (keyword.value) {
         const kw = keyword.value.toLowerCase()
-        results.value = data.data.filter((d) => d.fileName.toLowerCase().includes(kw))
+        results.value = data.data.filter((d) => (d.fileName ?? '').toLowerCase().includes(kw))
         total.value = results.value.length
       } else {
         results.value = data.data
@@ -81,10 +81,7 @@ function goToDocument(doc: DocumentEntity) {
 }
 
 function buildClassificationPath(doc: DocumentEntity): string {
-  const parts: string[] = [doc.domain]
-  if (doc.classifications.carrier) parts.push(doc.classifications.carrier)
-  if (doc.classifications.product) parts.push(doc.classifications.product)
-  if (doc.classifications.docType) parts.push(doc.classifications.docType)
+  const parts: string[] = [doc.domain, ...Object.values(doc.classifications)]
   return parts.join(' > ')
 }
 </script>
@@ -137,7 +134,7 @@ function buildClassificationPath(doc: DocumentEntity): string {
             <div style="display: flex; justify-content: space-between; align-items: flex-start">
               <div>
                 <div style="font-size: 14px; font-weight: 600; color: #303133; margin-bottom: 4px">
-                  {{ doc.fileName }}
+                  {{ doc.fileName ?? '(메타데이터만)' }}
                 </div>
                 <div style="font-size: 12px; color: #909399">
                   {{ buildClassificationPath(doc) }}

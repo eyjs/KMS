@@ -8,12 +8,6 @@ const facets = ref<Record<string, FacetMasterEntity[]>>({})
 const loading = ref(true)
 const selectedDomain = ref<string | null>(null)
 
-const FACET_LABELS: Record<string, string> = {
-  carrier: '보험사',
-  product: '상품',
-  docType: '문서유형',
-}
-
 onMounted(async () => {
   try {
     const { data } = await taxonomyApi.getDomains()
@@ -26,16 +20,27 @@ onMounted(async () => {
 async function handleDomainClick(domain: DomainMasterEntity) {
   selectedDomain.value = domain.code
   const required = domain.requiredFacets as string[]
-  for (const facetType of required) {
-    if (!facets.value[facetType]) {
-      const { data } = await taxonomyApi.getFacets(facetType, domain.code)
-      facets.value[facetType] = data
+
+  // 도메인별 복합 키로 캐싱, 병렬 로딩
+  const missing = required.filter((ft) => !facets.value[`${domain.code}:${ft}`])
+  if (missing.length > 0) {
+    const results = await Promise.all(
+      missing.map((ft) =>
+        taxonomyApi.getFacets(ft, domain.code).then(({ data }) => ({ ft, data })),
+      ),
+    )
+    for (const { ft, data } of results) {
+      facets.value[`${domain.code}:${ft}`] = data
     }
   }
 }
 
 function getSelectedDomain(): DomainMasterEntity | undefined {
   return domains.value.find((d) => d.code === selectedDomain.value)
+}
+
+function getFacetData(facetType: string): FacetMasterEntity[] {
+  return facets.value[`${selectedDomain.value}:${facetType}`] ?? []
 }
 </script>
 
@@ -90,7 +95,7 @@ function getSelectedDomain(): DomainMasterEntity | undefined {
               size="small"
               style="margin-left: 6px"
             >
-              {{ FACET_LABELS[f] ?? f }}
+              {{ f }}
             </el-tag>
           </div>
 
@@ -103,15 +108,15 @@ function getSelectedDomain(): DomainMasterEntity | undefined {
               type="warning"
               style="margin-left: 6px"
             >
-              {{ FACET_LABELS[k] ?? k }}
+              {{ k }}
             </el-tag>
           </div>
 
           <!-- Facet 데이터 -->
           <div v-for="facetType in (getSelectedDomain()?.requiredFacets as string[] ?? [])" :key="facetType" style="margin-bottom: 20px">
-            <h4>{{ FACET_LABELS[facetType] ?? facetType }}</h4>
+            <h4>{{ facetType }}</h4>
             <el-table
-              :data="(facets[facetType] ?? []).filter((f: FacetMasterEntity) => f.isActive)"
+              :data="getFacetData(facetType).filter((f: FacetMasterEntity) => f.isActive)"
               size="small"
               :header-cell-style="{ background: '#fafafa' }"
             >

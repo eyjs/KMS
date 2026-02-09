@@ -56,21 +56,24 @@ export class DocumentsController {
   }
 
   @Post()
-  @ApiOperation({ summary: '문서 업로드' })
+  @ApiOperation({ summary: '문서 생성 (파일 업로드 또는 메타데이터만)' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async create(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: Express.Multer.File | undefined,
     @Body() body: CreateDocumentBodyDto,
     @Request() req: AuthRequest,
   ) {
+    if (!file && !body.title) {
+      throw new BadRequestException('파일 또는 제목 중 하나는 필수입니다')
+    }
+
     let classifications: Record<string, string>
     try {
       const parsed: unknown = JSON.parse(body.classifications)
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
         throw new Error()
       }
-      // 모든 값이 문자열인지 검증
       for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
         if (typeof key !== 'string' || typeof value !== 'string') {
           throw new Error()
@@ -82,10 +85,25 @@ export class DocumentsController {
     }
 
     return this.documentsService.create(
-      { domain: body.domain, classifications, securityLevel: body.securityLevel },
-      file,
+      { domain: body.domain, classifications, securityLevel: body.securityLevel, title: body.title },
+      file ?? null,
       req.user.sub,
     )
+  }
+
+  @Patch(':id/file')
+  @ApiOperation({ summary: '문서에 파일 첨부 (나중에 연결)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  async attachFile(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req: AuthRequest,
+  ) {
+    if (!file) {
+      throw new BadRequestException('파일이 필요합니다')
+    }
+    return this.documentsService.attachFile(id, file, req.user.sub, req.user.role)
   }
 
   @Get()
@@ -204,7 +222,7 @@ export class DocumentsController {
     const stream = fs.createReadStream(resolved)
     res.set({
       'Content-Type': 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.fileName)}"`,
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.fileName ?? 'download')}"`,
     })
     return new StreamableFile(stream)
   }

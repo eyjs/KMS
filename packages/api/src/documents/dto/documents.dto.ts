@@ -22,20 +22,10 @@ export class DocumentListQueryDto {
   @IsEnum(VALID_SECURITY_LEVELS)
   securityLevel?: (typeof VALID_SECURITY_LEVELS)[number]
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, description: 'JSON string of facet filters, e.g. {"facetType":"facetValue"}' })
   @IsOptional()
   @IsString()
-  carrier?: string
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  product?: string
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  docType?: string
+  classifications?: string
 
   @ApiProperty({ required: false, default: 1 })
   @IsOptional()
@@ -78,6 +68,11 @@ export class CreateDocumentBodyDto {
   @IsOptional()
   @IsEnum(VALID_SECURITY_LEVELS)
   securityLevel?: (typeof VALID_SECURITY_LEVELS)[number]
+
+  @ApiProperty({ required: false, description: '문서 제목 (파일 없이 생성 시 사용)' })
+  @IsOptional()
+  @IsString()
+  title?: string
 }
 
 export class UpdateDocumentDto {

@@ -12,6 +12,9 @@ import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
 import CsvViewer from '@/components/viewer/CsvViewer.vue'
 import DocumentTimeline from '@/components/document/DocumentTimeline.vue'
 
+const fileInput = ref<HTMLInputElement | null>(null)
+const attachLoading = ref(false)
+
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
@@ -38,6 +41,8 @@ const RELATION_LABELS: Record<string, string> = {
 const id = computed(() => route.params.id as string)
 const domainCode = computed(() => route.params.domainCode as string)
 
+const hasFile = computed(() => !!doc.value?.downloadUrl)
+
 const backPath = computed(() => {
   if (domainCode.value && domainCode.value !== '_') {
     return `/d/${domainCode.value}`
@@ -47,11 +52,7 @@ const backPath = computed(() => {
 
 const breadcrumb = computed(() => {
   if (!doc.value) return ''
-  const parts: string[] = []
-  if (doc.value.classifications.carrier) parts.push(doc.value.classifications.carrier)
-  if (doc.value.classifications.product) parts.push(doc.value.classifications.product)
-  if (doc.value.classifications.docType) parts.push(doc.value.classifications.docType)
-  return parts.join(' > ')
+  return Object.values(doc.value.classifications).join(' > ')
 })
 
 onMounted(async () => {
@@ -94,6 +95,34 @@ async function handleDelete() {
     router.push(backPath.value)
   } catch (e) {
     if (e !== 'cancel') ElMessage.error('삭제에 실패했습니다')
+  }
+}
+
+function triggerFileAttach() {
+  fileInput.value?.click()
+}
+
+async function handleFileAttach(event: Event) {
+  const input = event.target as HTMLInputElement
+  const f = input.files?.[0]
+  if (!f || !doc.value) return
+
+  const ext = f.name.split('.').pop()?.toLowerCase()
+  if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
+    ElMessage.error('PDF, Markdown, CSV 파일만 허용됩니다')
+    return
+  }
+
+  attachLoading.value = true
+  try {
+    const { data } = await documentsApi.attachFile(doc.value.id, f)
+    doc.value = data
+    ElMessage.success('파일이 첨부되었습니다')
+  } catch {
+    ElMessage.error('파일 첨부에 실패했습니다')
+  } finally {
+    attachLoading.value = false
+    input.value = ''
   }
 }
 
@@ -153,7 +182,7 @@ const allRelations = computed(() => {
           <span v-if="breadcrumb" style="color: #909399; font-size: 13px">
             {{ doc?.domain }} > {{ breadcrumb }} >
           </span>
-          <span>{{ doc?.fileName ?? '문서 상세' }}</span>
+          <span>{{ doc?.fileName ?? doc?.id ?? '문서 상세' }}</span>
         </div>
       </template>
     </el-page-header>
@@ -189,8 +218,8 @@ const allRelations = computed(() => {
           <!-- 상세 정보 -->
           <div style="font-size: 13px; color: #606266">
             <p style="margin: 8px 0"><strong>버전:</strong> v{{ doc.versionMajor }}.{{ doc.versionMinor }}</p>
-            <p style="margin: 8px 0"><strong>형식:</strong> {{ doc.fileType.toUpperCase() }}</p>
-            <p style="margin: 8px 0"><strong>크기:</strong> {{ (doc.fileSize / 1024).toFixed(1) }} KB</p>
+            <p style="margin: 8px 0"><strong>형식:</strong> {{ doc.fileType?.toUpperCase() ?? '-' }}</p>
+            <p style="margin: 8px 0"><strong>크기:</strong> {{ hasFile ? (doc.fileSize / 1024).toFixed(1) + ' KB' : '-' }}</p>
             <p style="margin: 8px 0"><strong>생성일:</strong> {{ new Date(doc.createdAt).toLocaleString('ko-KR') }}</p>
             <p style="margin: 8px 0"><strong>수정일:</strong> {{ new Date(doc.updatedAt).toLocaleString('ko-KR') }}</p>
           </div>
@@ -207,7 +236,7 @@ const allRelations = computed(() => {
           <!-- 액션 버튼 -->
           <el-divider />
           <div style="display: flex; flex-direction: column; gap: 8px">
-            <el-button size="small" @click="handleDownload" style="width: 100%">다운로드</el-button>
+            <el-button v-if="hasFile" size="small" @click="handleDownload" style="width: 100%">다운로드</el-button>
             <el-button
               v-for="next in getNextLifecycles(doc.lifecycle)"
               :key="next"
@@ -238,10 +267,17 @@ const allRelations = computed(() => {
           <template #header>
             <span style="font-weight: 600">문서 뷰어</span>
           </template>
-          <div style="height: 500px">
+          <div v-if="hasFile" style="height: 500px">
             <PdfViewer v-if="doc.fileType === 'pdf'" :document-id="doc.id" />
             <MarkdownViewer v-else-if="doc.fileType === 'md'" :document-id="doc.id" />
             <CsvViewer v-else-if="doc.fileType === 'csv'" :document-id="doc.id" />
+          </div>
+          <div v-else style="padding: 40px; text-align: center; color: #909399">
+            <p style="margin: 0 0 12px">파일이 아직 첨부되지 않은 문서입니다</p>
+            <el-button type="primary" size="small" :loading="attachLoading" @click="triggerFileAttach">
+              파일 첨부
+            </el-button>
+            <input ref="fileInput" type="file" accept=".pdf,.md,.csv" style="display: none" @change="handleFileAttach" />
           </div>
         </el-card>
 

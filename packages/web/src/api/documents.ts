@@ -61,6 +61,25 @@ export const documentsApi = {
     })
   },
 
+  createMetadata(data: { domain: string; classifications: Record<string, string>; securityLevel?: string; title: string }) {
+    const formData = new FormData()
+    formData.append('domain', data.domain)
+    formData.append('classifications', JSON.stringify(data.classifications))
+    formData.append('title', data.title)
+    if (data.securityLevel) formData.append('securityLevel', data.securityLevel)
+    return client.post<DocumentEntity>('/documents', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  attachFile(id: string, file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return client.patch<DocumentEntity>(`/documents/${id}/file`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
   update(id: string, data: { classifications?: Record<string, string>; securityLevel?: string; rowVersion: number }) {
     return client.put<DocumentEntity>(`/documents/${id}`, data)
   },
