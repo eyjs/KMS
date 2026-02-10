@@ -5,7 +5,7 @@ const VALID_ROLES = ['EXTERNAL', 'EMPLOYEE', 'TEAM_LEAD', 'EXECUTIVE', 'ADMIN'] 
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@company.com' })
-  @IsEmail({}, { message: '유효한 이메일을 입력하세요' })
+  @IsNotEmpty({ message: '아이디(이메일)를 입력하세요' })
   email!: string
 
   @ApiProperty({ example: 'admin123' })
@@ -23,7 +23,7 @@ export class RefreshTokenDto {
 
 export class CreateUserDto {
   @ApiProperty({ example: 'user@company.com' })
-  @IsEmail({}, { message: '유효한 이메일을 입력하세요' })
+  @IsNotEmpty({ message: '아이디(이메일)를 입력하세요' })
   email!: string
 
   @ApiProperty({ example: 'password123' })
