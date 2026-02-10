@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
@@ -14,6 +14,7 @@ import PdfViewer from '@/components/viewer/PdfViewer.vue'
 import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
 import CsvViewer from '@/components/viewer/CsvViewer.vue'
 import DocumentTimeline from '@/components/document/DocumentTimeline.vue'
+import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const attachLoading = ref(false)
@@ -219,38 +220,21 @@ const relationForm = ref<{ relationType: RelationType; targetId: string }>({
 })
 const relationLoading = ref(false)
 
-// 대상 문서 검색 (remote select, debounce 적용)
-const searchResults = ref<DocumentEntity[]>([])
-const searchLoading = ref(false)
-let searchTimer: ReturnType<typeof setTimeout> | null = null
+const selectedTargetDoc = ref<DocumentEntity | null>(null)
 
-onUnmounted(() => {
-  if (searchTimer) clearTimeout(searchTimer)
-})
+function handleQuickAddSelect(targetDoc: DocumentEntity) {
+  selectedTargetDoc.value = targetDoc
+  relationForm.value.targetId = targetDoc.id
+}
 
-function handleDocumentSearch(query: string) {
-  if (searchTimer) clearTimeout(searchTimer)
-  if (!query || query.length < 1) {
-    searchResults.value = []
-    return
-  }
-  searchLoading.value = true
-  searchTimer = setTimeout(async () => {
-    try {
-      const { data } = await documentsApi.search({ q: query, size: 20 })
-      // 현재 문서 제외
-      searchResults.value = data.data.filter((d: DocumentEntity) => d.id !== id.value)
-    } catch {
-      searchResults.value = []
-    } finally {
-      searchLoading.value = false
-    }
-  }, 300)
+function clearSelectedTarget() {
+  selectedTargetDoc.value = null
+  relationForm.value.targetId = ''
 }
 
 function openRelationDialog() {
   relationForm.value = { relationType: 'REFERENCE', targetId: '' }
-  searchResults.value = []
+  selectedTargetDoc.value = null
   relationDialogVisible.value = true
 }
 
@@ -563,42 +547,71 @@ async function handleEditSubmit() {
     <el-dialog
       v-model="relationDialogVisible"
       title="관계 추가"
-      width="500px"
+      width="720px"
       :close-on-click-modal="false"
     >
-      <el-form label-width="90px" label-position="left">
-        <el-form-item label="관계 유형" required>
-          <el-select v-model="relationForm.relationType" style="width: 100%">
-            <el-option
-              v-for="rt in RELATION_TYPES"
-              :key="rt.value"
-              :label="rt.label"
-              :value="rt.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="대상 문서" required>
-          <el-select
-            v-model="relationForm.targetId"
-            filterable
-            remote
-            :remote-method="handleDocumentSearch"
-            :loading="searchLoading"
-            placeholder="문서 이름으로 검색..."
-            style="width: 100%"
-          >
-            <el-option
-              v-for="d in searchResults"
-              :key="d.id"
-              :label="`${d.fileName ?? d.id} (${d.domain})`"
-              :value="d.id"
-            />
-          </el-select>
-        </el-form-item>
-      </el-form>
+      <div style="display: flex; gap: 16px; height: 420px">
+        <!-- 왼쪽: DocumentExplorer -->
+        <div style="flex: 1; min-width: 0; border: 1px solid #ebeef5; border-radius: 4px; overflow: hidden">
+          <DocumentExplorer
+            v-if="doc"
+            :source-document="doc"
+            :exclude-id="doc.id"
+            @select="handleQuickAddSelect"
+          />
+        </div>
+
+        <!-- 오른쪽: 선택된 문서 프리뷰 + 관계 유형 -->
+        <div style="width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+          <!-- 대상 문서 프리뷰 -->
+          <div style="font-size: 13px; font-weight: 600; color: #303133">대상 문서</div>
+          <div v-if="selectedTargetDoc" style="border: 1px solid #dcdfe6; border-radius: 4px; padding: 12px">
+            <div style="font-size: 13px; font-weight: 500; color: #303133; word-break: break-all">
+              {{ selectedTargetDoc.fileName ?? '(제목 없음)' }}
+            </div>
+            <div v-if="selectedTargetDoc.docCode" style="font-size: 12px; color: #409eff; font-family: monospace; margin-top: 4px">
+              {{ selectedTargetDoc.docCode }}
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px; margin-top: 8px; flex-wrap: wrap">
+              <el-tag
+                size="small"
+                :type="selectedTargetDoc.lifecycle === 'ACTIVE' ? 'success' : selectedTargetDoc.lifecycle === 'DRAFT' ? 'info' : 'danger'"
+              >
+                {{ LIFECYCLE_LABELS[selectedTargetDoc.lifecycle] ?? selectedTargetDoc.lifecycle }}
+              </el-tag>
+              <el-tag size="small">{{ selectedTargetDoc.domain }}</el-tag>
+            </div>
+            <el-button
+              text
+              size="small"
+              type="primary"
+              style="margin-top: 8px; padding: 0"
+              @click="clearSelectedTarget"
+            >
+              변경
+            </el-button>
+          </div>
+          <div v-else style="border: 1px dashed #dcdfe6; border-radius: 4px; padding: 24px 12px; text-align: center; color: #909399; font-size: 13px">
+            왼쪽에서 문서를 선택하세요
+          </div>
+
+          <!-- 관계 유형 -->
+          <div style="margin-top: auto">
+            <div style="font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 8px">관계 유형</div>
+            <el-select v-model="relationForm.relationType" style="width: 100%">
+              <el-option
+                v-for="rt in RELATION_TYPES"
+                :key="rt.value"
+                :label="rt.label"
+                :value="rt.value"
+              />
+            </el-select>
+          </div>
+        </div>
+      </div>
       <template #footer>
         <el-button @click="relationDialogVisible = false">취소</el-button>
-        <el-button type="primary" :loading="relationLoading" @click="handleRelationSubmit">추가</el-button>
+        <el-button type="primary" :loading="relationLoading" :disabled="!relationForm.targetId" @click="handleRelationSubmit">추가</el-button>
       </template>
     </el-dialog>
 
