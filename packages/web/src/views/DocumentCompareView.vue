@@ -5,7 +5,7 @@ import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
 import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
 import type { DocumentEntity, RelationType, RelationGraphResponse } from '@kms/shared'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
 import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
 
@@ -92,6 +92,33 @@ async function handleNodeDoubleClick(nodeId: string) {
   }
 }
 
+const RELATION_TYPE_LABELS: Record<string, string> = {
+  PARENT_OF: '상위',
+  CHILD_OF: '하위',
+  SIBLING: '형제',
+  REFERENCE: '참조',
+  SUPERSEDES: '대체',
+}
+
+async function handleEdgeClick(edgeId: string, relationType: string) {
+  const relLabel = RELATION_TYPE_LABELS[relationType] ?? relationType
+  try {
+    await ElMessageBox.confirm(
+      `"${relLabel}" 관계를 삭제하시겠습니까?`,
+      '관계 삭제',
+      { confirmButtonText: '삭제', cancelButtonText: '취소', type: 'warning' },
+    )
+    await relationsApi.delete(edgeId)
+    ElMessage.success('관계가 삭제되었습니다')
+    if (sourceId.value) loadGraph(sourceId.value)
+  } catch (err: unknown) {
+    // ElMessageBox cancel은 무시
+    if (err === 'cancel') return
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '관계 삭제에 실패했습니다'
+    ElMessage.error(msg)
+  }
+}
+
 async function selectTargetById(id: string) {
   try {
     const { data } = await documentsApi.get(id)
@@ -153,7 +180,7 @@ function goBack() {
       <template #header>
         <div style="display: flex; align-items: center; justify-content: space-between">
           <span style="font-weight: 600; font-size: 13px">지식 그래프</span>
-          <span style="font-size: 11px; color: #909399">노드 클릭: 대상 선택 | 더블클릭: 관계 확장</span>
+          <span style="font-size: 11px; color: #909399">노드 클릭: 대상 선택 | 더블클릭: 확장 | 간선 클릭: 삭제</span>
         </div>
       </template>
       <RelationGraph
@@ -162,6 +189,7 @@ function goBack() {
         :loading="graphLoading"
         @node-click="handleNodeClick"
         @node-double-click="handleNodeDoubleClick"
+        @edge-click="handleEdgeClick"
       />
     </el-card>
 

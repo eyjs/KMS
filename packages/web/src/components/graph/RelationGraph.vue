@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { Network } from 'vis-network/standalone'
 import { DataSet } from 'vis-data/standalone'
+import { LIFECYCLE_LABELS, FACET_TYPE_LABELS } from '@kms/shared'
 import type { GraphNode, GraphEdge, RelationGraphResponse } from '@kms/shared'
 
 const props = defineProps<{
@@ -12,12 +13,22 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'node-click', nodeId: string): void
   (e: 'node-double-click', nodeId: string): void
+  (e: 'edge-click', edgeId: string, relationType: string): void
 }>()
 
 const containerRef = ref<HTMLDivElement>()
 let network: Network | null = null
 let nodesDataSet: DataSet<Record<string, unknown>> | null = null
 let edgesDataSet: DataSet<Record<string, unknown>> | null = null
+// edge id → 관계유형 매핑 (간선 클릭 시 삭제 확인용)
+const edgeRelationMap = new Map<string, string>()
+
+const SECURITY_LABELS: Record<string, string> = {
+  PUBLIC: '공개',
+  INTERNAL: '사내용',
+  CONFIDENTIAL: '대외비(2급)',
+  SECRET: '기밀(1급)',
+}
 
 // 라이프사이클별 노드 색상
 const LIFECYCLE_COLORS: Record<string, { background: string; border: string }> = {
@@ -45,95 +56,115 @@ function buildNodeTitle(node: GraphNode): string {
   if (node.docCode) lines.push(`코드: ${node.docCode}`)
   if (node.fileName) lines.push(`파일: ${node.fileName}`)
   lines.push(`도메인: ${node.domain}`)
-  lines.push(`상태: ${node.lifecycle}`)
-  lines.push(`보안: ${node.securityLevel}`)
+  lines.push(`상태: ${LIFECYCLE_LABELS[node.lifecycle] ?? node.lifecycle}`)
+  lines.push(`보안: ${SECURITY_LABELS[node.securityLevel] ?? node.securityLevel}`)
   if (Object.keys(node.classifications).length > 0) {
-    lines.push(`분류: ${Object.entries(node.classifications).map(([k, v]) => `${k}=${v}`).join(', ')}`)
+    lines.push(`분류: ${Object.entries(node.classifications).map(([k, v]) => `${FACET_TYPE_LABELS[k] ?? k}: ${v}`).join(', ')}`)
   }
   return lines.join('\n')
+}
+
+function buildVisNode(node: GraphNode, centerId: string) {
+  const isCenter = node.id === centerId
+  const colors = LIFECYCLE_COLORS[node.lifecycle] ?? LIFECYCLE_COLORS.DRAFT
+  return {
+    id: node.id,
+    label: buildNodeLabel(node),
+    title: buildNodeTitle(node),
+    color: {
+      background: colors.background,
+      border: colors.border,
+      highlight: { background: colors.background, border: '#303133' },
+    },
+    font: {
+      color: '#303133',
+      size: isCenter ? 14 : 12,
+      bold: isCenter ? { color: '#303133', size: 14, face: 'sans-serif', mod: 'bold' } : undefined,
+    },
+    size: isCenter ? 30 : 20,
+    shape: 'dot',
+    borderWidth: isCenter ? 3 : 1,
+    shadow: isCenter,
+  }
+}
+
+function buildVisEdge(edge: GraphEdge) {
+  const style = EDGE_STYLES[edge.relationType] ?? EDGE_STYLES.REFERENCE
+  return {
+    id: edge.id,
+    from: edge.sourceId,
+    to: edge.targetId,
+    label: style.label,
+    color: { color: style.color, highlight: style.color },
+    dashes: style.dashes,
+    arrows: {
+      to: { enabled: edge.relationType !== 'SIBLING', scaleFactor: 0.8 },
+    },
+    font: { size: 10, color: '#909399', strokeWidth: 2, strokeColor: '#fff' },
+    smooth: { type: 'curvedCW', roundness: 0.2 },
+  }
+}
+
+function destroyNetwork() {
+  if (network) {
+    network.destroy()
+    network = null
+  }
+  nodesDataSet = null
+  edgesDataSet = null
 }
 
 function renderGraph() {
   if (!containerRef.value || !props.data) return
 
+  // 기존 네트워크 제거 후 새로 생성
+  destroyNetwork()
+
   const { nodes, edges, centerId } = props.data
 
-  const visNodes = nodes.map((node) => {
-    const isCenter = node.id === centerId
-    const colors = LIFECYCLE_COLORS[node.lifecycle] ?? LIFECYCLE_COLORS.DRAFT
-    return {
-      id: node.id,
-      label: buildNodeLabel(node),
-      title: buildNodeTitle(node),
-      color: {
-        background: colors.background,
-        border: colors.border,
-        highlight: { background: colors.background, border: '#303133' },
-      },
-      font: {
-        color: '#fff',
-        size: isCenter ? 14 : 12,
-        bold: isCenter ? { color: '#fff', size: 14, face: 'sans-serif', mod: 'bold' } : undefined,
-      },
-      size: isCenter ? 30 : 20,
-      shape: 'dot',
-      borderWidth: isCenter ? 3 : 1,
-      shadow: isCenter,
-    }
-  })
+  const visNodes = nodes.map((node) => buildVisNode(node, centerId))
+  const visEdges = edges.map((edge) => buildVisEdge(edge))
 
-  const visEdges = edges.map((edge) => {
-    const style = EDGE_STYLES[edge.relationType] ?? EDGE_STYLES.REFERENCE
-    return {
-      id: edge.id,
-      from: edge.sourceId,
-      to: edge.targetId,
-      label: style.label,
-      color: { color: style.color, highlight: style.color },
-      dashes: style.dashes,
-      arrows: {
-        to: { enabled: edge.relationType !== 'SIBLING', scaleFactor: 0.8 },
-      },
-      font: { size: 10, color: '#909399', strokeWidth: 2, strokeColor: '#fff' },
-      smooth: { type: 'curvedCW', roundness: 0.2 },
-    }
-  })
-
-  if (nodesDataSet && edgesDataSet && network) {
-    // 기존 데이터에 병합 (확장 시)
-    mergeData(visNodes, visEdges)
-  } else {
-    nodesDataSet = new DataSet(visNodes)
-    edgesDataSet = new DataSet(visEdges)
-
-    network = new Network(containerRef.value, { nodes: nodesDataSet, edges: edgesDataSet }, {
-      physics: {
-        enabled: true,
-        solver: 'forceAtlas2Based',
-        forceAtlas2Based: { gravitationalConstant: -80, springLength: 150 },
-        stabilization: { iterations: 100 },
-      },
-      interaction: {
-        hover: true,
-        tooltipDelay: 200,
-        zoomView: true,
-        dragView: true,
-      },
-      layout: { improvedLayout: true },
-    })
-
-    network.on('click', (params) => {
-      if (params.nodes.length > 0) {
-        emit('node-click', params.nodes[0] as string)
-      }
-    })
-
-    network.on('doubleClick', (params) => {
-      if (params.nodes.length > 0) {
-        emit('node-double-click', params.nodes[0] as string)
-      }
-    })
+  // edge id → 관계유형 매핑 구성
+  edgeRelationMap.clear()
+  for (const edge of edges) {
+    edgeRelationMap.set(edge.id, edge.relationType)
   }
+
+  nodesDataSet = new DataSet(visNodes)
+  edgesDataSet = new DataSet(visEdges)
+
+  network = new Network(containerRef.value, { nodes: nodesDataSet, edges: edgesDataSet }, {
+    physics: {
+      enabled: true,
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: { gravitationalConstant: -80, springLength: 150 },
+      stabilization: { iterations: 100 },
+    },
+    interaction: {
+      hover: true,
+      tooltipDelay: 200,
+      zoomView: true,
+      dragView: true,
+    },
+    layout: { improvedLayout: true },
+  })
+
+  network.on('click', (params) => {
+    if (params.nodes.length > 0) {
+      emit('node-click', params.nodes[0] as string)
+    } else if (params.edges.length > 0) {
+      const edgeId = params.edges[0] as string
+      const relType = edgeRelationMap.get(edgeId) ?? ''
+      emit('edge-click', edgeId, relType)
+    }
+  })
+
+  network.on('doubleClick', (params) => {
+    if (params.nodes.length > 0) {
+      emit('node-double-click', params.nodes[0] as string)
+    }
+  })
 }
 
 function mergeData(
@@ -152,59 +183,30 @@ function mergeData(
   if (addEdges.length > 0) edgesDataSet.add(addEdges)
 }
 
-/** 외부에서 확장 데이터를 병합할 때 사용 */
+/** 외부에서 확장 데이터를 병합할 때 사용 (더블클릭 확장) */
 function mergeGraphData(response: RelationGraphResponse) {
   if (!nodesDataSet || !edgesDataSet) {
-    // 네트워크가 아직 없으면 전체 렌더
     renderGraph()
     return
   }
 
-  const visNodes = response.nodes.map((node) => {
-    const isCenter = node.id === response.centerId
-    const colors = LIFECYCLE_COLORS[node.lifecycle] ?? LIFECYCLE_COLORS.DRAFT
-    return {
-      id: node.id,
-      label: buildNodeLabel(node),
-      title: buildNodeTitle(node),
-      color: {
-        background: colors.background,
-        border: colors.border,
-        highlight: { background: colors.background, border: '#303133' },
-      },
-      font: { color: '#fff', size: isCenter ? 14 : 12 },
-      size: isCenter ? 30 : 20,
-      shape: 'dot',
-      borderWidth: isCenter ? 3 : 1,
-      shadow: isCenter,
-    }
-  })
+  // 확장 엣지의 관계유형 매핑 추가
+  for (const edge of response.edges) {
+    edgeRelationMap.set(edge.id, edge.relationType)
+  }
 
-  const visEdges = response.edges.map((edge) => {
-    const style = EDGE_STYLES[edge.relationType] ?? EDGE_STYLES.REFERENCE
-    return {
-      id: edge.id,
-      from: edge.sourceId,
-      to: edge.targetId,
-      label: style.label,
-      color: { color: style.color, highlight: style.color },
-      dashes: style.dashes,
-      arrows: {
-        to: { enabled: edge.relationType !== 'SIBLING', scaleFactor: 0.8 },
-      },
-      font: { size: 10, color: '#909399', strokeWidth: 2, strokeColor: '#fff' },
-      smooth: { type: 'curvedCW', roundness: 0.2 },
-    }
-  })
+  const visNodes = response.nodes.map((node) => buildVisNode(node, response.centerId))
+  const visEdges = response.edges.map((edge) => buildVisEdge(edge))
 
   mergeData(visNodes, visEdges)
 }
 
-watch(() => props.data, () => {
-  if (props.data && !network) {
+// data 변경 시 항상 새로 렌더 (관계 저장 후 갱신)
+watch(() => props.data, (newData) => {
+  if (newData) {
     renderGraph()
   }
-}, { deep: true })
+})
 
 onMounted(() => {
   if (props.data) {
@@ -213,12 +215,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (network) {
-    network.destroy()
-    network = null
-  }
-  nodesDataSet = null
-  edgesDataSet = null
+  destroyNetwork()
 })
 
 defineExpose({ mergeGraphData })
