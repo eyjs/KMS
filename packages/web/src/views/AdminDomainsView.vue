@@ -112,6 +112,7 @@ function openCreateChildDialog(parent: FlatDomainRow) {
 
 function openEditDialog(domain: FlatDomainRow) {
   dialogMode.value = 'edit'
+  // 수정 시 code는 전체 코드 그대로 표시 (disabled이므로)
   formData.value = {
     code: domain.code,
     displayName: domain.displayName,
@@ -124,6 +125,9 @@ function openEditDialog(domain: FlatDomainRow) {
   dialogVisible.value = true
 }
 
+const codePrefix = computed(() => formData.value.parentCode ? `${formData.value.parentCode}-` : '')
+const fullCode = computed(() => codePrefix.value ? `${codePrefix.value}${formData.value.code}` : formData.value.code)
+
 function parseCommaSeparated(value: string): string[] {
   return value.split(',').map((s) => s.trim()).filter(Boolean)
 }
@@ -133,7 +137,7 @@ async function handleDialogSubmit() {
   try {
     if (dialogMode.value === 'create') {
       const dto: CreateDomainDto = {
-        code: formData.value.code,
+        code: fullCode.value,
         displayName: formData.value.displayName,
         parentCode: formData.value.parentCode ?? undefined,
         description: formData.value.description || undefined,
@@ -442,9 +446,11 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
           <el-input
             v-model="formData.code"
             :disabled="dialogMode === 'edit'"
-            placeholder="예: SALES"
+            :placeholder="formData.parentCode ? '예: SALES' : '예: GA'"
             maxlength="20"
-          />
+          >
+            <template v-if="formData.parentCode && dialogMode === 'create'" #prepend>{{ codePrefix }}</template>
+          </el-input>
         </el-form-item>
         <el-form-item label="이름" required>
           <el-input v-model="formData.displayName" placeholder="예: GA 영업" maxlength="100" />

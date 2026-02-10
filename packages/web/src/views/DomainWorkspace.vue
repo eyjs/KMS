@@ -30,6 +30,19 @@ const childDomains = computed(() =>
 )
 const isAdmin = computed(() => auth.hasMinRole('ADMIN'))
 
+// 도메인 경로 (루트 → 현재까지의 체인)
+const domainBreadcrumb = computed(() => {
+  const path: DomainMasterEntity[] = []
+  let current = domainStore.domainsFlat.find((d) => d.code === domainCode.value)
+  while (current) {
+    path.unshift(current)
+    current = current.parentCode
+      ? domainStore.domainsFlat.find((d) => d.code === current!.parentCode)
+      : undefined
+  }
+  return path
+})
+
 watch(domainCode, (code) => {
   if (code) {
     domainStore.setCurrentDomain(code)
@@ -78,24 +91,29 @@ const childDialogVisible = ref(false)
 const childDialogMode = ref<'create' | 'edit'>('create')
 const childDialogLoading = ref(false)
 const childFormData = ref({
-  code: '',
+  codeSuffix: '',
   displayName: '',
   description: '',
   sortOrder: 0,
 })
 const editingChildCode = ref('')
 
+const childCodePrefix = computed(() => `${domainCode.value}-`)
+const childFullCode = computed(() => `${childCodePrefix.value}${childFormData.value.codeSuffix}`)
+
 function openChildCreateDialog() {
   childDialogMode.value = 'create'
-  childFormData.value = { code: '', displayName: '', description: '', sortOrder: 0 }
+  childFormData.value = { codeSuffix: '', displayName: '', description: '', sortOrder: 0 }
   childDialogVisible.value = true
 }
 
 function openChildEditDialog(child: DomainMasterEntity) {
   childDialogMode.value = 'edit'
   editingChildCode.value = child.code
+  // 수정 시 접두어 제거하여 suffix만 표시
+  const prefix = `${domainCode.value}-`
   childFormData.value = {
-    code: child.code,
+    codeSuffix: child.code.startsWith(prefix) ? child.code.slice(prefix.length) : child.code,
     displayName: child.displayName,
     description: child.description ?? '',
     sortOrder: child.sortOrder,
@@ -104,11 +122,15 @@ function openChildEditDialog(child: DomainMasterEntity) {
 }
 
 async function handleChildSubmit() {
+  if (childDialogMode.value === 'create' && !childFormData.value.codeSuffix.trim()) {
+    ElMessage.warning('코드를 입력하세요')
+    return
+  }
   childDialogLoading.value = true
   try {
     if (childDialogMode.value === 'create') {
       const dto: CreateDomainDto = {
-        code: childFormData.value.code,
+        code: childFullCode.value,
         displayName: childFormData.value.displayName,
         parentCode: domainCode.value,
         description: childFormData.value.description || undefined,
@@ -161,6 +183,22 @@ async function handleChildDelete(child: DomainMasterEntity) {
     <!-- 상단 도구모음 -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
       <div>
+        <!-- 도메인 경로 -->
+        <div v-if="domainBreadcrumb.length > 1" style="margin-bottom: 4px">
+          <template v-for="(ancestor, idx) in domainBreadcrumb" :key="ancestor.code">
+            <span v-if="idx > 0" style="color: #c0c4cc; margin: 0 4px">/</span>
+            <span
+              v-if="idx < domainBreadcrumb.length - 1"
+              style="font-size: 13px; color: #409eff; cursor: pointer"
+              @click="router.push(`/d/${ancestor.code}`)"
+            >
+              {{ ancestor.displayName }}
+            </span>
+            <span v-else style="font-size: 13px; color: #606266">
+              {{ ancestor.displayName }}
+            </span>
+          </template>
+        </div>
         <h2 style="margin: 0; font-size: 20px; display: inline">
           {{ domainStore.currentDomain?.displayName ?? domainCode }}
         </h2>
@@ -305,11 +343,13 @@ async function handleChildDelete(child: DomainMasterEntity) {
       <el-form label-width="90px" label-position="left">
         <el-form-item label="코드" required>
           <el-input
-            v-model="childFormData.code"
+            v-model="childFormData.codeSuffix"
             :disabled="childDialogMode === 'edit'"
-            placeholder="예: GA-SALES-AUTO"
+            placeholder="예: AUTO"
             maxlength="20"
-          />
+          >
+            <template #prepend>{{ childCodePrefix }}</template>
+          </el-input>
         </el-form-item>
         <el-form-item label="이름" required>
           <el-input v-model="childFormData.displayName" placeholder="예: 자동차보험 영업" maxlength="100" />
