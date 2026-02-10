@@ -31,6 +31,11 @@ const router = createRouter({
       component: () => import('@/views/DocumentDetailView.vue'),
     },
     {
+      path: '/d/:domainCode/compare',
+      name: 'DocumentCompare',
+      component: () => import('@/views/DocumentCompareView.vue'),
+    },
+    {
       path: '/admin/domains',
       name: 'AdminDomains',
       component: () => import('@/views/AdminDomainsView.vue'),

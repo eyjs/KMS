@@ -38,35 +38,43 @@ export class DocumentsService {
       .map(([name]) => name)
   }
 
-  /** 이슈 유형별 Prisma where 조건 빌더 (reviewedAt ?? updatedAt 기준) */
+  /** 이슈 유형별 Prisma where 조건 빌더 (validUntil 또는 reviewedAt ?? updatedAt 기준) */
   private buildIssueWhere(type: IssueType, allowedLevels: string[]) {
     const baseWhere = {
       isDeleted: false,
       securityLevel: { in: allowedLevels },
     }
 
+    const now = new Date()
     const hotDate = new Date(Date.now() - FRESHNESS_THRESHOLDS.HOT * 86400000)
     const warmDate = new Date(Date.now() - FRESHNESS_THRESHOLDS.WARM * 86400000)
+    const hotFromNow = new Date(Date.now() + FRESHNESS_THRESHOLDS.HOT * 86400000)
 
     switch (type) {
       case 'warning':
-        // ACTIVE 문서 중 신선도 WARNING: COALESCE(reviewedAt, updatedAt)가 HOT~WARM 사이
+        // WARNING: validUntil 30일 이내 OR 기존 시간 기반 로직
         return {
           ...baseWhere,
           lifecycle: 'ACTIVE',
           OR: [
-            { reviewedAt: { lt: hotDate, gte: warmDate } },
-            { reviewedAt: null, updatedAt: { lt: hotDate, gte: warmDate } },
+            // validUntil 기준: 아직 만료되지 않았지만 HOT일 이내
+            { validUntil: { gte: now, lt: hotFromNow } },
+            // 기존 로직: validUntil 없는 문서
+            { validUntil: null, reviewedAt: { lt: hotDate, gte: warmDate } },
+            { validUntil: null, reviewedAt: null, updatedAt: { lt: hotDate, gte: warmDate } },
           ],
         }
       case 'expired':
-        // ACTIVE 문서 중 신선도 EXPIRED: COALESCE(reviewedAt, updatedAt) >= WARM
+        // EXPIRED: validUntil 지남 OR 기존 시간 기반 로직
         return {
           ...baseWhere,
           lifecycle: 'ACTIVE',
           OR: [
-            { reviewedAt: { lt: warmDate } },
-            { reviewedAt: null, updatedAt: { lt: warmDate } },
+            // validUntil 기준: 이미 만료
+            { validUntil: { lt: now } },
+            // 기존 로직: validUntil 없는 문서
+            { validUntil: null, reviewedAt: { lt: warmDate } },
+            { validUntil: null, reviewedAt: null, updatedAt: { lt: warmDate } },
           ],
         }
       case 'no_file':
@@ -91,6 +99,7 @@ export class DocumentsService {
       securityLevel?: SecurityLevel
       lifecycle?: Lifecycle
       title?: string
+      validUntil?: string
     },
     file: Express.Multer.File | null,
     userId: string,
@@ -125,6 +134,7 @@ export class DocumentsService {
         fileName,
         fileType,
         fileSize,
+        validUntil: data.validUntil ? new Date(data.validUntil) : null,
         createdById: userId,
         updatedById: userId,
         classifications: {
@@ -281,6 +291,7 @@ export class DocumentsService {
     data: {
       classifications?: Record<string, string>
       securityLevel?: SecurityLevel
+      validUntil?: string | null
       rowVersion: number
     },
     userId: string,
@@ -326,6 +337,9 @@ export class DocumentsService {
         data: {
           updatedBy: { connect: { id: userId } },
           ...(data.securityLevel && { securityLevel: data.securityLevel }),
+          ...(data.validUntil !== undefined && {
+            validUntil: data.validUntil ? new Date(data.validUntil) : null,
+          }),
         },
         include: { classifications: true },
       })
@@ -641,6 +655,7 @@ export class DocumentsService {
       versionMinor: number
       classificationHash: string | null
       reviewedAt: Date | null
+      validUntil: Date | null
       rowVersion: number
       createdById: string | null
       createdAt: Date
@@ -666,6 +681,7 @@ export class DocumentsService {
       versionMinor: doc.versionMinor,
       classificationHash: doc.classificationHash,
       reviewedAt: doc.reviewedAt?.toISOString() ?? null,
+      validUntil: doc.validUntil?.toISOString() ?? null,
       rowVersion: doc.rowVersion,
       createdBy: doc.createdById,
       createdAt: doc.createdAt.toISOString(),
@@ -678,10 +694,20 @@ export class DocumentsService {
   private calcFreshness(doc: {
     lifecycle: string
     reviewedAt: Date | null
+    validUntil: Date | null
     updatedAt: Date
   }): Freshness | null {
     if (doc.lifecycle !== 'ACTIVE') return null
 
+    // validUntil이 설정된 경우: 만료일까지 남은 일수 기준
+    if (doc.validUntil) {
+      const daysUntilExpiry = (doc.validUntil.getTime() - Date.now()) / 86400000
+      if (daysUntilExpiry < 0) return 'EXPIRED'
+      if (daysUntilExpiry < FRESHNESS_THRESHOLDS.HOT) return 'WARNING'
+      return 'FRESH'
+    }
+
+    // validUntil 없으면: 기존 reviewedAt ?? updatedAt 기반 로직 유지
     const baseDate = doc.reviewedAt ?? doc.updatedAt
     const daysSince = Math.floor(
       (Date.now() - baseDate.getTime()) / (1000 * 60 * 60 * 24),

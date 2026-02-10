@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsInt, Min, Max, IsNotEmpty } from 'class-validator'
+import { IsString, IsOptional, IsEnum, IsInt, IsISO8601, Min, Max, IsNotEmpty, ValidateIf } from 'class-validator'
 import { Transform, Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
 
@@ -73,6 +73,11 @@ export class CreateDocumentBodyDto {
   @IsOptional()
   @IsString()
   title?: string
+
+  @ApiProperty({ required: false, description: '유효기간 (ISO 8601)' })
+  @IsOptional()
+  @IsISO8601({ strict: false }, { message: '올바른 날짜 형식이어야 합니다 (예: 2026-12-31)' })
+  validUntil?: string
 }
 
 export class UpdateDocumentDto {
@@ -84,6 +89,12 @@ export class UpdateDocumentDto {
   @IsOptional()
   @IsEnum(VALID_SECURITY_LEVELS)
   securityLevel?: (typeof VALID_SECURITY_LEVELS)[number]
+
+  @ApiProperty({ required: false, description: '유효기간 (ISO 8601, null로 제거)' })
+  @IsOptional()
+  @ValidateIf((o) => o.validUntil !== null)
+  @IsISO8601({ strict: false }, { message: '올바른 날짜 형식이어야 합니다 (예: 2026-12-31)' })
+  validUntil?: string | null
 
   @ApiProperty()
   @IsInt()

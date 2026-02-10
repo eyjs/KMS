@@ -79,6 +79,7 @@ const formData = ref({
   requiredFacets: '',
   ssotKey: '',
   sortOrder: 0,
+  parentCode: null as string | null,
 })
 
 function openCreateDialog() {
@@ -90,6 +91,21 @@ function openCreateDialog() {
     requiredFacets: '',
     ssotKey: '',
     sortOrder: 0,
+    parentCode: null,
+  }
+  dialogVisible.value = true
+}
+
+function openCreateChildDialog(parent: FlatDomainRow) {
+  dialogMode.value = 'create'
+  formData.value = {
+    code: '',
+    displayName: '',
+    description: '',
+    requiredFacets: '',
+    ssotKey: '',
+    sortOrder: 0,
+    parentCode: parent.code,
   }
   dialogVisible.value = true
 }
@@ -103,6 +119,7 @@ function openEditDialog(domain: FlatDomainRow) {
     requiredFacets: (domain.requiredFacets ?? []).join(', '),
     ssotKey: (domain.ssotKey ?? []).join(', '),
     sortOrder: domain.sortOrder,
+    parentCode: domain.parentCode ?? null,
   }
   dialogVisible.value = true
 }
@@ -118,6 +135,7 @@ async function handleDialogSubmit() {
       const dto: CreateDomainDto = {
         code: formData.value.code,
         displayName: formData.value.displayName,
+        parentCode: formData.value.parentCode ?? undefined,
         description: formData.value.description || undefined,
         requiredFacets: parseCommaSeparated(formData.value.requiredFacets),
         ssotKey: parseCommaSeparated(formData.value.ssotKey),
@@ -316,8 +334,11 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="" width="100" align="center">
+          <el-table-column label="" width="160" align="center">
             <template #default="{ row }">
+              <el-button text size="small" type="success" @click.stop="openCreateChildDialog(row)">
+                하위 추가
+              </el-button>
               <el-button text size="small" type="primary" @click.stop="openEditDialog(row)">
                 수정
               </el-button>
@@ -409,16 +430,19 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
     <!-- 도메인 생성/수정 다이얼로그 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="dialogMode === 'create' ? '루트 도메인 추가' : '도메인 수정'"
+      :title="dialogMode === 'edit' ? '도메인 수정' : formData.parentCode ? `하위 카테고리 추가 (${formData.parentCode})` : '루트 도메인 추가'"
       width="480px"
       :close-on-click-modal="false"
     >
       <el-form label-width="110px" label-position="left">
+        <el-form-item v-if="formData.parentCode && dialogMode === 'create'" label="상위 도메인">
+          <el-input :model-value="formData.parentCode" disabled />
+        </el-form-item>
         <el-form-item label="코드" required>
           <el-input
             v-model="formData.code"
             :disabled="dialogMode === 'edit'"
-            placeholder="예: GA-SALES"
+            placeholder="예: SALES"
             maxlength="20"
           />
         </el-form-item>

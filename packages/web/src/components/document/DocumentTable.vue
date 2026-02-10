@@ -11,6 +11,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [doc: DocumentEntity]
   dblclick: [doc: DocumentEntity]
+  action: [command: string, doc: DocumentEntity]
 }>()
 
 const documents = ref<DocumentEntity[]>([])
@@ -168,6 +169,19 @@ defineExpose({ refresh: fetchDocuments })
       <el-table-column label="생성일" width="100" prop="createdAt" sortable="custom">
         <template #default="{ row }">
           {{ new Date(row.createdAt).toLocaleDateString('ko-KR') }}
+        </template>
+      </el-table-column>
+      <el-table-column width="50" align="center">
+        <template #default="{ row }">
+          <el-dropdown trigger="click" @command="(cmd: string) => emit('action', cmd, row)" @click.stop>
+            <el-button text size="small" style="padding: 2px" @click.stop>...</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="detail">상세보기</el-dropdown-item>
+                <el-dropdown-item command="compare">관계설정</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </el-table-column>
     </el-table>

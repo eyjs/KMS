@@ -94,6 +94,7 @@ model Document {
   versionMajor       Int      @default(1) @map("version_major")
   versionMinor       Int      @default(0) @map("version_minor")
   reviewedAt         DateTime? @map("reviewed_at")
+  validUntil         DateTime? @map("valid_until")
   classificationHash String?  @map("classification_hash") @db.VarChar(64)
   createdById        String?  @map("created_by") @db.Uuid
   updatedById        String?  @map("updated_by") @db.Uuid

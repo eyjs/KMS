@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
-import { LIFECYCLE_TRANSITIONS } from '@kms/shared'
+import { LIFECYCLE_TRANSITIONS, FACET_TYPE_LABELS } from '@kms/shared'
 import type { DocumentEntity, Lifecycle, RelationEntity, RelationType, FacetMasterEntity } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
@@ -58,6 +58,10 @@ const SECURITY_OPTIONS = [
 
 const id = computed(() => route.params.id as string)
 const domainCode = computed(() => route.params.domainCode as string)
+
+function facetLabel(facetType: string): string {
+  return FACET_TYPE_LABELS[facetType] ?? facetType
+}
 
 const hasFile = computed(() => !!doc.value?.downloadUrl)
 
@@ -207,6 +211,10 @@ const searchResults = ref<DocumentEntity[]>([])
 const searchLoading = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
+
 function handleDocumentSearch(query: string) {
   if (searchTimer) clearTimeout(searchTimer)
   if (!query || query.length < 1) {
@@ -275,9 +283,11 @@ const editLoading = ref(false)
 const editForm = ref<{
   classifications: Record<string, string>
   securityLevel: string
+  validUntil: string
 }>({
   classifications: {},
   securityLevel: 'INTERNAL',
+  validUntil: '',
 })
 const facetOptions = ref<Record<string, FacetMasterEntity[]>>({})
 
@@ -288,6 +298,7 @@ async function openEditDialog() {
   editForm.value = {
     classifications: { ...doc.value.classifications },
     securityLevel: doc.value.securityLevel,
+    validUntil: doc.value.validUntil ? doc.value.validUntil.slice(0, 10) : '',
   }
 
   // 도메인의 requiredFacets 가져와서 각 facet 옵션 로드
@@ -323,6 +334,7 @@ async function handleEditSubmit() {
     const { data } = await documentsApi.update(id.value, {
       classifications: editForm.value.classifications,
       securityLevel: editForm.value.securityLevel,
+      validUntil: editForm.value.validUntil || null,
       rowVersion: doc.value.rowVersion,
     })
     doc.value = data
@@ -386,6 +398,10 @@ async function handleEditSubmit() {
             <p style="margin: 8px 0"><strong>크기:</strong> {{ hasFile ? (doc.fileSize / 1024).toFixed(1) + ' KB' : '-' }}</p>
             <p style="margin: 8px 0"><strong>생성일:</strong> {{ new Date(doc.createdAt).toLocaleString('ko-KR') }}</p>
             <p style="margin: 8px 0"><strong>수정일:</strong> {{ new Date(doc.updatedAt).toLocaleString('ko-KR') }}</p>
+            <p style="margin: 8px 0">
+              <strong>유효기간:</strong>
+              {{ doc.validUntil ? new Date(doc.validUntil).toLocaleDateString('ko-KR') : '미설정' }}
+            </p>
           </div>
 
           <!-- 분류 -->
@@ -404,7 +420,7 @@ async function handleEditSubmit() {
               </el-button>
             </div>
             <div v-for="(value, key) in doc.classifications" :key="key" style="margin: 6px 0 6px 8px; color: #606266">
-              <span style="color: #909399">{{ key }}:</span> {{ value }}
+              <span style="color: #909399">{{ facetLabel(String(key)) }}:</span> {{ value }}
             </div>
           </div>
 
@@ -469,14 +485,23 @@ async function handleEditSubmit() {
           <template #header>
             <div style="display: flex; justify-content: space-between; align-items: center">
               <span style="font-weight: 600">관련 문서</span>
-              <el-button
-                v-if="auth.hasMinRole('EMPLOYEE')"
-                type="primary"
-                size="small"
-                @click="openRelationDialog"
-              >
-                + 관계 추가
-              </el-button>
+              <div style="display: flex; gap: 6px">
+                <el-button
+                  v-if="auth.hasMinRole('EMPLOYEE')"
+                  type="primary"
+                  size="small"
+                  @click="router.push(`/d/${domainCode}/compare?source=${id}`)"
+                >
+                  관계 설정
+                </el-button>
+                <el-button
+                  v-if="auth.hasMinRole('EMPLOYEE')"
+                  size="small"
+                  @click="openRelationDialog"
+                >
+                  + 빠른 추가
+                </el-button>
+              </div>
             </div>
           </template>
           <div v-if="allRelations.length > 0">
@@ -562,7 +587,7 @@ async function handleEditSubmit() {
         <el-form-item
           v-for="facetType in editRequiredFacets"
           :key="facetType"
-          :label="facetType"
+          :label="facetLabel(facetType)"
           required
         >
           <el-select
@@ -594,6 +619,16 @@ async function handleEditSubmit() {
           <div v-if="!auth.hasMinRole('ADMIN')" style="font-size: 12px; color: #909399; margin-top: 4px">
             보안등급 변경은 ADMIN만 가능합니다
           </div>
+        </el-form-item>
+        <el-form-item label="유효기간">
+          <el-date-picker
+            v-model="editForm.validUntil"
+            type="date"
+            placeholder="선택사항"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+            clearable
+          />
         </el-form-item>
       </el-form>
       <template #footer>

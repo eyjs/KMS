@@ -57,23 +57,25 @@ export const documentsApi = {
     return client.get<DocumentEntity>(`/documents/${id}`)
   },
 
-  upload(file: File, data: { domain: string; classifications: Record<string, string>; securityLevel?: string }) {
+  upload(file: File, data: { domain: string; classifications: Record<string, string>; securityLevel?: string; validUntil?: string }) {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('domain', data.domain)
     formData.append('classifications', JSON.stringify(data.classifications))
     if (data.securityLevel) formData.append('securityLevel', data.securityLevel)
+    if (data.validUntil) formData.append('validUntil', data.validUntil)
     return client.post<DocumentEntity>('/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
 
-  createMetadata(data: { domain: string; classifications: Record<string, string>; securityLevel?: string; title: string }) {
+  createMetadata(data: { domain: string; classifications: Record<string, string>; securityLevel?: string; title: string; validUntil?: string }) {
     const formData = new FormData()
     formData.append('domain', data.domain)
     formData.append('classifications', JSON.stringify(data.classifications))
     formData.append('title', data.title)
     if (data.securityLevel) formData.append('securityLevel', data.securityLevel)
+    if (data.validUntil) formData.append('validUntil', data.validUntil)
     return client.post<DocumentEntity>('/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
@@ -87,7 +89,7 @@ export const documentsApi = {
     })
   },
 
-  update(id: string, data: { classifications?: Record<string, string>; securityLevel?: string; rowVersion: number }) {
+  update(id: string, data: { classifications?: Record<string, string>; securityLevel?: string; validUntil?: string | null; rowVersion: number }) {
     return client.put<DocumentEntity>(`/documents/${id}`, data)
   },
 

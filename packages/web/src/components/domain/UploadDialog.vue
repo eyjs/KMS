@@ -2,6 +2,7 @@
 import { ref, reactive, watch } from 'vue'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
+import { FACET_TYPE_LABELS } from '@kms/shared'
 import type { FacetMasterEntity, SecurityLevel, DomainMasterEntity } from '@kms/shared'
 import { ElMessage } from 'element-plus'
 
@@ -23,10 +24,15 @@ const formValues = reactive<Record<string, string>>({})
 const file = ref<File | null>(null)
 const title = ref('')
 const securityLevel = ref<SecurityLevel>('INTERNAL')
+const validUntil = ref<string>('')
 const loading = ref(false)
 
 type CreateMode = 'upload' | 'metadata'
 const createMode = ref<CreateMode>('upload')
+
+function facetLabel(facetType: string): string {
+  return FACET_TYPE_LABELS[facetType] ?? facetType
+}
 
 const SECURITY_OPTIONS = [
   { value: 'PUBLIC', label: '공개 - 외부업체 포함' },
@@ -68,6 +74,7 @@ watch(
       file.value = null
       title.value = ''
       securityLevel.value = 'INTERNAL'
+      validUntil.value = ''
       createMode.value = 'upload'
       for (const key of Object.keys(formValues)) {
         delete formValues[key]
@@ -99,7 +106,7 @@ async function handleSubmit() {
   const required = requiredFacets()
   for (const facet of required) {
     if (!formValues[facet]) {
-      ElMessage.warning(`${facet}을(를) 선택하세요`)
+      ElMessage.warning(`${facetLabel(facet)}을(를) 선택하세요`)
       return
     }
   }
@@ -126,6 +133,7 @@ async function handleSubmit() {
         domain: props.domainCode,
         classifications,
         securityLevel: securityLevel.value,
+        validUntil: validUntil.value || undefined,
       })
     } else {
       await documentsApi.createMetadata({
@@ -133,6 +141,7 @@ async function handleSubmit() {
         classifications,
         securityLevel: securityLevel.value,
         title: title.value.trim(),
+        validUntil: validUntil.value || undefined,
       })
     }
     ElMessage.success(createMode.value === 'upload' ? '업로드 완료' : '문서 생성 완료')
@@ -164,7 +173,7 @@ async function handleSubmit() {
       <el-form-item label="추가 방식">
         <el-radio-group v-model="createMode">
           <el-radio-button value="upload">파일 업로드</el-radio-button>
-          <el-radio-button value="metadata">메타데이터만</el-radio-button>
+          <el-radio-button value="metadata">나중에 첨부</el-radio-button>
         </el-radio-group>
       </el-form-item>
 
@@ -176,12 +185,12 @@ async function handleSubmit() {
       <el-form-item
         v-for="facetType in requiredFacets()"
         :key="facetType"
-        :label="facetType"
+        :label="facetLabel(facetType)"
         :required="true"
       >
         <el-select
           v-model="formValues[facetType]"
-          :placeholder="`${facetType} 선택`"
+          :placeholder="`${facetLabel(facetType)} 선택`"
           :disabled="isLocked(facetType)"
           filterable
           style="width: 100%"
@@ -205,6 +214,21 @@ async function handleSubmit() {
             :value="opt.value"
           />
         </el-select>
+      </el-form-item>
+
+      <!-- 유효기간 -->
+      <el-form-item label="유효기간">
+        <el-date-picker
+          v-model="validUntil"
+          type="date"
+          placeholder="선택사항"
+          value-format="YYYY-MM-DD"
+          style="width: 100%"
+          clearable
+        />
+        <div style="font-size: 12px; color: #909399; margin-top: 4px">
+          설정 시 만료일 기준으로 신선도가 계산됩니다
+        </div>
       </el-form-item>
 
       <!-- 파일 업로드 모드 -->

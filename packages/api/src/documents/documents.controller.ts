@@ -86,7 +86,7 @@ export class DocumentsController {
     }
 
     return this.documentsService.create(
-      { domain: body.domain, classifications, securityLevel: body.securityLevel, title: body.title },
+      { domain: body.domain, classifications, securityLevel: body.securityLevel, title: body.title, validUntil: body.validUntil },
       file ?? null,
       req.user.sub,
     )

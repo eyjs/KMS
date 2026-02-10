@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
 import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
 import CsvViewer from '@/components/viewer/CsvViewer.vue'
+import { FACET_TYPE_LABELS } from '@kms/shared'
 import type { DocumentEntity } from '@kms/shared'
 
 const props = defineProps<{
@@ -61,11 +62,14 @@ const fileUrl = computed(() => props.document.downloadUrl)
         <p style="margin: 4px 0">버전: v{{ document.versionMajor }}.{{ document.versionMinor }}</p>
         <p style="margin: 4px 0">크기: {{ (document.fileSize / 1024).toFixed(1) }} KB</p>
         <p style="margin: 4px 0">생성: {{ new Date(document.createdAt).toLocaleDateString('ko-KR') }}</p>
+        <p v-if="document.validUntil" style="margin: 4px 0">
+          유효기간: {{ new Date(document.validUntil).toLocaleDateString('ko-KR') }}
+        </p>
       </div>
       <div v-if="Object.keys(document.classifications).length > 0" style="margin-top: 8px">
         <div style="color: #909399; margin-bottom: 4px">분류:</div>
         <div v-for="(value, key) in document.classifications" :key="key" style="color: #606266; margin-left: 8px">
-          {{ key }}: {{ value }}
+          {{ FACET_TYPE_LABELS[String(key)] ?? key }}: {{ value }}
         </div>
       </div>
     </div>

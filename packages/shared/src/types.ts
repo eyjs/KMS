@@ -89,6 +89,7 @@ export interface DocumentEntity {
   versionMinor: number
   classificationHash: string
   reviewedAt: string | null
+  validUntil: string | null
   rowVersion: number
   createdBy: string | null
   createdAt: string
@@ -165,11 +166,13 @@ export interface CreateDocumentDto {
   securityLevel?: SecurityLevel
   lifecycle?: Lifecycle
   title?: string
+  validUntil?: string
 }
 
 export interface UpdateDocumentDto {
   classifications?: Record<string, string>
   securityLevel?: SecurityLevel
+  validUntil?: string | null
   rowVersion: number
 }
 

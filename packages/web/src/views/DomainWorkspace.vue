@@ -52,6 +52,14 @@ function handleDocDblClick(doc: DocumentEntity) {
   router.push(`/d/${domainCode.value}/doc/${doc.id}`)
 }
 
+function handleDocAction(command: string, doc: DocumentEntity) {
+  if (command === 'detail') {
+    router.push(`/d/${domainCode.value}/doc/${doc.id}`)
+  } else if (command === 'compare') {
+    router.push(`/d/${domainCode.value}/compare?source=${doc.id}`)
+  }
+}
+
 function handleUploadSuccess() {
   showUpload.value = false
   docTableRef.value?.refresh()
@@ -249,6 +257,7 @@ async function handleChildDelete(child: DomainMasterEntity) {
               :filters="filters"
               @select="handleDocSelect"
               @dblclick="handleDocDblClick"
+              @action="handleDocAction"
             />
           </template>
           <template v-else>
