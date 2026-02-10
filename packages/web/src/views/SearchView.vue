@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
-import { LIFECYCLE_LABELS, FACET_TYPE_LABELS } from '@kms/shared'
+import { FACET_TYPE_LABELS } from '@kms/shared'
 import type { DocumentEntity, DomainMasterEntity, FacetMasterEntity } from '@kms/shared'
+import { useSearchHistory } from '@/composables/useSearchHistory'
+import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
+const route = useRoute()
+const { searchHistory, addSearch, clearHistory } = useSearchHistory()
 
 const keyword = ref('')
 const domainFilter = ref<string>()
@@ -23,42 +28,118 @@ const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const searched = ref(false)
+const errorState = ref(false)
+const isRestoring = ref(false)
 
-const LIFECYCLE_TAG: Record<string, string> = {
-  DRAFT: 'info',
-  ACTIVE: 'success',
-  DEPRECATED: 'danger',
+// 정렬
+type SortOption = 'relevance' | 'latest' | 'name' | 'code'
+const VALID_SORTS: SortOption[] = ['relevance', 'latest', 'name', 'code']
+const sortBy = ref<SortOption>('relevance')
+const SORT_OPTIONS = [
+  { value: 'relevance', label: '관련도순' },
+  { value: 'latest', label: '최신순' },
+  { value: 'name', label: '이름순' },
+  { value: 'code', label: '코드순' },
+] as const
+
+const sortedResults = computed(() => {
+  const items = [...results.value]
+  switch (sortBy.value) {
+    case 'latest':
+      return items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    case 'name':
+      return items.sort((a, b) => (a.fileName ?? '').localeCompare(b.fileName ?? '', 'ko'))
+    case 'code':
+      return items.sort((a, b) => (a.docCode ?? '').localeCompare(b.docCode ?? ''))
+    default:
+      return items
+  }
+})
+
+// 검색 이력 자동완성
+const searchInputRef = ref<{ focus: () => void } | null>(null)
+
+function querySearch(queryString: string, cb: (results: { value: string }[]) => void) {
+  const suggestions = searchHistory.value
+    .filter((e) => !queryString || e.query.includes(queryString))
+    .slice(0, 5)
+    .map((e) => ({ value: e.query }))
+  cb(suggestions)
 }
 
-const SECURITY_TAG: Record<string, { type: string; label: string }> = {
-  PUBLIC: { type: 'success', label: '공개' },
-  INTERNAL: { type: '', label: '사내용' },
-  CONFIDENTIAL: { type: 'warning', label: '대외비' },
-  SECRET: { type: 'danger', label: '기밀' },
+function handleSelectHistory(item: { value: string }) {
+  keyword.value = item.value
+  handleSearch()
 }
 
 onMounted(async () => {
   const { data } = await taxonomyApi.getDomainsFlat()
   domains.value = data
-  // 전체 facet 로드 (도메인 무관)
   await loadFacets()
+  // URL에서 필터 복원
+  restoreFromQuery()
 })
+
+async function restoreFromQuery() {
+  const q = route.query
+  if (!q.q && !q.domain && !q.lifecycle && !facetTypes.some((ft) => q[ft])) {
+    // query param 없으면 복원 불필요
+    nextTick(() => searchInputRef.value?.focus())
+    return
+  }
+  // 워처가 facet 필터를 초기화하지 않도록 가드
+  isRestoring.value = true
+  if (q.q) keyword.value = q.q as string
+  if (q.domain) domainFilter.value = q.domain as string
+  if (q.lifecycle) lifecycleFilter.value = q.lifecycle as string
+  const sortParam = q.sort as string
+  if (sortParam && VALID_SORTS.includes(sortParam as SortOption)) {
+    sortBy.value = sortParam as SortOption
+  }
+  // 도메인이 변경되면 해당 도메인 facet을 로드한 뒤 필터 복원
+  if (q.domain) {
+    await loadFacets(q.domain as string)
+  }
+  for (const ft of facetTypes) {
+    if (q[ft]) facetFilters.value[ft] = q[ft] as string
+  }
+  isRestoring.value = false
+  handleSearch()
+  nextTick(() => searchInputRef.value?.focus())
+}
+
+function syncToQuery() {
+  const query: Record<string, string> = {}
+  if (keyword.value) query.q = keyword.value
+  if (domainFilter.value) query.domain = domainFilter.value
+  if (lifecycleFilter.value) query.lifecycle = lifecycleFilter.value
+  if (sortBy.value !== 'relevance') query.sort = sortBy.value
+  for (const ft of facetTypes) {
+    if (facetFilters.value[ft]) query[ft] = facetFilters.value[ft]
+  }
+  router.replace({ query })
+}
 
 async function loadFacets(domain?: string) {
   const fetches = facetTypes.map((ft) =>
     taxonomyApi.getFacets(ft, domain).then(({ data }) => ({ ft, data })),
   )
-  const results = await Promise.all(fetches)
+  const res = await Promise.all(fetches)
   const opts: Record<string, FacetMasterEntity[]> = {}
-  for (const { ft, data } of results) {
+  for (const { ft, data } of res) {
     opts[ft] = data.filter((f) => f.isActive)
   }
   facetOptions.value = opts
 }
 
-// 도메인 변경 시 해당 도메인의 facet만 로드
+// 정렬 변경 시 URL 동기화
+watch(sortBy, () => {
+  if (searched.value) syncToQuery()
+})
+
+// 도메인 변경 시 해당 도메인의 facet만 로드 (URL 복원 중에는 스킵)
 watch(domainFilter, async (domain) => {
-  // 분류 필터 초기화
+  if (isRestoring.value) return
   for (const ft of facetTypes) {
     facetFilters.value[ft] = ''
   }
@@ -66,8 +147,10 @@ watch(domainFilter, async (domain) => {
 })
 
 async function handleSearch() {
+  if (loading.value) return
   loading.value = true
   searched.value = true
+  errorState.value = false
   try {
     // 분류 필터 구성
     const classifications: Record<string, string> = {}
@@ -88,9 +171,16 @@ async function handleSearch() {
     })
     results.value = data.data
     total.value = data.meta.total
+    // 검색 이력 저장
+    if (keyword.value.trim()) {
+      addSearch(keyword.value)
+    }
+    syncToQuery()
   } catch {
+    errorState.value = true
     results.value = []
     total.value = 0
+    ElMessage.error('검색 중 오류가 발생했습니다')
   } finally {
     loading.value = false
   }
@@ -118,12 +208,19 @@ function clearFilters() {
   keyword.value = ''
   domainFilter.value = undefined
   lifecycleFilter.value = undefined
+  sortBy.value = 'relevance'
   for (const ft of facetTypes) {
     facetFilters.value[ft] = ''
   }
   results.value = []
   total.value = 0
   searched.value = false
+  errorState.value = false
+  router.replace({ query: {} })
+}
+
+function handleRetry() {
+  handleSearch()
 }
 </script>
 
@@ -134,13 +231,16 @@ function clearFilters() {
     <!-- 검색 바 -->
     <el-card shadow="never" style="margin-bottom: 12px">
       <div style="display: flex; gap: 12px; align-items: flex-start">
-        <el-input
+        <el-autocomplete
+          ref="searchInputRef"
           v-model="keyword"
+          :fetch-suggestions="querySearch"
           placeholder="파일명 또는 문서코드로 검색..."
           size="large"
           clearable
-          @keyup.enter="handleSearch"
           style="flex: 1"
+          @keyup.enter="handleSearch"
+          @select="handleSelectHistory"
         />
         <el-button type="primary" size="large" :loading="loading" @click="handleSearch">
           검색
@@ -180,12 +280,30 @@ function clearFilters() {
 
     <!-- 결과 -->
     <div v-if="searched">
-      <p style="color: #909399; margin-bottom: 12px; font-size: 13px">검색 결과 ({{ total }}건)</p>
+      <!-- 결과 헤더: 건수 + 정렬 -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
+        <span style="color: #909399; font-size: 13px">검색 결과 ({{ total }}건)</span>
+        <el-select v-model="sortBy" size="small" style="width: 120px">
+          <el-option
+            v-for="opt in SORT_OPTIONS"
+            :key="opt.value"
+            :label="opt.label"
+            :value="opt.value"
+          />
+        </el-select>
+      </div>
 
       <div v-loading="loading">
-        <div v-if="results.length > 0">
+        <!-- 에러 상태 -->
+        <div v-if="errorState" style="text-align: center; padding: 40px 0">
+          <el-empty description="검색 중 오류가 발생했습니다">
+            <el-button type="primary" @click="handleRetry">다시 시도</el-button>
+          </el-empty>
+        </div>
+        <!-- 결과 있음 -->
+        <div v-else-if="sortedResults.length > 0">
           <el-card
-            v-for="doc in results"
+            v-for="doc in sortedResults"
             :key="doc.id"
             shadow="never"
             style="margin-bottom: 8px; cursor: pointer"
@@ -206,13 +324,9 @@ function clearFilters() {
                   {{ buildClassificationPath(doc) }}
                 </div>
               </div>
-              <div style="display: flex; gap: 6px; flex-shrink: 0">
-                <el-tag :type="LIFECYCLE_TAG[doc.lifecycle] ?? 'info'" size="small">
-                  {{ LIFECYCLE_LABELS[doc.lifecycle] ?? doc.lifecycle }}
-                </el-tag>
-                <el-tag :type="SECURITY_TAG[doc.securityLevel]?.type ?? ''" size="small">
-                  {{ SECURITY_TAG[doc.securityLevel]?.label ?? doc.securityLevel }}
-                </el-tag>
+              <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center">
+                <StatusTag type="lifecycle" :value="doc.lifecycle" />
+                <StatusTag type="security" :value="doc.securityLevel" />
                 <span style="color: #c0c4cc; font-size: 12px">
                   {{ new Date(doc.createdAt).toLocaleDateString('ko-KR') }}
                 </span>
@@ -220,7 +334,13 @@ function clearFilters() {
             </div>
           </el-card>
         </div>
-        <el-empty v-else description="검색 결과가 없습니다" />
+        <!-- 빈 결과 -->
+        <el-empty v-else description="검색 결과가 없습니다">
+          <template #default>
+            <p style="color: #909399; font-size: 13px; margin: 0 0 12px">다른 도메인이나 필터를 시도해보세요</p>
+            <el-button type="primary" size="small" @click="clearFilters">필터 초기화</el-button>
+          </template>
+        </el-empty>
       </div>
 
       <!-- 페이지네이션 -->
@@ -235,6 +355,26 @@ function clearFilters() {
       </div>
     </div>
 
-    <el-empty v-else description="검색어를 입력하거나 분류를 선택 후 검색하세요" />
+    <!-- 미검색 상태 -->
+    <div v-else>
+      <!-- 최근 검색어 -->
+      <div v-if="searchHistory.length > 0" style="margin-bottom: 16px">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px">
+          <span style="color: #606266; font-size: 13px; font-weight: 600">최근 검색</span>
+          <el-button size="small" text @click="clearHistory">전체 삭제</el-button>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <el-tag
+            v-for="entry in searchHistory.slice(0, 5)"
+            :key="entry.query"
+            style="cursor: pointer"
+            @click="keyword = entry.query; handleSearch()"
+          >
+            {{ entry.query }}
+          </el-tag>
+        </div>
+      </div>
+      <el-empty description="검색어를 입력하거나 분류를 선택 후 검색하세요" />
+    </div>
   </div>
 </template>

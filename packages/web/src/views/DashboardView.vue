@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useDomainStore } from '@/stores/domain'
 import { documentsApi } from '@/api/documents'
 import type { DocumentStats, RecentActivity, IssueCounts } from '@/api/documents'
-import { LIFECYCLE_LABELS } from '@kms/shared'
 import type { DomainMasterEntity, DocumentEntity } from '@kms/shared'
 import { useRecentDocs } from '@/composables/useRecentDocs'
+import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 const domainStore = useDomainStore()
@@ -15,6 +16,7 @@ const { recentDocs } = useRecentDocs()
 const stats = ref<DocumentStats | null>(null)
 const recentActivities = ref<RecentActivity[]>([])
 const loading = ref(true)
+const errorState = ref(false)
 
 const ACTION_LABELS: Record<string, string> = {
   CREATE: '업로드',
@@ -75,10 +77,10 @@ const byDomainFlat = computed<FlatDomainRow[]>(() => {
 // ============================================================
 
 const ISSUE_TABS = [
-  { key: 'warning', label: '경고' },
-  { key: 'expired', label: '만료' },
-  { key: 'no_file', label: '파일없음' },
-  { key: 'stale_draft', label: '임시저장 장기' },
+  { key: 'warning', label: '경고', emptyText: '신선도 경고 문서가 없습니다', ctaLabel: '검토', ctaType: 'warning' as const },
+  { key: 'expired', label: '만료', emptyText: '만료된 문서가 없습니다', ctaLabel: '갱신', ctaType: 'danger' as const },
+  { key: 'no_file', label: '파일없음', emptyText: '파일 미첨부 문서가 없습니다', ctaLabel: '파일 첨부', ctaType: 'primary' as const },
+  { key: 'stale_draft', label: '임시저장 장기', emptyText: '장기 임시저장 문서가 없습니다', ctaLabel: '활성화', ctaType: 'success' as const },
 ] as const
 
 const activeIssueTab = ref('warning')
@@ -101,6 +103,10 @@ function getIssueCount(key: string): number {
 
 const totalIssues = computed(() =>
   issueCounts.value.warning + issueCounts.value.expired + issueCounts.value.noFile + issueCounts.value.staleDraft,
+)
+
+const currentTab = computed(() =>
+  ISSUE_TABS.find((t) => t.key === activeIssueTab.value) ?? ISSUE_TABS[0],
 )
 
 async function loadIssues() {
@@ -131,6 +137,28 @@ function goToDocument(doc: DocumentEntity) {
   router.push(`/d/${doc.domain}/doc/${doc.id}`)
 }
 
+// ============================================================
+// 통계 카드 클릭
+// ============================================================
+
+function handleReload() {
+  globalThis.location.reload()
+}
+
+function handleStatClick(type: 'total' | 'active' | 'draft' | 'issues') {
+  if (type === 'issues') {
+    const el = document.getElementById('issue-section')
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+    }
+    return
+  }
+  const query: Record<string, string> = {}
+  if (type === 'active') query.lifecycle = 'ACTIVE'
+  else if (type === 'draft') query.lifecycle = 'DRAFT'
+  router.push({ path: '/search', query })
+}
+
 onMounted(async () => {
   try {
     const [, statsRes, recentRes, issueCountsRes] = await Promise.all([
@@ -144,6 +172,7 @@ onMounted(async () => {
     issueCounts.value = issueCountsRes.data
     await loadIssues()
   } catch {
+    errorState.value = true
     stats.value = {
       total: 0,
       active: 0,
@@ -152,6 +181,7 @@ onMounted(async () => {
       freshnessWarning: 0,
       byDomain: [],
     }
+    ElMessage.error('대시보드를 불러오는 중 오류가 발생했습니다')
   } finally {
     loading.value = false
   }
@@ -181,10 +211,24 @@ function formatTimeAgo(dateStr: string): string {
   <div v-loading="loading" class="dashboard-view">
     <h2 style="margin: 0 0 10px; font-size: 18px">KMS 문서관리 프레임워크</h2>
 
+    <!-- 에러 배너 -->
+    <el-alert
+      v-if="errorState"
+      title="대시보드 데이터를 불러오지 못했습니다"
+      type="error"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 10px"
+    >
+      <template #default>
+        <el-button size="small" type="primary" @click="handleReload">다시 시도</el-button>
+      </template>
+    </el-alert>
+
     <!-- 통계 카드 -->
     <el-row :gutter="10" style="margin-bottom: 10px">
       <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('total')">
           <div style="font-size: 12px; color: #909399">전체 문서</div>
           <div style="font-size: 24px; font-weight: 700; color: #303133; margin-top: 2px">
             {{ stats?.total ?? 0 }}
@@ -192,7 +236,7 @@ function formatTimeAgo(dateStr: string): string {
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('active')">
           <div style="font-size: 12px; color: #909399">사용중</div>
           <div style="font-size: 24px; font-weight: 700; color: #67c23a; margin-top: 2px">
             {{ stats?.active ?? 0 }}
@@ -200,7 +244,7 @@ function formatTimeAgo(dateStr: string): string {
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('draft')">
           <div style="font-size: 12px; color: #909399">임시저장</div>
           <div style="font-size: 24px; font-weight: 700; color: #909399; margin-top: 2px">
             {{ stats?.draft ?? 0 }}
@@ -208,7 +252,7 @@ function formatTimeAgo(dateStr: string): string {
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('issues')">
           <div style="font-size: 12px; color: #909399">조치 필요</div>
           <div style="font-size: 24px; font-weight: 700; color: #f56c6c; margin-top: 2px">
             {{ totalIssues }}
@@ -218,7 +262,7 @@ function formatTimeAgo(dateStr: string): string {
     </el-row>
 
     <!-- 조치 필요 문서 -->
-    <el-card v-if="totalIssues > 0" shadow="never" style="margin-bottom: 10px">
+    <el-card v-if="totalIssues > 0" id="issue-section" shadow="never" style="margin-bottom: 10px">
       <template #header>
         <span style="font-weight: 600; font-size: 14px">조치 필요 문서</span>
       </template>
@@ -239,41 +283,47 @@ function formatTimeAgo(dateStr: string): string {
           </template>
         </el-tab-pane>
       </el-tabs>
-      <el-table
-        v-loading="issueLoading"
-        :data="issueDocuments"
-        size="small"
-        :header-cell-style="{ background: '#fafafa' }"
-      >
-        <el-table-column label="파일명" min-width="200">
-          <template #default="{ row }">
-            <span style="color: #303133">{{ row.fileName ?? row.id }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="domain" label="도메인" width="120" />
-        <el-table-column label="상태" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag
-              :type="row.lifecycle === 'ACTIVE' ? 'success' : row.lifecycle === 'DRAFT' ? 'info' : 'danger'"
-              size="small"
-            >
-              {{ LIFECYCLE_LABELS[row.lifecycle] ?? row.lifecycle }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="최종수정" width="100" align="center">
-          <template #default="{ row }">
-            {{ formatTimeAgo(row.updatedAt) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="" width="60" align="center">
-          <template #default="{ row }">
-            <el-button text size="small" type="primary" @click="goToDocument(row)">
-              이동
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div v-loading="issueLoading">
+        <el-table
+          v-if="issueDocuments.length > 0"
+          :data="issueDocuments"
+          size="small"
+          :header-cell-style="{ background: '#fafafa' }"
+        >
+          <el-table-column label="파일명" min-width="200">
+            <template #default="{ row }">
+              <span style="color: #303133">{{ row.fileName ?? row.id }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="domain" label="도메인" width="120" />
+          <el-table-column label="상태" width="100" align="center">
+            <template #default="{ row }">
+              <StatusTag type="lifecycle" :value="row.lifecycle" />
+            </template>
+          </el-table-column>
+          <el-table-column label="최종수정" width="100" align="center">
+            <template #default="{ row }">
+              {{ formatTimeAgo(row.updatedAt) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="" width="90" align="center">
+            <template #default="{ row }">
+              <el-button
+                size="small"
+                :type="currentTab.ctaType"
+                @click="goToDocument(row)"
+              >
+                {{ currentTab.ctaLabel }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty
+          v-if="!issueLoading && issueDocuments.length === 0"
+          :description="currentTab.emptyText"
+          :image-size="60"
+        />
+      </div>
       <div v-if="issueTotal > ISSUE_PAGE_SIZE" style="margin-top: 12px; text-align: right">
         <el-pagination
           small

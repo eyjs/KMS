@@ -4,6 +4,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
 import { useRoute, useRouter } from 'vue-router'
 import DomainMenuItem from './DomainMenuItem.vue'
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
+
+useKeyboardShortcuts()
 
 const auth = useAuthStore()
 const domainStore = useDomainStore()
@@ -77,7 +80,12 @@ function handleLogout() {
         </el-menu-item>
         <el-menu-item index="/search">
           <el-icon><component is="Search" /></el-icon>
-          <template #title><span>통합 검색</span></template>
+          <template #title>
+            <span style="display: flex; align-items: center; width: 100%">
+              <span>통합 검색</span>
+              <span style="font-size: 10px; color: #6b6e7e; margin-left: auto">Ctrl+K</span>
+            </span>
+          </template>
         </el-menu-item>
 
         <!-- DOMAINS -->

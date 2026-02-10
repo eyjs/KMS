@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { ElNotification } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 
 const client = axios.create({
@@ -56,6 +57,15 @@ client.interceptors.response.use(
         auth.logout()
       } finally {
         isRefreshing = false
+      }
+    }
+    // 401 이외의 에러 전역 알림 (컴포넌트가 개별 처리하지 않는 유형만)
+    if (error.response?.status !== 401 && !original?._skipGlobalNotify) {
+      const status = error.response?.status
+      if (status === 403) {
+        ElNotification({ title: '권한 없음', message: '이 작업을 수행할 권한이 없습니다.', type: 'error' })
+      } else if (!error.response) {
+        ElNotification({ title: '네트워크 오류', message: '서버에 연결할 수 없습니다.', type: 'error' })
       }
     }
     return Promise.reject(error)
