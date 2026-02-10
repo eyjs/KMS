@@ -58,10 +58,10 @@ async function createApiKey() {
 </script>
 
 <template>
-  <div>
-    <h2 style="margin: 0 0 20px; font-size: 22px">사용자 관리</h2>
+  <div style="height: 100%; overflow-y: auto">
+    <h2 style="margin: 0 0 12px; font-size: 20px">사용자 관리</h2>
 
-    <div style="display: flex; gap: 20px">
+    <div style="display: flex; gap: 16px">
       <!-- 사용자 생성 -->
       <el-card shadow="never" style="flex: 1">
         <template #header>

@@ -122,17 +122,17 @@ function goBack() {
 </script>
 
 <template>
-  <div v-loading="loading" style="height: calc(100vh - 60px); display: flex; flex-direction: column">
+  <div v-loading="loading" style="height: 100%; display: flex; flex-direction: column; overflow: hidden">
     <!-- 상단 헤더 -->
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-shrink: 0">
       <el-button text @click="goBack">
         &lt; 뒤로
       </el-button>
-      <span style="font-size: 18px; font-weight: 600">문서 비교 및 관계 설정</span>
+      <span style="font-size: 16px; font-weight: 600">문서 비교 및 관계 설정</span>
     </div>
 
     <!-- 비교 패널 -->
-    <div style="flex: 1; display: flex; gap: 16px; min-height: 0">
+    <div style="flex: 1; display: flex; gap: 12px; min-height: 0; overflow: hidden">
       <!-- 왼쪽: 출발 문서 -->
       <div style="flex: 1; display: flex; flex-direction: column; min-width: 0">
         <el-card shadow="never" style="flex: 1; display: flex; flex-direction: column" :body-style="{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }">
@@ -270,7 +270,7 @@ function goBack() {
     </div>
 
     <!-- 하단: 관계 설정 -->
-    <el-card shadow="never" style="margin-top: 16px" :body-style="{ padding: '12px 20px' }">
+    <el-card shadow="never" style="margin-top: 8px; flex-shrink: 0" :body-style="{ padding: '10px 16px' }">
       <div style="display: flex; align-items: center; gap: 16px">
         <span style="font-size: 14px; font-weight: 600; color: #303133; white-space: nowrap">관계 유형:</span>
         <el-radio-group v-model="relationType">

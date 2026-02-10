@@ -350,22 +350,22 @@ async function handleEditSubmit() {
 </script>
 
 <template>
-  <div v-loading="loading">
+  <div v-loading="loading" style="height: 100%; display: flex; flex-direction: column; overflow: hidden">
     <!-- 상단 네비게이션 -->
-    <el-page-header @back="router.push(backPath)">
+    <el-page-header @back="router.push(backPath)" style="flex-shrink: 0; margin-bottom: 12px">
       <template #content>
         <div style="display: flex; align-items: center; gap: 8px">
-          <span v-if="breadcrumb" style="color: #909399; font-size: 13px">
+          <span v-if="breadcrumb" style="color: #909399; font-size: 12px">
             {{ doc?.domain }} > {{ breadcrumb }} >
           </span>
-          <span>{{ doc?.fileName ?? doc?.id ?? '문서 상세' }}</span>
+          <span style="font-size: 15px">{{ doc?.fileName ?? doc?.id ?? '문서 상세' }}</span>
         </div>
       </template>
     </el-page-header>
 
-    <div v-if="doc" style="display: flex; gap: 20px; margin-top: 20px">
+    <div v-if="doc" style="flex: 1; display: flex; gap: 16px; min-height: 0; overflow: hidden">
       <!-- 왼쪽: 메타데이터 -->
-      <div style="width: 280px; flex-shrink: 0">
+      <div style="width: 260px; flex-shrink: 0; overflow-y: auto">
         <el-card shadow="never">
           <template #header>
             <span style="font-weight: 600">문서 정보</span>
@@ -452,13 +452,13 @@ async function handleEditSubmit() {
       </div>
 
       <!-- 오른쪽: 뷰어 + 이력 + 관계 -->
-      <div style="flex: 1; min-width: 0">
+      <div style="flex: 1; min-width: 0; overflow-y: auto">
         <!-- 문서 뷰어 -->
-        <el-card shadow="never" style="margin-bottom: 20px" :body-style="{ padding: '0' }">
+        <el-card shadow="never" style="margin-bottom: 12px" :body-style="{ padding: '0' }">
           <template #header>
             <span style="font-weight: 600">문서 뷰어</span>
           </template>
-          <div v-if="hasFile" style="height: 500px">
+          <div v-if="hasFile" style="height: 400px">
             <PdfViewer v-if="doc.fileType === 'pdf'" :document-id="doc.id" />
             <MarkdownViewer v-else-if="doc.fileType === 'md'" :document-id="doc.id" />
             <CsvViewer v-else-if="doc.fileType === 'csv'" :document-id="doc.id" />
@@ -473,7 +473,7 @@ async function handleEditSubmit() {
         </el-card>
 
         <!-- 변경 이력 -->
-        <el-card shadow="never" style="margin-bottom: 20px">
+        <el-card shadow="never" style="margin-bottom: 12px">
           <template #header>
             <span style="font-weight: 600">변경 이력</span>
           </template>

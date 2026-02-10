@@ -38,7 +38,7 @@ function handleLogout() {
 </script>
 
 <template>
-  <el-container style="min-height: 100vh">
+  <el-container style="height: 100vh; overflow: hidden">
     <el-aside width="220px" style="background: #1d1e2c; display: flex; flex-direction: column; overflow: hidden">
       <div style="padding: 20px 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0">
         KMS
@@ -115,7 +115,7 @@ function handleLogout() {
     </el-aside>
 
     <el-container>
-      <el-main style="padding: 20px; background: #f5f7fa">
+      <el-main style="padding: 16px; background: #f5f7fa; overflow: hidden; min-height: 0">
         <router-view />
       </el-main>
     </el-container>

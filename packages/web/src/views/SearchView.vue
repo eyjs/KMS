@@ -87,11 +87,11 @@ function buildClassificationPath(doc: DocumentEntity): string {
 </script>
 
 <template>
-  <div>
-    <h2 style="margin: 0 0 20px; font-size: 22px">통합 검색</h2>
+  <div style="height: 100%; overflow-y: auto">
+    <h2 style="margin: 0 0 12px; font-size: 20px">통합 검색</h2>
 
     <!-- 검색 바 -->
-    <el-card shadow="never" style="margin-bottom: 20px">
+    <el-card shadow="never" style="margin-bottom: 12px">
       <div style="display: flex; gap: 12px; align-items: flex-start">
         <el-input
           v-model="keyword"

@@ -300,10 +300,10 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
 </script>
 
 <template>
-  <div v-loading="loading">
-    <h2 style="margin: 0 0 20px; font-size: 22px">도메인 / 분류 관리</h2>
+  <div v-loading="loading" style="height: 100%; overflow-y: auto">
+    <h2 style="margin: 0 0 12px; font-size: 20px">도메인 / 분류 관리</h2>
 
-    <div style="display: flex; gap: 20px">
+    <div style="display: flex; gap: 16px">
       <!-- 도메인 목록 -->
       <el-card shadow="never" style="width: 560px">
         <template #header>

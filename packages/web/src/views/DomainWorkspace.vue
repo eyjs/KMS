@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDomainStore } from '@/stores/domain'
@@ -157,6 +157,49 @@ async function handleChildSubmit() {
   }
 }
 
+// 패널 리사이즈
+const treeWidth = ref(220)
+const previewWidth = ref(300)
+const isResizing = ref(false)
+let resizeCleanup: (() => void) | null = null
+
+function startResize(panel: 'tree' | 'preview', e: MouseEvent) {
+  e.preventDefault()
+  isResizing.value = true
+  const startX = e.clientX
+  const startWidth = panel === 'tree' ? treeWidth.value : previewWidth.value
+
+  function onMouseMove(ev: MouseEvent) {
+    const delta = ev.clientX - startX
+    if (panel === 'tree') {
+      treeWidth.value = Math.max(180, Math.min(400, startWidth + delta))
+    } else {
+      previewWidth.value = Math.max(200, Math.min(500, startWidth - delta))
+    }
+  }
+
+  function onMouseUp() {
+    isResizing.value = false
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    resizeCleanup = null
+  }
+
+  resizeCleanup = onMouseUp
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+onUnmounted(() => {
+  resizeCleanup?.()
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+})
+
 async function handleChildDelete(child: DomainMasterEntity) {
   try {
     await ElMessageBox.confirm(
@@ -179,38 +222,35 @@ async function handleChildDelete(child: DomainMasterEntity) {
 </script>
 
 <template>
-  <div style="height: calc(100vh - 60px); display: flex; flex-direction: column">
+  <div style="height: 100%; display: flex; flex-direction: column; overflow: hidden">
     <!-- 상단 도구모음 -->
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-      <div>
-        <!-- 도메인 경로 -->
-        <div v-if="domainBreadcrumb.length > 1" style="margin-bottom: 4px">
-          <template v-for="(ancestor, idx) in domainBreadcrumb" :key="ancestor.code">
-            <span v-if="idx > 0" style="color: #c0c4cc; margin: 0 4px">/</span>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-shrink: 0">
+      <div style="display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden">
+        <!-- 도메인 경로 (인라인) -->
+        <template v-if="domainBreadcrumb.length > 1">
+          <template v-for="(ancestor, idx) in domainBreadcrumb.slice(0, -1)" :key="ancestor.code">
+            <span v-if="idx > 0" style="color: #c0c4cc; font-size: 12px">/</span>
             <span
-              v-if="idx < domainBreadcrumb.length - 1"
-              style="font-size: 13px; color: #409eff; cursor: pointer"
+              style="font-size: 12px; color: #409eff; cursor: pointer; white-space: nowrap"
               @click="router.push(`/d/${ancestor.code}`)"
             >
               {{ ancestor.displayName }}
             </span>
-            <span v-else style="font-size: 13px; color: #606266">
-              {{ ancestor.displayName }}
-            </span>
           </template>
-        </div>
-        <h2 style="margin: 0; font-size: 20px; display: inline">
+          <span style="color: #c0c4cc; font-size: 12px">/</span>
+        </template>
+        <h2 style="margin: 0; font-size: 18px; white-space: nowrap">
           {{ domainStore.currentDomain?.displayName ?? domainCode }}
         </h2>
-        <el-tag size="small" style="margin-left: 8px; vertical-align: middle">{{ domainCode }}</el-tag>
+        <el-tag size="small">{{ domainCode }}</el-tag>
         <span
           v-if="domainStore.currentDomain?.description"
-          style="margin-left: 12px; font-size: 13px; color: #909399"
+          style="font-size: 12px; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"
         >
           {{ domainStore.currentDomain.description }}
         </span>
       </div>
-      <div style="display: flex; gap: 8px; align-items: center">
+      <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
         <el-button type="primary" size="small" @click="openUpload">
           업로드
         </el-button>
@@ -222,35 +262,35 @@ async function handleChildDelete(child: DomainMasterEntity) {
     </div>
 
     <!-- 하위 카테고리 섹션 -->
-    <div v-if="childDomains.length > 0 || isAdmin" style="margin-bottom: 16px">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
-        <span style="font-size: 13px; color: #606266; font-weight: 600">하위 카테고리</span>
+    <div v-if="childDomains.length > 0 || isAdmin" style="margin-bottom: 8px; flex-shrink: 0">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px">
+        <span style="font-size: 12px; color: #909399; font-weight: 600">하위 카테고리</span>
         <el-button
           v-if="isAdmin"
           size="small"
           @click="openChildCreateDialog"
         >
-          + 카테고리 추가
+          + 추가
         </el-button>
       </div>
-      <div style="display: flex; gap: 10px; flex-wrap: wrap">
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; max-height: 80px; overflow-y: auto">
         <div
           v-for="child in childDomains"
           :key="child.code"
           class="child-domain-card"
           @click="navigateToChild(child)"
         >
-          <div style="font-size: 14px; font-weight: 500; color: #303133">
+          <div style="font-size: 13px; font-weight: 500; color: #303133">
             {{ child.displayName }}
           </div>
-          <div style="font-size: 11px; color: #909399; margin-top: 2px">
+          <div style="font-size: 11px; color: #909399; margin-top: 1px">
             {{ child.code }}
           </div>
           <!-- ADMIN 드롭다운 -->
           <el-dropdown
             v-if="isAdmin"
             trigger="click"
-            style="position: absolute; top: 6px; right: 6px"
+            style="position: absolute; top: 4px; right: 4px"
             @click.stop
           >
             <el-button text size="small" style="padding: 2px" @click.stop>
@@ -268,18 +308,21 @@ async function handleChildDelete(child: DomainMasterEntity) {
     </div>
 
     <!-- 3-패널 레이아웃 -->
-    <div style="flex: 1; display: flex; gap: 12px; min-height: 0">
+    <div :class="{ 'is-resizing': isResizing }" style="flex: 1; display: flex; min-height: 0; overflow: hidden">
       <!-- 왼쪽: 분류 트리 -->
       <el-card
         shadow="never"
         :body-style="{ padding: '0', height: '100%', overflow: 'hidden' }"
-        style="width: 250px; flex-shrink: 0"
+        :style="{ width: treeWidth + 'px', flexShrink: 0 }"
       >
         <ClassificationTree
           :domain-code="domainCode"
           @select="handleTreeSelect"
         />
       </el-card>
+
+      <!-- 리사이즈 핸들: 트리 ↔ 목록 -->
+      <div class="resize-handle" @mousedown="startResize('tree', $event)" />
 
       <!-- 중앙: 문서 목록 or 그래프 -->
       <div style="flex: 1; min-width: 0">
@@ -306,23 +349,24 @@ async function handleChildDelete(child: DomainMasterEntity) {
         </el-card>
       </div>
 
+      <!-- 리사이즈 핸들: 목록 ↔ 미리보기 -->
+      <div v-if="showPreview && selectedDoc" class="resize-handle" @mousedown="startResize('preview', $event)" />
+
       <!-- 오른쪽: 미리보기 -->
-      <transition name="el-fade-in">
-        <el-card
-          v-if="showPreview && selectedDoc"
-          shadow="never"
-          :body-style="{ padding: '0', height: '100%', overflow: 'auto' }"
-          style="width: 350px; flex-shrink: 0"
-        >
-          <div style="padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ebeef5">
-            <span style="font-size: 13px; font-weight: 600; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px">
-              {{ selectedDoc.fileName }}
-            </span>
-            <el-button text size="small" @click="showPreview = false">닫기</el-button>
-          </div>
-          <DocumentPreview :document="selectedDoc" />
-        </el-card>
-      </transition>
+      <el-card
+        v-if="showPreview && selectedDoc"
+        shadow="never"
+        :body-style="{ padding: '0', height: '100%', overflow: 'auto' }"
+        :style="{ width: previewWidth + 'px', flexShrink: 0, transition: isResizing ? 'none' : 'width 0.2s ease-out' }"
+      >
+        <div style="padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ebeef5">
+          <span style="font-size: 13px; font-weight: 600; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 8px">
+            {{ selectedDoc.fileName }}
+          </span>
+          <el-button text size="small" @click="showPreview = false">닫기</el-button>
+        </div>
+        <DocumentPreview :document="selectedDoc" />
+      </el-card>
     </div>
 
     <!-- 업로드 다이얼로그 -->
@@ -373,17 +417,55 @@ async function handleChildDelete(child: DomainMasterEntity) {
 
 <style scoped>
 .child-domain-card {
-  padding: 12px 16px;
+  padding: 8px 12px;
   background: #fff;
   border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  min-width: 140px;
+  transition: border-color 0.2s;
+  min-width: 120px;
   position: relative;
 }
 
 .child-domain-card:hover {
   border-color: #409eff;
+}
+
+.resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 32px;
+  background: #dcdfe6;
+  border-radius: 1px;
+  transition: background 0.15s, height 0.15s;
+}
+
+.resize-handle:hover::after {
+  background: #409eff;
+  height: 48px;
+}
+
+.is-resizing {
+  cursor: col-resize;
+}
+
+.is-resizing * {
+  pointer-events: none;
+}
+
+.is-resizing .resize-handle {
+  pointer-events: auto;
 }
 </style>
