@@ -45,12 +45,14 @@
 
 **포함 (직접 구현):**
 - 파일 업로드 (PDF, Markdown, CSV만)
-- 분류 선택 (보험사/상품/문서유형)
-- 관계 관리 (부모-자식, 참조, 대체)
+- 분류 선택 (보험사/상품/문서유형) + 코드 자동 생성
+- 관계 관리 (부모-자식, 참조, 대체) + 관계 그래프 시각화
 - 라이프사이클 (DRAFT → ACTIVE → DEPRECATED)
 - 문서 뷰어 (PDF, Markdown, CSV 미리보기)
 - 도메인 워크스페이스 (3-패널 레이아웃)
-- 통합 검색
+- 통합 검색 (정렬 + 검색이력 + URL 동기화)
+- 키보드 단축키 (Ctrl+K → 검색)
+- 대시보드 (통계 + 조치 필요 문서 + 최근 활동)
 - 외부 API (REST + API Key)
 
 **제외 (외주 위임):**
@@ -71,12 +73,14 @@
 ### 프론트엔드 구조
 
 ```
-/ (대시보드)          → 프레임워크 전체 현황
-/search              → 통합 검색
-/d/:domainCode       → 도메인 워크스페이스 (3-패널: 트리|목록|미리보기)
-/d/:domainCode/doc/:id → 문서 상세 (뷰어+이력+관계)
-/admin/domains       → 도메인/분류 관리
-/admin/users         → 사용자 관리
+/ (대시보드)                    → 통계 + 조치 필요 문서 + 최근 활동
+/search                        → 통합 검색 (정렬, 이력, URL 동기화)
+/d/:domainCode                 → 도메인 워크스페이스 (3-패널: 트리|목록|미리보기)
+/d/:domainCode/doc/:id         → 문서 상세 (뷰어+이력+관계)
+/d/:domainCode/compare?source= → 문서 비교/관계 설정
+/admin/domains                 → 도메인/분류 관리
+/admin/users                   → 사용자 관리
+/login                         → 로그인
 ```
 
 ---
@@ -144,9 +148,9 @@ python scripts/ontology_validator.py
 │           ├── router/              # 라우터 + 라우트 가드
 │           ├── stores/              # Pinia (auth, domain)
 │           ├── api/                 # API 클라이언트
-│           ├── views/               # 페이지 (Dashboard, DomainWorkspace, ...)
-│           ├── components/          # 컴포넌트 (layout, domain, document, viewer)
-│           └── composables/         # 재사용 로직
+│           ├── views/               # 페이지 (Dashboard, Search, DomainWorkspace, DocumentDetail, ...)
+│           ├── components/          # 컴포넌트 (common, document, domain, graph, layout, viewer)
+│           └── composables/         # 재사용 로직 (키보드단축키, 검색이력, 최근문서)
 │
 ├── scripts/                         # Phase 1 Python 검증 도구
 │

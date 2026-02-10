@@ -1,6 +1,6 @@
 # Phase 2: 문서 체계 관리 시스템
 
-> **Version** 3.1 | 2026-02-08 | 현재 단계
+> **Version** 3.2 | 2026-02-10 | 현재 단계
 
 ---
 
@@ -48,12 +48,14 @@ Phase 1에서 검증된 분류체계를 실제 시스템으로 구현:
 
 | 영역 | 기술 | 버전 | 선정 이유 |
 |------|------|------|----------|
-| Frontend | Vue 3 | 3.4+ | 회사 표준 |
+| 언어 | TypeScript (풀스택) | 5.7+ | 타입 안전성, 프론트·백 타입 공유 |
+| Frontend | Vue 3 + Composition API | 3.5+ | 회사 표준 |
 | UI | Element Plus | 2.x | Vue 3 호환 |
-| 빌드 | Vite | 5.x | Vue 공식 |
-| Backend | ASP.NET Core | 8.0 LTS | IT팀 운영 가능 |
-| ORM | EF Core | 8.x | MS 공식 |
-| Database | PostgreSQL | 16 | 무료, JSONB |
+| 빌드 | Vite | 6.x | Vue 공식, HMR |
+| Backend | NestJS | 10.x | TypeScript 네이티브, 모듈 구조 |
+| ORM | Prisma | 6.x | 타입 안전 쿼리, 마이그레이션 |
+| Database | PostgreSQL | 16 | 무료, JSONB, 트리거 |
+| Monorepo | npm (workspaces 미사용) | - | Vercel 호환성 |
 | PDF 뷰어 | pdf.js | - | 오픈소스 |
 | MD 뷰어 | marked.js | - | 경량 |
 | 그래프 | vis-network | 9.x | Phase 1 검증됨 |
@@ -199,14 +201,16 @@ storage/
 
 | 기준 | 상태 |
 |------|------|
-| 파일 업로드 (PDF/MD/CSV) | 예정 |
-| 분류 CRUD | 예정 |
-| 관계 CRUD + 순환 방지 | 예정 |
-| 라이프사이클 상태 머신 | 예정 |
-| SSOT 유니크 제약 | 예정 |
-| PDF/MD/CSV 뷰어 | 예정 |
-| 관계 그래프 시각화 | 예정 |
-| 외부 API + 인증 | 예정 |
+| 파일 업로드 (PDF/MD/CSV) | **완료** |
+| 분류 CRUD + 코드 자동 생성 | **완료** |
+| 관계 CRUD + 순환 방지 + DocumentExplorer | **완료** |
+| 라이프사이클 상태 머신 | **완료** |
+| SSOT 유니크 제약 | **완료** |
+| PDF/MD/CSV 뷰어 | **완료** |
+| 관계 그래프 시각화 (vis-network) | **완료** |
+| 외부 API + 인증 (JWT + API Key) | **완료** |
+| 대시보드 + 통합 검색 | **완료** |
+| 사용자 관리 + 역할 기반 접근 제어 | **완료** |
 | IT팀 운영 이관 | 예정 |
 
 ---

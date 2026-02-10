@@ -41,15 +41,18 @@
 
 ### 구현 완료 기능
 - 파일 업로드 (PDF, Markdown, CSV) + 분류 선택
-- 도메인 CRUD (무제한 깊이 트리 구조)
-- Facet CRUD (보험사/상품/문서유형 관리)
-- 문서 목록/검색/필터 + 도메인 워크스페이스
+- 도메인 CRUD (무제한 깊이 트리 구조) + 코드 자동 생성
+- Facet CRUD (보험사/상품/문서유형 관리) + 코드 자동 생성
+- 문서 목록/검색/필터 + 도메인 워크스페이스 (3패널)
 - 문서 상세 뷰어 (PDF, Markdown, CSV 미리보기)
-- 관계 추가/삭제 UI (부모-자식, 참조, 대체)
+- 관계 추가/삭제 UI + DocumentExplorer (도메인/분류 탐색) + 관계 그래프 (vis-network)
 - 문서 분류/보안등급 수정 다이얼로그
 - 라이프사이클 전환 (DRAFT → ACTIVE → DEPRECATED)
-- 대시보드 (통계 + 도메인 현황 + 조치 필요 문서 + 최근 활동)
-- 사용자 관리 (JWT 인증, 역할 기반 접근 제어)
+- 대시보드 (통계 카드 클릭 네비게이션 + 조치 필요 문서 + 최근 활동)
+- 통합 검색 (정렬 4종 + 검색이력 자동완성 + URL 상태 동기화)
+- 키보드 단축키 (Ctrl+K → 검색)
+- 사용자 관리 (JWT 인증, 업무 역할 기반 접근 제어)
+- 전역 에러 처리 (403/네트워크 에러 알림)
 
 ### 범위
 
@@ -154,11 +157,17 @@
 │   └── web/                         # @kms/web (Vue 3 프론트엔드)
 │       └── src/
 │           ├── router/              # 라우터 + 라우트 가드
-│           ├── stores/              # Pinia 상태관리
-│           ├── api/                 # API 클라이언트
-│           ├── views/               # 페이지 컴포넌트
-│           ├── components/          # 공통 컴포넌트
-│           └── composables/         # 재사용 로직
+│           ├── stores/              # Pinia (auth, domain)
+│           ├── api/                 # API 클라이언트 (client, documents, relations, taxonomy, admin, search)
+│           ├── views/               # 페이지 (Dashboard, Search, DomainWorkspace, DocumentDetail, DocumentCompare, Login, Admin*)
+│           ├── components/
+│           │   ├── common/          # StatusTag
+│           │   ├── document/        # DocumentExplorer, DocumentPreview, DocumentTable, DocumentTimeline
+│           │   ├── domain/          # ClassificationTree, UploadDialog, DomainMenuItem
+│           │   ├── graph/           # RelationGraph (vis-network)
+│           │   ├── layout/          # AppLayout
+│           │   └── viewer/          # PdfViewer, MarkdownViewer, CsvViewer
+│           └── composables/         # useKeyboardShortcuts, useSearchHistory, useRecentDocs
 │
 ├── scripts/                         # Python 코어 검증 도구
 │   ├── taxonomy.py
@@ -234,19 +243,19 @@ DRAFT → ACTIVE → DEPRECATED
 **문서 보안 등급:**
 | 등급 | 설명 | 접근 가능 역할 |
 |------|------|---------------|
-| PUBLIC | 공개 | 외부업체 포함 전체 |
-| INTERNAL | 사내용 | 직원 이상 |
-| CONFIDENTIAL | 대외비(2급) | 팀장 이상 |
-| SECRET | 기밀(1급) | 임원 이상 |
+| PUBLIC | 공개 | 전체 (VIEWER 이상) |
+| INTERNAL | 사내용 | EDITOR 이상 |
+| CONFIDENTIAL | 대외비(2급) | REVIEWER 이상 |
+| SECRET | 기밀(1급) | APPROVER 이상 |
 
-**사용자 역할:**
-| 역할 | 설명 | 수준 |
-|------|------|------|
-| EXTERNAL | 외부업체 (RAG 구축용) | 0 |
-| EMPLOYEE | 일반 직원 | 1 |
-| TEAM_LEAD | 팀장급 | 2 |
-| EXECUTIVE | 임원급 | 3 |
-| ADMIN | 시스템 관리자 | 4 |
+**사용자 역할 (업무 역할 기반, 직급 무관):**
+| 역할 | 한국어 | 설명 | 수준 |
+|------|--------|------|------|
+| VIEWER | 조회자 | 공개 문서만 (외부업체, RAG 등) | 0 |
+| EDITOR | 작성자 | 사내용까지 (문서 작성/수정) | 1 |
+| REVIEWER | 검토자 | 대외비까지 (문서 검토/삭제) | 2 |
+| APPROVER | 승인자 | 기밀까지 (최종 승인 권한) | 3 |
+| ADMIN | 관리자 | 전체 (시스템 설정) | 4 |
 
 ---
 
