@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
 import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
-import type { DocumentEntity, RelationType } from '@kms/shared'
+import type { DocumentEntity, RelationType, RelationGraphResponse } from '@kms/shared'
 import { ElMessage } from 'element-plus'
-import PdfViewer from '@/components/viewer/PdfViewer.vue'
-import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
-import CsvViewer from '@/components/viewer/CsvViewer.vue'
+import RelationGraph from '@/components/graph/RelationGraph.vue'
+import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,21 +20,20 @@ const targetDoc = ref<DocumentEntity | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 
+// 그래프
+const graphData = ref<RelationGraphResponse | null>(null)
+const graphLoading = ref(false)
+const graphRef = ref<InstanceType<typeof RelationGraph>>()
+
 // 관계 유형
 const relationType = ref<RelationType>('REFERENCE')
-const RELATION_OPTIONS: Array<{ value: RelationType; label: string }> = [
-  { value: 'PARENT_OF', label: '상위' },
-  { value: 'CHILD_OF', label: '하위' },
-  { value: 'SIBLING', label: '형제' },
-  { value: 'REFERENCE', label: '참조' },
-  { value: 'SUPERSEDES', label: '대체' },
+const RELATION_OPTIONS: Array<{ value: RelationType; label: string; desc: string }> = [
+  { value: 'PARENT_OF', label: '상위', desc: '이 문서가 대상의 상위 문서' },
+  { value: 'CHILD_OF', label: '하위', desc: '이 문서가 대상의 하위 문서' },
+  { value: 'SIBLING', label: '형제', desc: '같은 수준의 관련 문서' },
+  { value: 'REFERENCE', label: '참조', desc: '단방향 참조 관계' },
+  { value: 'SUPERSEDES', label: '대체', desc: '이 문서가 대상을 대체' },
 ]
-
-// 대상 문서 검색
-const searchQuery = ref('')
-const searchResults = ref<DocumentEntity[]>([])
-const searchLoading = ref(false)
-let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const SECURITY_LABELS: Record<string, string> = {
   PUBLIC: '공개',
@@ -48,16 +46,13 @@ function facetLabel(key: string): string {
   return FACET_TYPE_LABELS[key] ?? key
 }
 
-onUnmounted(() => {
-  if (searchTimer) clearTimeout(searchTimer)
-})
-
 onMounted(async () => {
   if (sourceId.value) {
     loading.value = true
     try {
       const { data } = await documentsApi.get(sourceId.value)
       sourceDoc.value = data
+      loadGraph(sourceId.value)
     } catch {
       ElMessage.error('출발 문서를 불러올 수 없습니다')
     } finally {
@@ -66,31 +61,48 @@ onMounted(async () => {
   }
 })
 
-function handleSearch(query: string) {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchQuery.value = query
-  if (!query || query.length < 1) {
-    searchResults.value = []
-    return
+async function loadGraph(documentId: string) {
+  graphLoading.value = true
+  try {
+    const { data } = await relationsApi.getGraph(documentId, 1)
+    graphData.value = data
+  } catch {
+    graphData.value = null
+  } finally {
+    graphLoading.value = false
   }
-  searchLoading.value = true
-  searchTimer = setTimeout(async () => {
-    try {
-      const { data } = await documentsApi.search({ q: query, size: 20 })
-      // 출발 문서 제외
-      searchResults.value = data.data.filter((d: DocumentEntity) => d.id !== sourceId.value)
-    } catch {
-      searchResults.value = []
-    } finally {
-      searchLoading.value = false
-    }
-  }, 300)
 }
 
-async function selectTarget(doc: DocumentEntity) {
+function handleNodeClick(nodeId: string) {
+  if (nodeId === sourceId.value) return
+  // 그래프 노드 클릭 → 대상 문서 선택
+  selectTargetById(nodeId)
+}
+
+async function handleNodeDoubleClick(nodeId: string) {
+  // 그래프 확장: 해당 노드 기준 depth=1 추가 로드
+  try {
+    graphLoading.value = true
+    const { data } = await relationsApi.getGraph(nodeId, 1)
+    graphRef.value?.mergeGraphData(data)
+  } catch {
+    ElMessage.warning('관계 확장에 실패했습니다')
+  } finally {
+    graphLoading.value = false
+  }
+}
+
+async function selectTargetById(id: string) {
+  try {
+    const { data } = await documentsApi.get(id)
+    targetDoc.value = data
+  } catch {
+    ElMessage.error('문서 정보를 불러올 수 없습니다')
+  }
+}
+
+function handleExplorerSelect(doc: DocumentEntity) {
   targetDoc.value = doc
-  searchResults.value = []
-  searchQuery.value = ''
 }
 
 async function handleSave() {
@@ -103,7 +115,9 @@ async function handleSave() {
   try {
     await relationsApi.create(sourceDoc.value.id, targetDoc.value.id, relationType.value)
     ElMessage.success('관계가 설정되었습니다')
-    router.push(`/d/${domainCode.value}/doc/${sourceDoc.value.id}`)
+    // 관계 저장 후 그래프 새로고침
+    targetDoc.value = null
+    if (sourceId.value) loadGraph(sourceId.value)
   } catch (err: unknown) {
     const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '관계 설정에 실패했습니다'
     ElMessage.error(msg)
@@ -128,166 +142,123 @@ function goBack() {
       <el-button text @click="goBack">
         &lt; 뒤로
       </el-button>
-      <span style="font-size: 16px; font-weight: 600">문서 비교 및 관계 설정</span>
+      <span style="font-size: 16px; font-weight: 600">관계 설정</span>
+      <span v-if="sourceDoc" style="font-size: 13px; color: #606266">
+        {{ sourceDoc.docCode ?? '' }} {{ sourceDoc.fileName ?? '' }}
+      </span>
     </div>
 
-    <!-- 비교 패널 -->
-    <div style="flex: 1; display: flex; gap: 12px; min-height: 0; overflow: hidden">
-      <!-- 왼쪽: 출발 문서 -->
-      <div style="flex: 1; display: flex; flex-direction: column; min-width: 0">
-        <el-card shadow="never" style="flex: 1; display: flex; flex-direction: column" :body-style="{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }">
-          <template #header>
-            <span style="font-weight: 600">출발 문서</span>
-          </template>
-
-          <template v-if="sourceDoc">
-            <!-- 뷰어 -->
-            <div v-if="sourceDoc.downloadUrl" style="flex: 1; min-height: 200px; overflow: auto; border-bottom: 1px solid #ebeef5">
-              <PdfViewer v-if="sourceDoc.fileType === 'pdf'" :document-id="sourceDoc.id" />
-              <MarkdownViewer v-else-if="sourceDoc.fileType === 'md'" :document-id="sourceDoc.id" />
-              <CsvViewer v-else-if="sourceDoc.fileType === 'csv'" :document-id="sourceDoc.id" />
-            </div>
-            <div v-else style="flex: 1; display: flex; align-items: center; justify-content: center; color: #909399; border-bottom: 1px solid #ebeef5">
-              파일이 첨부되지 않은 문서입니다
-            </div>
-
-            <!-- 메타데이터 -->
-            <div style="padding: 12px; font-size: 13px">
-              <p style="margin: 4px 0; font-weight: 600; color: #303133">{{ sourceDoc.fileName ?? '(제목 없음)' }}</p>
-              <div style="display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0">
-                <el-tag size="small" :type="sourceDoc.lifecycle === 'ACTIVE' ? 'success' : sourceDoc.lifecycle === 'DRAFT' ? 'info' : 'danger'">
-                  {{ LIFECYCLE_LABELS[sourceDoc.lifecycle] ?? sourceDoc.lifecycle }}
-                </el-tag>
-                <el-tag size="small">{{ SECURITY_LABELS[sourceDoc.securityLevel] ?? sourceDoc.securityLevel }}</el-tag>
-                <el-tag v-if="sourceDoc.freshness" size="small" :type="sourceDoc.freshness === 'FRESH' ? 'success' : sourceDoc.freshness === 'WARNING' ? 'warning' : 'danger'">
-                  {{ FRESHNESS_LABELS[sourceDoc.freshness] ?? sourceDoc.freshness }}
-                </el-tag>
-              </div>
-              <p style="margin: 4px 0; color: #606266">도메인: {{ sourceDoc.domain }}</p>
-              <p v-if="sourceDoc.validUntil" style="margin: 4px 0; color: #606266">
-                유효기간: {{ new Date(sourceDoc.validUntil).toLocaleDateString('ko-KR') }}
-              </p>
-              <div v-if="Object.keys(sourceDoc.classifications).length > 0" style="margin-top: 4px; color: #606266">
-                <span v-for="(value, key) in sourceDoc.classifications" :key="key" style="margin-right: 12px">
-                  {{ facetLabel(String(key)) }}: {{ value }}
-                </span>
-              </div>
-            </div>
-          </template>
-
-          <div v-else style="flex: 1; display: flex; align-items: center; justify-content: center; color: #909399">
-            출발 문서가 선택되지 않았습니다
-          </div>
-        </el-card>
-      </div>
-
-      <!-- 오른쪽: 대상 문서 -->
-      <div style="flex: 1; display: flex; flex-direction: column; min-width: 0">
-        <el-card shadow="never" style="flex: 1; display: flex; flex-direction: column" :body-style="{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }">
-          <template #header>
-            <span style="font-weight: 600">대상 문서</span>
-          </template>
-
-          <!-- 검색 -->
-          <div style="padding: 12px; border-bottom: 1px solid #ebeef5">
-            <el-input
-              v-model="searchQuery"
-              placeholder="문서 이름으로 검색..."
-              clearable
-              @input="handleSearch"
-            >
-              <template #prefix>
-                <span style="color: #909399">🔍</span>
-              </template>
-            </el-input>
-          </div>
-
-          <!-- 검색 결과 (대상 미선택 시) -->
-          <div v-if="!targetDoc && searchResults.length > 0" style="flex: 1; overflow: auto; padding: 0">
-            <div
-              v-for="result in searchResults"
-              :key="result.id"
-              style="padding: 10px 12px; border-bottom: 1px solid #f2f3f5; cursor: pointer; transition: background 0.15s"
-              @mouseenter="($event.currentTarget as HTMLElement).style.background = '#f5f7fa'"
-              @mouseleave="($event.currentTarget as HTMLElement).style.background = ''"
-              @click="selectTarget(result)"
-            >
-              <div style="font-size: 13px; font-weight: 500; color: #303133">
-                {{ result.fileName ?? '(제목 없음)' }}
-              </div>
-              <div style="font-size: 12px; color: #909399; margin-top: 2px">
-                {{ result.domain }}
-                <span v-for="(value, key) in result.classifications" :key="key" style="margin-left: 8px">
-                  {{ facetLabel(String(key)) }}: {{ value }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 선택된 대상 문서 -->
-          <template v-if="targetDoc">
-            <div v-if="targetDoc.downloadUrl" style="flex: 1; min-height: 200px; overflow: auto; border-bottom: 1px solid #ebeef5">
-              <PdfViewer v-if="targetDoc.fileType === 'pdf'" :document-id="targetDoc.id" />
-              <MarkdownViewer v-else-if="targetDoc.fileType === 'md'" :document-id="targetDoc.id" />
-              <CsvViewer v-else-if="targetDoc.fileType === 'csv'" :document-id="targetDoc.id" />
-            </div>
-            <div v-else style="flex: 1; display: flex; align-items: center; justify-content: center; color: #909399; border-bottom: 1px solid #ebeef5">
-              파일이 첨부되지 않은 문서입니다
-            </div>
-
-            <div style="padding: 12px; font-size: 13px">
-              <div style="display: flex; justify-content: space-between; align-items: center">
-                <p style="margin: 4px 0; font-weight: 600; color: #303133">{{ targetDoc.fileName ?? '(제목 없음)' }}</p>
-                <el-button text size="small" type="primary" @click="targetDoc = null">변경</el-button>
-              </div>
-              <div style="display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0">
-                <el-tag size="small" :type="targetDoc.lifecycle === 'ACTIVE' ? 'success' : targetDoc.lifecycle === 'DRAFT' ? 'info' : 'danger'">
-                  {{ LIFECYCLE_LABELS[targetDoc.lifecycle] ?? targetDoc.lifecycle }}
-                </el-tag>
-                <el-tag size="small">{{ SECURITY_LABELS[targetDoc.securityLevel] ?? targetDoc.securityLevel }}</el-tag>
-                <el-tag v-if="targetDoc.freshness" size="small" :type="targetDoc.freshness === 'FRESH' ? 'success' : targetDoc.freshness === 'WARNING' ? 'warning' : 'danger'">
-                  {{ FRESHNESS_LABELS[targetDoc.freshness] ?? targetDoc.freshness }}
-                </el-tag>
-              </div>
-              <p style="margin: 4px 0; color: #606266">도메인: {{ targetDoc.domain }}</p>
-              <p v-if="targetDoc.validUntil" style="margin: 4px 0; color: #606266">
-                유효기간: {{ new Date(targetDoc.validUntil).toLocaleDateString('ko-KR') }}
-              </p>
-              <div v-if="Object.keys(targetDoc.classifications).length > 0" style="margin-top: 4px; color: #606266">
-                <span v-for="(value, key) in targetDoc.classifications" :key="key" style="margin-right: 12px">
-                  {{ facetLabel(String(key)) }}: {{ value }}
-                </span>
-              </div>
-            </div>
-          </template>
-
-          <!-- 대상 미선택 & 검색 결과 없음 -->
-          <div v-if="!targetDoc && searchResults.length === 0" style="flex: 1; display: flex; align-items: center; justify-content: center; color: #909399">
-            문서를 검색하여 비교할 대상을 선택하세요
-          </div>
-        </el-card>
-      </div>
-    </div>
-
-    <!-- 하단: 관계 설정 -->
-    <el-card shadow="never" style="margin-top: 8px; flex-shrink: 0" :body-style="{ padding: '10px 16px' }">
-      <div style="display: flex; align-items: center; gap: 16px">
-        <span style="font-size: 14px; font-weight: 600; color: #303133; white-space: nowrap">관계 유형:</span>
-        <el-radio-group v-model="relationType">
-          <el-radio-button v-for="opt in RELATION_OPTIONS" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </el-radio-button>
-        </el-radio-group>
-        <div style="flex: 1" />
-        <el-button
-          type="primary"
-          :loading="saving"
-          :disabled="!sourceDoc || !targetDoc"
-          @click="handleSave"
-        >
-          저장
-        </el-button>
-      </div>
+    <!-- 상단: 지식 그래프 -->
+    <el-card shadow="never" style="flex-shrink: 0; margin-bottom: 8px" :body-style="{ padding: '0', height: '280px' }">
+      <template #header>
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span style="font-weight: 600; font-size: 13px">지식 그래프</span>
+          <span style="font-size: 11px; color: #909399">노드 클릭: 대상 선택 | 더블클릭: 관계 확장</span>
+        </div>
+      </template>
+      <RelationGraph
+        ref="graphRef"
+        :data="graphData"
+        :loading="graphLoading"
+        @node-click="handleNodeClick"
+        @node-double-click="handleNodeDoubleClick"
+      />
     </el-card>
+
+    <!-- 하단: 탐색기 + 관계 폼 -->
+    <div style="flex: 1; display: flex; gap: 8px; min-height: 0; overflow: hidden">
+      <!-- 왼쪽: 문서 탐색기 -->
+      <el-card
+        shadow="never"
+        style="flex: 1; min-width: 0; display: flex; flex-direction: column"
+        :body-style="{ flex: 1, padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }"
+      >
+        <template #header>
+          <span style="font-weight: 600; font-size: 13px">문서 탐색기</span>
+        </template>
+        <DocumentExplorer
+          v-if="sourceDoc"
+          :source-document="sourceDoc"
+          :exclude-id="sourceId"
+          @select="handleExplorerSelect"
+        />
+      </el-card>
+
+      <!-- 오른쪽: 관계 설정 폼 -->
+      <el-card
+        shadow="never"
+        style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column"
+        :body-style="{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column' }"
+      >
+        <template #header>
+          <span style="font-weight: 600; font-size: 13px">관계 추가</span>
+        </template>
+
+        <!-- 대상 문서 -->
+        <div style="margin-bottom: 16px">
+          <div style="font-size: 12px; color: #909399; margin-bottom: 6px">대상 문서</div>
+          <div v-if="targetDoc" style="background: #f5f7fa; border-radius: 6px; padding: 10px">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start">
+              <div style="flex: 1; min-width: 0">
+                <div style="font-size: 13px; font-weight: 500; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                  {{ targetDoc.fileName ?? '(제목 없음)' }}
+                </div>
+                <div v-if="targetDoc.docCode" style="font-size: 11px; color: #909399; margin-top: 2px">
+                  {{ targetDoc.docCode }}
+                </div>
+              </div>
+              <el-button text size="small" type="primary" @click="targetDoc = null" style="flex-shrink: 0">변경</el-button>
+            </div>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px">
+              <el-tag size="small" :type="targetDoc.lifecycle === 'ACTIVE' ? 'success' : targetDoc.lifecycle === 'DRAFT' ? 'info' : 'danger'">
+                {{ LIFECYCLE_LABELS[targetDoc.lifecycle] ?? targetDoc.lifecycle }}
+              </el-tag>
+              <el-tag size="small">{{ SECURITY_LABELS[targetDoc.securityLevel] ?? targetDoc.securityLevel }}</el-tag>
+            </div>
+            <div style="font-size: 11px; color: #606266; margin-top: 4px">
+              {{ targetDoc.domain }}
+              <template v-for="(value, key) in targetDoc.classifications" :key="key">
+                <span style="margin-left: 6px">{{ facetLabel(String(key)) }}: {{ value }}</span>
+              </template>
+            </div>
+          </div>
+          <div v-else style="background: #f5f7fa; border-radius: 6px; padding: 20px; text-align: center; color: #909399; font-size: 12px">
+            그래프 노드를 클릭하거나<br>탐색기에서 문서를 선택하세요
+          </div>
+        </div>
+
+        <!-- 관계 유형 -->
+        <div style="margin-bottom: 16px">
+          <div style="font-size: 12px; color: #909399; margin-bottom: 6px">관계 유형</div>
+          <el-radio-group v-model="relationType" style="display: flex; flex-direction: column; gap: 4px">
+            <el-radio
+              v-for="opt in RELATION_OPTIONS"
+              :key="opt.value"
+              :value="opt.value"
+              style="height: auto; margin-right: 0"
+            >
+              <span style="font-size: 13px">{{ opt.label }}</span>
+              <span style="font-size: 11px; color: #909399; margin-left: 4px">{{ opt.desc }}</span>
+            </el-radio>
+          </el-radio-group>
+        </div>
+
+        <div style="flex: 1" />
+
+        <!-- 저장/취소 -->
+        <div style="display: flex; gap: 8px">
+          <el-button style="flex: 1" @click="goBack">취소</el-button>
+          <el-button
+            type="primary"
+            style="flex: 1"
+            :loading="saving"
+            :disabled="!sourceDoc || !targetDoc"
+            @click="handleSave"
+          >
+            저장
+          </el-button>
+        </div>
+      </el-card>
+    </div>
   </div>
 </template>

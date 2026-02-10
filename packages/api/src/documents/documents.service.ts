@@ -674,13 +674,51 @@ export class DocumentsService {
       include: { user: { select: { name: true } } },
     })
 
-    return history.map((h: { id: string; action: string; changes: unknown; createdAt: Date; user: { name: string } | null }) => ({
-      id: h.id,
-      action: h.action,
-      changes: h.changes as Record<string, unknown> | null,
-      userName: h.user?.name ?? null,
-      createdAt: h.createdAt.toISOString(),
-    }))
+    // 관계 이력의 targetId를 문서명/코드로 해석
+    const relationEntries = history.filter((h: { action: string; changes: unknown }) => {
+      const action = h.action
+      const changes = h.changes as Record<string, unknown> | null
+      return (action === 'RELATION_ADD' || action === 'RELATION_REMOVE') && changes?.targetId
+    })
+
+    const targetIds = [...new Set(
+      relationEntries
+        .map((h: { changes: unknown }) => (h.changes as Record<string, unknown>)?.targetId as string)
+        .filter(Boolean),
+    )]
+
+    const targetDocMap = new Map<string, { fileName: string | null; docCode: string | null }>()
+    if (targetIds.length > 0) {
+      const targetDocs = await this.prisma.document.findMany({
+        where: { id: { in: targetIds } },
+        select: { id: true, fileName: true, docCode: true },
+      })
+      for (const td of targetDocs) {
+        targetDocMap.set(td.id, { fileName: td.fileName, docCode: td.docCode })
+      }
+    }
+
+    return history.map((h: { id: string; action: string; changes: unknown; createdAt: Date; user: { name: string } | null }) => {
+      const changes = h.changes as Record<string, unknown> | null
+      let enrichedChanges = changes
+
+      if ((h.action === 'RELATION_ADD' || h.action === 'RELATION_REMOVE') && changes?.targetId) {
+        const target = targetDocMap.get(changes.targetId as string)
+        enrichedChanges = {
+          ...changes,
+          targetFileName: target?.fileName ?? null,
+          targetDocCode: target?.docCode ?? null,
+        }
+      }
+
+      return {
+        id: h.id,
+        action: h.action,
+        changes: enrichedChanges,
+        userName: h.user?.name ?? null,
+        createdAt: h.createdAt.toISOString(),
+      }
+    })
   }
 
   async getIssueDocuments(

@@ -272,3 +272,31 @@ export interface PaginatedResponse<T> {
   }
 }
 
+// ============================================================
+// 관계 그래프 (vis-network용)
+// ============================================================
+
+export interface GraphNode {
+  id: string
+  docCode: string | null
+  fileName: string | null
+  domain: string
+  lifecycle: Lifecycle
+  securityLevel: SecurityLevel
+  classifications: Record<string, string>
+  depth: number
+}
+
+export interface GraphEdge {
+  id: string
+  sourceId: string
+  targetId: string
+  relationType: RelationType
+}
+
+export interface RelationGraphResponse {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  centerId: string
+}
+

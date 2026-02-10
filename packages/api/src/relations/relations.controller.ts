@@ -5,6 +5,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
   Request,
 } from '@nestjs/common'
@@ -26,6 +27,17 @@ interface AuthRequest {
 @ApiBearerAuth()
 export class RelationsController {
   constructor(private readonly relationsService: RelationsService) {}
+
+  @Get('documents/:id/relations/graph')
+  @ApiOperation({ summary: '관계 그래프 조회 (BFS)' })
+  async getRelationGraph(
+    @Param('id') id: string,
+    @Query('depth') depth: string | undefined,
+    @Request() req: AuthRequest,
+  ) {
+    const d = depth ? Math.min(parseInt(depth, 10) || 1, 3) : 1
+    return this.relationsService.getRelationGraph(id, req.user.role, d)
+  }
 
   @Get('documents/:id/relations')
   @ApiOperation({ summary: '문서 관계 조회' })
