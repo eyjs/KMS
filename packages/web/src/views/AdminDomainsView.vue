@@ -3,7 +3,18 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useDomainStore } from '@/stores/domain'
+import { FACET_TYPE_LABELS } from '@kms/shared'
 import type { DomainMasterEntity, FacetMasterEntity, CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from '@kms/shared'
+
+const TIER_LABELS: Record<string, string> = {
+  HOT: '수시 갱신',
+  WARM: '정기 갱신',
+  COLD: '장기 보관',
+}
+
+function facetLabel(key: string): string {
+  return FACET_TYPE_LABELS[key] ?? key
+}
 
 const domainStore = useDomainStore()
 const facets = ref<Record<string, FacetMasterEntity[]>>({})
@@ -364,20 +375,20 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
             </div>
           </template>
 
-          <div style="margin-bottom: 16px">
-            <strong>필수 Facet:</strong>
+          <div style="margin-bottom: 12px">
+            <span style="font-size: 13px; color: #606266">문서 등록 시 필수 분류:</span>
             <el-tag
               v-for="f in (getSelectedDomain()?.requiredFacets ?? [])"
               :key="f"
               size="small"
               style="margin-left: 6px"
             >
-              {{ f }}
+              {{ facetLabel(f as string) }}
             </el-tag>
           </div>
 
-          <div style="margin-bottom: 16px">
-            <strong>SSOT Key:</strong>
+          <div style="margin-bottom: 12px">
+            <span style="font-size: 13px; color: #606266">중복 방지 기준:</span>
             <el-tag
               v-for="k in (getSelectedDomain()?.ssotKey ?? [])"
               :key="k"
@@ -385,14 +396,17 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
               type="warning"
               style="margin-left: 6px"
             >
-              {{ k }}
+              {{ facetLabel(k as string) }}
             </el-tag>
+            <span style="font-size: 11px; color: #909399; margin-left: 8px">
+              같은 조합에 활성 문서 1개만 허용
+            </span>
           </div>
 
-          <!-- Facet 데이터 -->
-          <div v-for="facetType in (getSelectedDomain()?.requiredFacets ?? [])" :key="facetType" style="margin-bottom: 20px">
+          <!-- 분류 항목 -->
+          <div v-for="facetType in (getSelectedDomain()?.requiredFacets ?? [])" :key="facetType" style="margin-bottom: 16px">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
-              <h4 style="margin: 0">{{ facetType }}</h4>
+              <h4 style="margin: 0; font-size: 14px">{{ facetLabel(facetType as string) }}</h4>
               <el-button type="primary" size="small" @click="openFacetCreateDialog(facetType as string)">
                 추가
               </el-button>
@@ -405,9 +419,9 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
               <el-table-column prop="code" label="코드" width="160" />
               <el-table-column prop="displayName" label="이름" min-width="150" />
               <el-table-column prop="sortOrder" label="순서" width="60" align="center" />
-              <el-table-column label="Tier" width="70" align="center">
+              <el-table-column label="갱신주기" width="90" align="center">
                 <template #default="{ row }">
-                  <el-tag v-if="row.tier" size="small" type="info">{{ row.tier }}</el-tag>
+                  <el-tag v-if="row.tier" size="small" type="info">{{ TIER_LABELS[row.tier] ?? row.tier }}</el-tag>
                   <span v-else style="color: #c0c4cc">-</span>
                 </template>
               </el-table-column>
@@ -458,11 +472,13 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
         <el-form-item label="설명">
           <el-input v-model="formData.description" type="textarea" :rows="2" maxlength="500" />
         </el-form-item>
-        <el-form-item label="필수 Facet">
-          <el-input v-model="formData.requiredFacets" placeholder="쉼표 구분 (예: carrier, product, docType)" />
+        <el-form-item label="필수 분류">
+          <el-input v-model="formData.requiredFacets" placeholder="예: carrier, product, docType" />
+          <div style="font-size: 11px; color: #909399; margin-top: 2px">문서 등록 시 반드시 선택해야 하는 분류 (carrier=보험사, product=상품, docType=문서유형)</div>
         </el-form-item>
-        <el-form-item label="SSOT Key">
-          <el-input v-model="formData.ssotKey" placeholder="쉼표 구분 (예: carrier, product, docType)" />
+        <el-form-item label="중복 방지 기준">
+          <el-input v-model="formData.ssotKey" placeholder="예: carrier, product, docType" />
+          <div style="font-size: 11px; color: #909399; margin-top: 2px">같은 분류 조합에 활성 문서를 1개만 허용</div>
         </el-form-item>
         <el-form-item label="정렬 순서">
           <el-input-number v-model="formData.sortOrder" :min="0" :max="999" />
@@ -479,7 +495,7 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
     <!-- Facet 생성/수정 다이얼로그 -->
     <el-dialog
       v-model="facetDialogVisible"
-      :title="facetDialogMode === 'create' ? `${facetDialogType} 분류 추가` : `${facetDialogType} 분류 수정`"
+      :title="facetDialogMode === 'create' ? `${facetLabel(facetDialogType)} 추가` : `${facetLabel(facetDialogType)} 수정`"
       width="460px"
       :close-on-click-modal="false"
     >
@@ -495,11 +511,11 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
         <el-form-item label="이름" required>
           <el-input v-model="facetForm.displayName" placeholder="예: 삼성생명" maxlength="100" />
         </el-form-item>
-        <el-form-item label="Tier">
+        <el-form-item label="갱신주기">
           <el-select v-model="facetForm.tier" clearable placeholder="선택 (옵션)" style="width: 100%">
-            <el-option label="HOT" value="HOT" />
-            <el-option label="WARM" value="WARM" />
-            <el-option label="COLD" value="COLD" />
+            <el-option label="수시 갱신" value="HOT" />
+            <el-option label="정기 갱신" value="WARM" />
+            <el-option label="장기 보관" value="COLD" />
           </el-select>
         </el-form-item>
         <el-form-item label="유효기간 (일)">
