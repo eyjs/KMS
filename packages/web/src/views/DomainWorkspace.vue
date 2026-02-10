@@ -251,6 +251,7 @@ async function handleChildDelete(child: DomainMasterEntity) {
         </span>
       </div>
       <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
+        <el-button v-if="isAdmin" size="small" @click="openChildCreateDialog">+ 추가</el-button>
         <el-button type="primary" size="small" @click="openUpload">
           업로드
         </el-button>
@@ -261,18 +262,8 @@ async function handleChildDelete(child: DomainMasterEntity) {
       </div>
     </div>
 
-    <!-- 하위 카테고리 섹션 -->
-    <div v-if="childDomains.length > 0 || isAdmin" style="margin-bottom: 8px; flex-shrink: 0">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px">
-        <span style="font-size: 12px; color: #909399; font-weight: 600">하위 카테고리</span>
-        <el-button
-          v-if="isAdmin"
-          size="small"
-          @click="openChildCreateDialog"
-        >
-          + 추가
-        </el-button>
-      </div>
+    <!-- 하위 카테고리 섹션 (자식이 있을 때만 표시) -->
+    <div v-if="childDomains.length > 0" style="margin-bottom: 6px; flex-shrink: 0">
       <div style="display: flex; gap: 8px; flex-wrap: wrap; max-height: 80px; overflow-y: auto">
         <div
           v-for="child in childDomains"

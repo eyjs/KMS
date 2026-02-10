@@ -175,39 +175,39 @@ function formatTimeAgo(dateStr: string): string {
 </script>
 
 <template>
-  <div v-loading="loading" style="height: 100%; overflow-y: auto">
-    <h2 style="margin: 0 0 12px; font-size: 20px">KMS 문서관리 프레임워크</h2>
+  <div v-loading="loading" class="dashboard-view">
+    <h2 style="margin: 0 0 10px; font-size: 18px">KMS 문서관리 프레임워크</h2>
 
     <!-- 통계 카드 -->
-    <el-row :gutter="12" style="margin-bottom: 16px">
+    <el-row :gutter="10" style="margin-bottom: 10px">
       <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '16px' }">
-          <div style="font-size: 13px; color: #909399">전체 문서</div>
-          <div style="font-size: 28px; font-weight: 700; color: #303133; margin-top: 4px">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
+          <div style="font-size: 12px; color: #909399">전체 문서</div>
+          <div style="font-size: 24px; font-weight: 700; color: #303133; margin-top: 2px">
             {{ stats?.total ?? 0 }}
           </div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '16px' }">
-          <div style="font-size: 13px; color: #909399">ACTIVE</div>
-          <div style="font-size: 28px; font-weight: 700; color: #67c23a; margin-top: 4px">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
+          <div style="font-size: 12px; color: #909399">ACTIVE</div>
+          <div style="font-size: 24px; font-weight: 700; color: #67c23a; margin-top: 2px">
             {{ stats?.active ?? 0 }}
           </div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '16px' }">
-          <div style="font-size: 13px; color: #909399">DRAFT</div>
-          <div style="font-size: 28px; font-weight: 700; color: #909399; margin-top: 4px">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
+          <div style="font-size: 12px; color: #909399">DRAFT</div>
+          <div style="font-size: 24px; font-weight: 700; color: #909399; margin-top: 2px">
             {{ stats?.draft ?? 0 }}
           </div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '16px' }">
-          <div style="font-size: 13px; color: #909399">조치 필요</div>
-          <div style="font-size: 28px; font-weight: 700; color: #f56c6c; margin-top: 4px">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
+          <div style="font-size: 12px; color: #909399">조치 필요</div>
+          <div style="font-size: 24px; font-weight: 700; color: #f56c6c; margin-top: 2px">
             {{ totalIssues }}
           </div>
         </el-card>
@@ -215,9 +215,9 @@ function formatTimeAgo(dateStr: string): string {
     </el-row>
 
     <!-- 조치 필요 문서 -->
-    <el-card v-if="totalIssues > 0" shadow="never" style="margin-bottom: 16px">
+    <el-card v-if="totalIssues > 0" shadow="never" style="margin-bottom: 10px">
       <template #header>
-        <span style="font-weight: 600">조치 필요 문서</span>
+        <span style="font-weight: 600; font-size: 14px">조치 필요 문서</span>
       </template>
       <el-tabs v-model="activeIssueTab" @tab-change="handleIssueTabChange">
         <el-tab-pane
@@ -284,9 +284,9 @@ function formatTimeAgo(dateStr: string): string {
     </el-card>
 
     <!-- 도메인별 현황 -->
-    <el-card shadow="never" style="margin-bottom: 16px">
+    <el-card shadow="never" style="margin-bottom: 10px">
       <template #header>
-        <span style="font-weight: 600">도메인별 문서 현황</span>
+        <span style="font-weight: 600; font-size: 14px">도메인별 문서 현황</span>
       </template>
       <el-table
         :data="byDomainFlat"
@@ -339,7 +339,7 @@ function formatTimeAgo(dateStr: string): string {
     <!-- 최근 활동 -->
     <el-card shadow="never">
       <template #header>
-        <span style="font-weight: 600">최근 활동</span>
+        <span style="font-weight: 600; font-size: 14px">최근 활동</span>
       </template>
       <div v-if="recentActivities.length > 0">
         <div
@@ -364,3 +364,16 @@ function formatTimeAgo(dateStr: string): string {
     </el-card>
   </div>
 </template>
+
+<style scoped>
+.dashboard-view {
+  height: 100%;
+  overflow-y: auto;
+}
+.dashboard-view :deep(.el-card__header) {
+  padding: 10px 16px;
+}
+.dashboard-view :deep(.el-card__body) {
+  padding: 12px 16px;
+}
+</style>
