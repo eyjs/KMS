@@ -67,6 +67,22 @@ export const ROLE_ORDER: Record<UserRole, number> = {
 }
 
 // ============================================================
+// 라이프사이클 한국어 라벨
+// ============================================================
+
+export const LIFECYCLE_LABELS: Record<string, string> = {
+  DRAFT: '임시저장',
+  ACTIVE: '사용중',
+  DEPRECATED: '만료',
+}
+
+export const FRESHNESS_LABELS: Record<string, string> = {
+  FRESH: '정상',
+  WARNING: '갱신필요',
+  EXPIRED: '만료됨',
+}
+
+// ============================================================
 // Facet 타입 한국어 라벨
 // ============================================================
 

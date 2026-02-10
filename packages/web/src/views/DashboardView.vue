@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useDomainStore } from '@/stores/domain'
 import { documentsApi } from '@/api/documents'
 import type { DocumentStats, RecentActivity, IssueCounts } from '@/api/documents'
+import { LIFECYCLE_LABELS } from '@kms/shared'
 import type { DomainMasterEntity, DocumentEntity } from '@kms/shared'
 
 const router = useRouter()
@@ -75,7 +76,7 @@ const ISSUE_TABS = [
   { key: 'warning', label: '경고' },
   { key: 'expired', label: '만료' },
   { key: 'no_file', label: '파일없음' },
-  { key: 'stale_draft', label: 'DRAFT 장기' },
+  { key: 'stale_draft', label: '임시저장 장기' },
 ] as const
 
 const activeIssueTab = ref('warning')
@@ -190,7 +191,7 @@ function formatTimeAgo(dateStr: string): string {
       </el-col>
       <el-col :span="6">
         <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
-          <div style="font-size: 12px; color: #909399">ACTIVE</div>
+          <div style="font-size: 12px; color: #909399">사용중</div>
           <div style="font-size: 24px; font-weight: 700; color: #67c23a; margin-top: 2px">
             {{ stats?.active ?? 0 }}
           </div>
@@ -198,7 +199,7 @@ function formatTimeAgo(dateStr: string): string {
       </el-col>
       <el-col :span="6">
         <el-card shadow="never" :body-style="{ padding: '12px 16px' }">
-          <div style="font-size: 12px; color: #909399">DRAFT</div>
+          <div style="font-size: 12px; color: #909399">임시저장</div>
           <div style="font-size: 24px; font-weight: 700; color: #909399; margin-top: 2px">
             {{ stats?.draft ?? 0 }}
           </div>
@@ -254,7 +255,7 @@ function formatTimeAgo(dateStr: string): string {
               :type="row.lifecycle === 'ACTIVE' ? 'success' : row.lifecycle === 'DRAFT' ? 'info' : 'danger'"
               size="small"
             >
-              {{ row.lifecycle }}
+              {{ LIFECYCLE_LABELS[row.lifecycle] ?? row.lifecycle }}
             </el-tag>
           </template>
         </el-table-column>
@@ -303,19 +304,19 @@ function formatTimeAgo(dateStr: string): string {
           </template>
         </el-table-column>
         <el-table-column prop="total" label="전체" width="80" align="center" />
-        <el-table-column label="ACTIVE" width="80" align="center">
+        <el-table-column label="사용중" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.active > 0" type="success" size="small">{{ row.active }}</el-tag>
             <span v-else style="color: #c0c4cc">0</span>
           </template>
         </el-table-column>
-        <el-table-column label="DRAFT" width="80" align="center">
+        <el-table-column label="임시저장" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.draft > 0" type="info" size="small">{{ row.draft }}</el-tag>
             <span v-else style="color: #c0c4cc">0</span>
           </template>
         </el-table-column>
-        <el-table-column label="DEPRECATED" width="100" align="center">
+        <el-table-column label="만료" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.deprecated > 0" type="danger" size="small">{{ row.deprecated }}</el-tag>
             <span v-else style="color: #c0c4cc">0</span>

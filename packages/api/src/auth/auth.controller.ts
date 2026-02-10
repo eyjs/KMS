@@ -2,6 +2,8 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
+  Param,
   Body,
   UseGuards,
   Request,
@@ -11,7 +13,7 @@ import { AuthService } from './auth.service'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { Roles } from './decorators/roles.decorator'
 import { RolesGuard } from './guards/roles.guard'
-import { LoginDto, RefreshTokenDto, CreateUserDto, CreateApiKeyDto } from './dto/auth.dto'
+import { LoginDto, RefreshTokenDto, CreateUserDto, UpdateUserRoleDto, CreateApiKeyDto } from './dto/auth.dto'
 
 @ApiTags('auth')
 @Controller('auth')
@@ -30,13 +32,41 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken)
   }
 
+  @Get('users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '사용자 목록 (ADMIN만)' })
+  async findAllUsers() {
+    return this.authService.findAllUsers()
+  }
+
   @Post('users')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: '사용자 생성 (ADMIN만)' })
   async createUser(@Body() dto: CreateUserDto) {
-    return this.authService.createUser(dto.email, dto.password, dto.name, dto.role)
+    const result = await this.authService.createUser(dto.email, dto.password, dto.name, dto.role)
+    return result
+  }
+
+  @Patch('users/:id/role')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '사용자 역할 변경 (ADMIN만)' })
+  async updateUserRole(@Param('id') id: string, @Body() dto: UpdateUserRoleDto) {
+    return this.authService.updateUserRole(id, dto.role)
+  }
+
+  @Patch('users/:id/toggle-active')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '사용자 활성/비활성 토글 (ADMIN만)' })
+  async toggleUserActive(@Param('id') id: string) {
+    return this.authService.toggleUserActive(id)
   }
 
   @Post('api-keys')

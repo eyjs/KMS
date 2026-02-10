@@ -5,6 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common'
+import { PrismaClient } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { TaxonomyService } from '../taxonomy/taxonomy.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
@@ -320,7 +321,7 @@ export class DocumentsService {
     }
 
     // 트랜잭션으로 분류 업데이트 + 문서 업데이트 원자적 실행
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx: PrismaClient) => {
       if (data.classifications) {
         await tx.classification.deleteMany({ where: { documentId: id } })
         await tx.classification.createMany({

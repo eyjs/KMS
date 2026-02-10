@@ -18,8 +18,9 @@ async function loadPdf() {
     objectUrl.value = null
   }
   try {
-    const { data } = await documentsApi.downloadFile(props.documentId)
-    objectUrl.value = URL.createObjectURL(data)
+    const { data } = await documentsApi.previewFile(props.documentId)
+    const pdfBlob = new Blob([data], { type: 'application/pdf' })
+    objectUrl.value = URL.createObjectURL(pdfBlob)
   } catch {
     error.value = 'PDF 로드에 실패했습니다'
   } finally {

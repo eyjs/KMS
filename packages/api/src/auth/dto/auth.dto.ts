@@ -41,6 +41,12 @@ export class CreateUserDto {
   role!: (typeof VALID_ROLES)[number]
 }
 
+export class UpdateUserRoleDto {
+  @ApiProperty({ enum: VALID_ROLES, example: 'EMPLOYEE' })
+  @IsEnum(VALID_ROLES, { message: '유효한 역할이 아닙니다' })
+  role!: (typeof VALID_ROLES)[number]
+}
+
 export class CreateApiKeyDto {
   @ApiProperty({ example: '외부업체 A' })
   @IsNotEmpty()

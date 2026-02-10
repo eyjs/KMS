@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
-import { FACET_TYPE_LABELS } from '@kms/shared'
+import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
 import type { DocumentEntity, RelationType } from '@kms/shared'
 import { ElMessage } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
@@ -156,11 +156,11 @@ function goBack() {
               <p style="margin: 4px 0; font-weight: 600; color: #303133">{{ sourceDoc.fileName ?? '(제목 없음)' }}</p>
               <div style="display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0">
                 <el-tag size="small" :type="sourceDoc.lifecycle === 'ACTIVE' ? 'success' : sourceDoc.lifecycle === 'DRAFT' ? 'info' : 'danger'">
-                  {{ sourceDoc.lifecycle }}
+                  {{ LIFECYCLE_LABELS[sourceDoc.lifecycle] ?? sourceDoc.lifecycle }}
                 </el-tag>
                 <el-tag size="small">{{ SECURITY_LABELS[sourceDoc.securityLevel] ?? sourceDoc.securityLevel }}</el-tag>
                 <el-tag v-if="sourceDoc.freshness" size="small" :type="sourceDoc.freshness === 'FRESH' ? 'success' : sourceDoc.freshness === 'WARNING' ? 'warning' : 'danger'">
-                  {{ sourceDoc.freshness }}
+                  {{ FRESHNESS_LABELS[sourceDoc.freshness] ?? sourceDoc.freshness }}
                 </el-tag>
               </div>
               <p style="margin: 4px 0; color: #606266">도메인: {{ sourceDoc.domain }}</p>
@@ -242,11 +242,11 @@ function goBack() {
               </div>
               <div style="display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0">
                 <el-tag size="small" :type="targetDoc.lifecycle === 'ACTIVE' ? 'success' : targetDoc.lifecycle === 'DRAFT' ? 'info' : 'danger'">
-                  {{ targetDoc.lifecycle }}
+                  {{ LIFECYCLE_LABELS[targetDoc.lifecycle] ?? targetDoc.lifecycle }}
                 </el-tag>
                 <el-tag size="small">{{ SECURITY_LABELS[targetDoc.securityLevel] ?? targetDoc.securityLevel }}</el-tag>
                 <el-tag v-if="targetDoc.freshness" size="small" :type="targetDoc.freshness === 'FRESH' ? 'success' : targetDoc.freshness === 'WARNING' ? 'warning' : 'danger'">
-                  {{ targetDoc.freshness }}
+                  {{ FRESHNESS_LABELS[targetDoc.freshness] ?? targetDoc.freshness }}
                 </el-tag>
               </div>
               <p style="margin: 4px 0; color: #606266">도메인: {{ targetDoc.domain }}</p>

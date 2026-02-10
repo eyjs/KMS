@@ -105,6 +105,10 @@ export const documentsApi = {
     return client.get(`/documents/${id}/file`, { responseType: 'blob' })
   },
 
+  previewFile(id: string) {
+    return client.get(`/documents/${id}/preview`, { responseType: 'blob' })
+  },
+
   getStats() {
     return client.get<DocumentStats>('/documents/stats')
   },

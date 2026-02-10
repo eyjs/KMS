@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
+import { LIFECYCLE_LABELS } from '@kms/shared'
 import type { DocumentEntity, DomainMasterEntity, PaginatedResponse } from '@kms/shared'
 
 const router = useRouter()
@@ -110,9 +111,9 @@ function buildClassificationPath(doc: DocumentEntity): string {
           <el-option v-for="d in domains" :key="d.code" :label="d.displayName" :value="d.code" />
         </el-select>
         <el-select v-model="lifecycleFilter" placeholder="상태" clearable size="small" style="width: 120px">
-          <el-option label="DRAFT" value="DRAFT" />
-          <el-option label="ACTIVE" value="ACTIVE" />
-          <el-option label="DEPRECATED" value="DEPRECATED" />
+          <el-option label="임시저장" value="DRAFT" />
+          <el-option label="사용중" value="ACTIVE" />
+          <el-option label="만료" value="DEPRECATED" />
         </el-select>
       </div>
     </el-card>
@@ -142,7 +143,7 @@ function buildClassificationPath(doc: DocumentEntity): string {
               </div>
               <div style="display: flex; gap: 6px; flex-shrink: 0">
                 <el-tag :type="LIFECYCLE_TAG[doc.lifecycle] ?? 'info'" size="small">
-                  {{ doc.lifecycle }}
+                  {{ LIFECYCLE_LABELS[doc.lifecycle] ?? doc.lifecycle }}
                 </el-tag>
                 <el-tag :type="SECURITY_TAG[doc.securityLevel]?.type ?? ''" size="small">
                   {{ SECURITY_TAG[doc.securityLevel]?.label ?? doc.securityLevel }}

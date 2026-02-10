@@ -76,6 +76,38 @@ export class AuthService {
     }
   }
 
+  async findAllUsers() {
+    const users = await this.prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+    return users
+  }
+
+  async updateUserRole(userId: string, role: UserRole) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { role },
+      select: { id: true, email: true, name: true, role: true, isActive: true },
+    })
+  }
+
+  async toggleUserActive(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } })
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { isActive: !user.isActive },
+      select: { id: true, email: true, name: true, role: true, isActive: true },
+    })
+  }
+
   async createApiKey(name: string, role: UserRole, expiresAt?: Date) {
     const rawKey = `kms_${crypto.randomBytes(32).toString('hex')}`
     const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex')

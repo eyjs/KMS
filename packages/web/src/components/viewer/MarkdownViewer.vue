@@ -22,7 +22,7 @@ async function loadMarkdown() {
   loading.value = true
   error.value = null
   try {
-    const { data } = await documentsApi.downloadFile(props.documentId)
+    const { data } = await documentsApi.previewFile(props.documentId)
     content.value = await (data as Blob).text()
   } catch {
     error.value = 'Markdown 로드에 실패했습니다'

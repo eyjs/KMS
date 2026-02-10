@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { documentsApi } from '@/api/documents'
+import { LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
 import type { DocumentEntity, DocumentListQuery } from '@kms/shared'
 
 const props = defineProps<{
@@ -110,9 +111,9 @@ defineExpose({ refresh: fetchDocuments })
         size="small"
         style="width: 120px"
       >
-        <el-option label="DRAFT" value="DRAFT" />
-        <el-option label="ACTIVE" value="ACTIVE" />
-        <el-option label="DEPRECATED" value="DEPRECATED" />
+        <el-option label="임시저장" value="DRAFT" />
+        <el-option label="사용중" value="ACTIVE" />
+        <el-option label="만료" value="DEPRECATED" />
       </el-select>
       <span style="font-size: 12px; color: #909399; margin-left: auto">
         {{ total }}건
@@ -142,7 +143,7 @@ defineExpose({ refresh: fetchDocuments })
       <el-table-column label="상태" width="90">
         <template #default="{ row }">
           <el-tag :type="LIFECYCLE_TAG[row.lifecycle] ?? 'info'" size="small">
-            {{ row.lifecycle }}
+            {{ LIFECYCLE_LABELS[row.lifecycle] ?? row.lifecycle }}
           </el-tag>
         </template>
       </el-table-column>
@@ -153,14 +154,14 @@ defineExpose({ refresh: fetchDocuments })
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="신선도" width="80">
+      <el-table-column label="갱신상태" width="90">
         <template #default="{ row }">
           <el-tag
             v-if="row.freshness"
             :type="row.freshness === 'FRESH' ? 'success' : row.freshness === 'WARNING' ? 'warning' : 'danger'"
             size="small"
           >
-            {{ row.freshness }}
+            {{ FRESHNESS_LABELS[row.freshness] ?? row.freshness }}
           </el-tag>
           <span v-else style="color: #c0c4cc">-</span>
         </template>

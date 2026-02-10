@@ -6,7 +6,7 @@ import { relationsApi } from '@/api/relations'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
-import { LIFECYCLE_TRANSITIONS, FACET_TYPE_LABELS } from '@kms/shared'
+import { LIFECYCLE_TRANSITIONS, FACET_TYPE_LABELS, LIFECYCLE_LABELS } from '@kms/shared'
 import type { DocumentEntity, Lifecycle, RelationEntity, RelationType, FacetMasterEntity } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
@@ -374,7 +374,7 @@ async function handleEditSubmit() {
           <!-- 상태 태그 -->
           <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px">
             <el-tag :type="doc.lifecycle === 'ACTIVE' ? 'success' : doc.lifecycle === 'DRAFT' ? 'info' : 'danger'" size="small">
-              {{ doc.lifecycle }}
+              {{ LIFECYCLE_LABELS[doc.lifecycle] ?? doc.lifecycle }}
             </el-tag>
             <el-tag
               :type="doc.securityLevel === 'SECRET' ? 'danger' : doc.securityLevel === 'CONFIDENTIAL' ? 'warning' : ''"

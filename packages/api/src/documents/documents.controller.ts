@@ -225,12 +225,36 @@ export class DocumentsController {
     @Request() req: AuthRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const doc = await this.documentsService.findOneInternal(id, req.user.role)
+    return this.serveFile(id, req.user.role, res, 'attachment')
+  }
+
+  @Get(':id/preview')
+  @ApiOperation({ summary: '파일 인라인 미리보기 (뷰어용)' })
+  async previewFile(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.serveFile(id, req.user.role, res, 'inline')
+  }
+
+  private readonly MIME_MAP: Record<string, string> = {
+    '.pdf': 'application/pdf',
+    '.md': 'text/markdown; charset=utf-8',
+    '.csv': 'text/csv; charset=utf-8',
+  }
+
+  private async serveFile(
+    id: string,
+    role: UserRole,
+    res: Response,
+    disposition: 'attachment' | 'inline',
+  ): Promise<StreamableFile> {
+    const doc = await this.documentsService.findOneInternal(id, role)
     if (!doc.filePath) {
       throw new NotFoundException('파일 경로를 찾을 수 없습니다')
     }
 
-    // Path traversal 방지: 스토리지 디렉토리 내 파일인지 확인
     const resolved = path.resolve(doc.filePath)
     if (!resolved.startsWith(this.storagePath)) {
       throw new BadRequestException('허용되지 않는 파일 경로입니다')
@@ -241,9 +265,11 @@ export class DocumentsController {
     }
 
     const stream = fs.createReadStream(resolved)
+    const ext = path.extname(doc.fileName ?? '').toLowerCase()
+    const contentType = this.MIME_MAP[ext] ?? 'application/octet-stream'
     res.set({
-      'Content-Type': 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(doc.fileName ?? 'download')}"`,
+      'Content-Type': contentType,
+      'Content-Disposition': `${disposition}; filename="${encodeURIComponent(doc.fileName ?? 'download')}"`,
     })
     return new StreamableFile(stream)
   }

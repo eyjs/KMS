@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
 import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
 import CsvViewer from '@/components/viewer/CsvViewer.vue'
-import { FACET_TYPE_LABELS } from '@kms/shared'
+import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
 import type { DocumentEntity } from '@kms/shared'
 
 const props = defineProps<{
@@ -42,7 +42,7 @@ const fileUrl = computed(() => props.document.downloadUrl)
     <div style="padding: 12px; font-size: 12px">
       <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px">
         <el-tag :type="LIFECYCLE_TAG[document.lifecycle] ?? 'info'" size="small">
-          {{ document.lifecycle }}
+          {{ LIFECYCLE_LABELS[document.lifecycle] ?? document.lifecycle }}
         </el-tag>
         <el-tag
           :type="document.securityLevel === 'SECRET' ? 'danger' : document.securityLevel === 'CONFIDENTIAL' ? 'warning' : ''"
@@ -55,7 +55,7 @@ const fileUrl = computed(() => props.document.downloadUrl)
           :type="document.freshness === 'FRESH' ? 'success' : document.freshness === 'WARNING' ? 'warning' : 'danger'"
           size="small"
         >
-          {{ document.freshness }}
+          {{ FRESHNESS_LABELS[document.freshness] ?? document.freshness }}
         </el-tag>
       </div>
       <div style="color: #606266">
