@@ -47,8 +47,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '사용자 생성 (ADMIN만)' })
   async createUser(@Body() dto: CreateUserDto) {
-    const result = await this.authService.createUser(dto.email, dto.password, dto.name, dto.role)
-    return result
+    return this.authService.createUser(dto.email, dto.password, dto.name, dto.role)
   }
 
   @Patch('users/:id/role')
@@ -56,8 +55,12 @@ export class AuthController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: '사용자 역할 변경 (ADMIN만)' })
-  async updateUserRole(@Param('id') id: string, @Body() dto: UpdateUserRoleDto) {
-    return this.authService.updateUserRole(id, dto.role)
+  async updateUserRole(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserRoleDto,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.authService.updateUserRole(id, dto.role, req.user.sub)
   }
 
   @Patch('users/:id/toggle-active')
@@ -65,8 +68,11 @@ export class AuthController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: '사용자 활성/비활성 토글 (ADMIN만)' })
-  async toggleUserActive(@Param('id') id: string) {
-    return this.authService.toggleUserActive(id)
+  async toggleUserActive(
+    @Param('id') id: string,
+    @Request() req: { user: { sub: string } },
+  ) {
+    return this.authService.toggleUserActive(id, req.user.sub)
   }
 
   @Post('api-keys')

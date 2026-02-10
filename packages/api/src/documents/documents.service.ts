@@ -5,7 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common'
-import { PrismaClient } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { TaxonomyService } from '../taxonomy/taxonomy.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
@@ -114,12 +114,14 @@ export class DocumentsService {
     let fileSize: number = 0
 
     if (file) {
-      const ext = file.originalname.split('.').pop()?.toLowerCase()
+      // multer가 latin1로 디코딩하는 파일명을 UTF-8로 복원
+      const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8')
+      const ext = originalName.split('.').pop()?.toLowerCase()
       if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
         throw new BadRequestException('허용되지 않는 파일 형식입니다')
       }
       filePath = file.path
-      fileName = file.originalname
+      fileName = originalName
       fileType = ext
       fileSize = file.size
     } else if (data.title) {
@@ -258,7 +260,8 @@ export class DocumentsService {
       throw new ForbiddenException('접근 권한이 없습니다')
     }
 
-    const ext = file.originalname.split('.').pop()?.toLowerCase()
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8')
+    const ext = originalName.split('.').pop()?.toLowerCase()
     if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
       throw new BadRequestException('허용되지 않는 파일 형식입니다')
     }
@@ -267,7 +270,7 @@ export class DocumentsService {
       where: { id },
       data: {
         filePath: file.path,
-        fileName: file.originalname,
+        fileName: originalName,
         fileType: ext,
         fileSize: file.size,
         updatedBy: { connect: { id: userId } },
@@ -279,7 +282,7 @@ export class DocumentsService {
       data: {
         documentId: id,
         action: 'FILE_ATTACH',
-        changes: { fileName: file.originalname, fileType: ext },
+        changes: { fileName: originalName, fileType: ext },
         userId,
       },
     })
@@ -321,7 +324,7 @@ export class DocumentsService {
     }
 
     // 트랜잭션으로 분류 업데이트 + 문서 업데이트 원자적 실행
-    const updated = await this.prisma.$transaction(async (tx: PrismaClient) => {
+    const updated = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       if (data.classifications) {
         await tx.classification.deleteMany({ where: { documentId: id } })
         await tx.classification.createMany({

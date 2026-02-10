@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
@@ -91,7 +92,10 @@ export class AuthService {
     return users
   }
 
-  async updateUserRole(userId: string, role: UserRole) {
+  async updateUserRole(userId: string, role: UserRole, currentUserId: string) {
+    if (userId === currentUserId) {
+      throw new BadRequestException('자기 자신의 역할은 변경할 수 없습니다')
+    }
     return this.prisma.user.update({
       where: { id: userId },
       data: { role },
@@ -99,7 +103,10 @@ export class AuthService {
     })
   }
 
-  async toggleUserActive(userId: string) {
+  async toggleUserActive(userId: string, currentUserId: string) {
+    if (userId === currentUserId) {
+      throw new BadRequestException('자기 자신의 계정은 비활성화할 수 없습니다')
+    }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } })
     return this.prisma.user.update({
       where: { id: userId },
