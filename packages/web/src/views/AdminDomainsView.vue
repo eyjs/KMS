@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useDomainStore } from '@/stores/domain'
-import { FACET_TYPE_LABELS } from '@kms/shared'
+import { FACET_TYPE_LABELS, DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
 import type { DomainMasterEntity, FacetMasterEntity, CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from '@kms/shared'
 
 const TIER_LABELS: Record<string, string> = {
@@ -78,10 +78,32 @@ function getFacetData(facetType: string): FacetMasterEntity[] {
   return facets.value[`${selectedDomain.value}:${facetType}`] ?? []
 }
 
+// 도메인 깊이 계산
+function getDomainDepth(code: string): number {
+  let depth = 0
+  let current = domainStore.domainsFlat.find((d) => d.code === code)
+  while (current?.parentCode) {
+    depth++
+    current = domainStore.domainsFlat.find((d) => d.code === current!.parentCode)
+  }
+  return depth
+}
+
+function canAddChild(domain: FlatDomainRow): boolean {
+  return getDomainDepth(domain.code) + 1 < DOMAIN_MAX_DEPTH
+}
+
+function getNewDomainLevelLabel(): string {
+  if (!formData.value.parentCode) return DOMAIN_LEVEL_LABELS[0] ?? '도메인'
+  const depth = getDomainDepth(formData.value.parentCode) + 1
+  return DOMAIN_LEVEL_LABELS[depth] ?? '도메인'
+}
+
 // 도메인 CRUD
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const dialogLoading = ref(false)
+const showAdvanced = ref(false)
 
 const formData = ref({
   code: '',
@@ -95,6 +117,7 @@ const formData = ref({
 
 function openCreateDialog() {
   dialogMode.value = 'create'
+  showAdvanced.value = false
   formData.value = {
     code: '',
     displayName: '',
@@ -108,7 +131,13 @@ function openCreateDialog() {
 }
 
 function openCreateChildDialog(parent: FlatDomainRow) {
+  if (!canAddChild(parent)) {
+    const maxLabel = DOMAIN_LEVEL_LABELS[DOMAIN_MAX_DEPTH - 1] ?? '최하위'
+    ElMessage.warning(`도메인은 "${maxLabel}" 단계까지 가능합니다. ${DOMAIN_GUIDANCE.facetGuide}`)
+    return
+  }
   dialogMode.value = 'create'
+  showAdvanced.value = false
   formData.value = {
     code: '',
     displayName: '',
@@ -136,9 +165,6 @@ function openEditDialog(domain: FlatDomainRow) {
   dialogVisible.value = true
 }
 
-const codePrefix = computed(() => formData.value.parentCode ? `${formData.value.parentCode}-` : '')
-const fullCode = computed(() => codePrefix.value ? `${codePrefix.value}${formData.value.code}` : formData.value.code)
-
 function parseCommaSeparated(value: string): string[] {
   return value.split(',').map((s) => s.trim()).filter(Boolean)
 }
@@ -148,13 +174,16 @@ async function handleDialogSubmit() {
   try {
     if (dialogMode.value === 'create') {
       const dto: CreateDomainDto = {
-        code: fullCode.value,
         displayName: formData.value.displayName,
         parentCode: formData.value.parentCode ?? undefined,
         description: formData.value.description || undefined,
         requiredFacets: parseCommaSeparated(formData.value.requiredFacets),
         ssotKey: parseCommaSeparated(formData.value.ssotKey),
         sortOrder: formData.value.sortOrder,
+      }
+      // 고급 옵션에서 별칭을 입력한 경우에만 코드 전달
+      if (formData.value.code.trim()) {
+        dto.code = formData.value.code.trim()
       }
       await taxonomyApi.createDomain(dto)
       ElMessage.success('도메인이 생성되었습니다')
@@ -257,7 +286,6 @@ async function handleFacetSubmit() {
     if (facetDialogMode.value === 'create') {
       const dto: CreateFacetDto = {
         facetType: facetForm.value.facetType,
-        code: facetForm.value.code,
         displayName: facetForm.value.displayName,
         domain: selectedDomain.value ?? undefined,
         tier: facetForm.value.tier ? (facetForm.value.tier as 'HOT' | 'WARM' | 'COLD') : undefined,
@@ -312,7 +340,11 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
 
 <template>
   <div v-loading="loading" style="height: 100%; overflow-y: auto">
-    <h2 style="margin: 0 0 12px; font-size: 20px">도메인 / 분류 관리</h2>
+    <h2 style="margin: 0 0 8px; font-size: 20px">도메인 / 분류 관리</h2>
+    <div style="margin-bottom: 12px; padding: 10px 14px; background: #f4f4f5; border-radius: 6px; font-size: 13px; color: #606266; line-height: 1.6">
+      <strong>도메인</strong> = 업무 영역 (영업, 수수료, 계약 등) &nbsp;|&nbsp;
+      <strong>분류(Facet)</strong> = 보험사, 상품, 문서유형 → 오른쪽 패널에서 관리
+    </div>
 
     <div style="display: flex; gap: 16px">
       <!-- 도메인 목록 -->
@@ -351,7 +383,16 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
           </el-table-column>
           <el-table-column label="" width="160" align="center">
             <template #default="{ row }">
-              <el-button text size="small" type="success" @click.stop="openCreateChildDialog(row)">
+              <el-tooltip
+                v-if="!canAddChild(row)"
+                :content="`업무프로세스 단계까지 도달. ${DOMAIN_GUIDANCE.facetGuide}`"
+                placement="top"
+              >
+                <el-button text size="small" type="info" disabled @click.stop>
+                  하위 추가
+                </el-button>
+              </el-tooltip>
+              <el-button v-else text size="small" type="success" @click.stop="openCreateChildDialog(row)">
                 하위 추가
               </el-button>
               <el-button text size="small" type="primary" @click.stop="openEditDialog(row)">
@@ -448,41 +489,83 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
     <!-- 도메인 생성/수정 다이얼로그 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="dialogMode === 'edit' ? '도메인 수정' : formData.parentCode ? `하위 카테고리 추가 (${formData.parentCode})` : '루트 도메인 추가'"
+      :title="dialogMode === 'edit' ? '도메인 수정' : `${getNewDomainLevelLabel()} 추가`"
       width="480px"
       :close-on-click-modal="false"
     >
+      <!-- 도메인 가이드 -->
+      <el-alert
+        v-if="dialogMode === 'create'"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        <template #title>{{ DOMAIN_GUIDANCE.principle }}</template>
+        <div style="font-size: 12px; line-height: 1.6; margin-top: 4px">
+          <div style="color: #67c23a">예시: {{ DOMAIN_GUIDANCE.examples.correct.join(', ') }}</div>
+          <div style="color: #f56c6c">주의: {{ DOMAIN_GUIDANCE.examples.wrong.join(', ') }} (분류로 관리)</div>
+        </div>
+      </el-alert>
+
       <el-form label-width="110px" label-position="left">
         <el-form-item v-if="formData.parentCode && dialogMode === 'create'" label="상위 도메인">
           <el-input :model-value="formData.parentCode" disabled />
         </el-form-item>
-        <el-form-item label="코드" required>
-          <el-input
-            v-model="formData.code"
-            :disabled="dialogMode === 'edit'"
-            :placeholder="formData.parentCode ? '예: SALES' : '예: GA'"
-            maxlength="20"
-          >
-            <template v-if="formData.parentCode && dialogMode === 'create'" #prepend>{{ codePrefix }}</template>
-          </el-input>
+        <el-form-item v-if="dialogMode === 'edit'" label="코드">
+          <el-input :model-value="formData.code" disabled />
         </el-form-item>
-        <el-form-item label="이름" required>
-          <el-input v-model="formData.displayName" placeholder="예: GA 영업" maxlength="100" />
+        <el-form-item :label="`${getNewDomainLevelLabel()} 이름`" required>
+          <el-input v-model="formData.displayName" :placeholder="`예: ${DOMAIN_GUIDANCE.examples.correct.slice(0, 3).join(', ')}`" maxlength="100" />
+          <div v-if="dialogMode === 'create'" style="font-size: 11px; color: #909399; margin-top: 2px">
+            코드는 자동 생성됩니다 (예: D01, D01-01)
+          </div>
         </el-form-item>
         <el-form-item label="설명">
           <el-input v-model="formData.description" type="textarea" :rows="2" maxlength="500" />
         </el-form-item>
-        <el-form-item label="필수 분류">
-          <el-input v-model="formData.requiredFacets" placeholder="예: carrier, product, docType" />
-          <div style="font-size: 11px; color: #909399; margin-top: 2px">문서 등록 시 반드시 선택해야 하는 분류 (carrier=보험사, product=상품, docType=문서유형)</div>
-        </el-form-item>
-        <el-form-item label="중복 방지 기준">
-          <el-input v-model="formData.ssotKey" placeholder="예: carrier, product, docType" />
-          <div style="font-size: 11px; color: #909399; margin-top: 2px">같은 분류 조합에 활성 문서를 1개만 허용</div>
-        </el-form-item>
-        <el-form-item label="정렬 순서">
-          <el-input-number v-model="formData.sortOrder" :min="0" :max="999" />
-        </el-form-item>
+
+        <!-- 고급 옵션 (접힌 상태) -->
+        <template v-if="dialogMode === 'create'">
+          <div
+            style="cursor: pointer; color: #909399; font-size: 12px; margin: 8px 0 12px; user-select: none"
+            @click="showAdvanced = !showAdvanced"
+          >
+            {{ showAdvanced ? '▼' : '▶' }} 고급 옵션
+          </div>
+          <template v-if="showAdvanced">
+            <el-form-item label="코드 별칭">
+              <el-input v-model="formData.code" placeholder="비워두면 자동 생성 (예: SALES)" maxlength="20" />
+              <div style="font-size: 11px; color: #909399; margin-top: 2px">
+                대문자/숫자/하이픈만 가능. 비워두면 D01 형태로 자동 부여
+              </div>
+            </el-form-item>
+            <el-form-item label="필수 분류">
+              <el-input v-model="formData.requiredFacets" placeholder="예: carrier, product, docType" />
+              <div style="font-size: 11px; color: #909399; margin-top: 2px">문서 등록 시 반드시 선택해야 하는 분류 (carrier=보험사, product=상품, docType=문서유형)</div>
+            </el-form-item>
+            <el-form-item label="중복 방지 기준">
+              <el-input v-model="formData.ssotKey" placeholder="예: carrier, product, docType" />
+              <div style="font-size: 11px; color: #909399; margin-top: 2px">같은 분류 조합에 활성 문서를 1개만 허용</div>
+            </el-form-item>
+            <el-form-item label="정렬 순서">
+              <el-input-number v-model="formData.sortOrder" :min="0" :max="999" />
+            </el-form-item>
+          </template>
+        </template>
+        <template v-else>
+          <el-form-item label="필수 분류">
+            <el-input v-model="formData.requiredFacets" placeholder="예: carrier, product, docType" />
+            <div style="font-size: 11px; color: #909399; margin-top: 2px">문서 등록 시 반드시 선택해야 하는 분류 (carrier=보험사, product=상품, docType=문서유형)</div>
+          </el-form-item>
+          <el-form-item label="중복 방지 기준">
+            <el-input v-model="formData.ssotKey" placeholder="예: carrier, product, docType" />
+            <div style="font-size: 11px; color: #909399; margin-top: 2px">같은 분류 조합에 활성 문서를 1개만 허용</div>
+          </el-form-item>
+          <el-form-item label="정렬 순서">
+            <el-input-number v-model="formData.sortOrder" :min="0" :max="999" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">취소</el-button>
@@ -500,16 +583,14 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
       :close-on-click-modal="false"
     >
       <el-form label-width="100px" label-position="left">
-        <el-form-item label="코드" required>
-          <el-input
-            v-model="facetForm.code"
-            :disabled="facetDialogMode === 'edit'"
-            placeholder="예: INS-SAMSUNG"
-            maxlength="50"
-          />
+        <el-form-item v-if="facetDialogMode === 'edit'" label="코드">
+          <el-input :model-value="facetForm.code" disabled />
         </el-form-item>
         <el-form-item label="이름" required>
           <el-input v-model="facetForm.displayName" placeholder="예: 삼성생명" maxlength="100" />
+          <div v-if="facetDialogMode === 'create'" style="font-size: 11px; color: #909399; margin-top: 2px">
+            코드는 자동 생성됩니다 (예: C001, P001, T001)
+          </div>
         </el-form-item>
         <el-form-item label="갱신주기">
           <el-select v-model="facetForm.tier" clearable placeholder="선택 (옵션)" style="width: 100%">

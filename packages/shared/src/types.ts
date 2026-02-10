@@ -47,18 +47,21 @@ export type FileType = (typeof FileType)[keyof typeof FileType]
 export const SecurityLevel = {
   PUBLIC: 'PUBLIC',           // 공개 — 외부업체 포함 누구나
   INTERNAL: 'INTERNAL',      // 사내용 — 직원 이상
-  CONFIDENTIAL: 'CONFIDENTIAL', // 대외비(2급) — 팀장 이상
-  SECRET: 'SECRET',          // 기밀(1급) — 임원 이상
+  CONFIDENTIAL: 'CONFIDENTIAL', // 대외비(2급) — 검토자 이상
+  SECRET: 'SECRET',          // 기밀(1급) — 승인자 이상
 } as const
 export type SecurityLevel = (typeof SecurityLevel)[keyof typeof SecurityLevel]
 
-/** 사용자 역할 (접근 가능 범위 결정) */
+/**
+ * 사용자 역할 — 업무 역할 기반 (조직 직급 아님!)
+ * 조직이 바뀌어도 역할은 업무에 따라 부여
+ */
 export const UserRole = {
-  EXTERNAL: 'EXTERNAL',     // 외부업체 (RAG 구축용 등)
-  EMPLOYEE: 'EMPLOYEE',     // 일반 직원
-  TEAM_LEAD: 'TEAM_LEAD',   // 팀장급
-  EXECUTIVE: 'EXECUTIVE',   // 임원급
-  ADMIN: 'ADMIN',           // 시스템 관리자 (모든 권한)
+  VIEWER: 'VIEWER',         // 조회자 — 공개 문서만 (외부업체, RAG 등)
+  EDITOR: 'EDITOR',         // 작성자 — 사내용까지 (문서 작성/수정)
+  REVIEWER: 'REVIEWER',     // 검토자 — 대외비까지 (문서 검토/승인)
+  APPROVER: 'APPROVER',     // 승인자 — 기밀까지 (최종 승인 권한)
+  ADMIN: 'ADMIN',           // 관리자 — 전체 (시스템 설정)
 } as const
 export type UserRole = (typeof UserRole)[keyof typeof UserRole]
 
@@ -78,6 +81,7 @@ export interface UserEntity {
 
 export interface DocumentEntity {
   id: string
+  docCode: string | null
   domain: string
   lifecycle: Lifecycle
   securityLevel: SecurityLevel
@@ -218,7 +222,7 @@ export interface CreateApiKeyDto {
 
 export interface CreateFacetDto {
   facetType: string
-  code: string
+  code?: string
   displayName: string
   parentCode?: string
   domain?: string
@@ -237,7 +241,7 @@ export interface UpdateFacetDto {
 }
 
 export interface CreateDomainDto {
-  code: string
+  code?: string
   displayName: string
   parentCode?: string
   description?: string

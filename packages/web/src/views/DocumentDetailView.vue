@@ -6,7 +6,8 @@ import { relationsApi } from '@/api/relations'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
-import { LIFECYCLE_TRANSITIONS, FACET_TYPE_LABELS, LIFECYCLE_LABELS } from '@kms/shared'
+import { LIFECYCLE_TRANSITIONS, FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
+import { useRecentDocs } from '@/composables/useRecentDocs'
 import type { DocumentEntity, Lifecycle, RelationEntity, RelationType, FacetMasterEntity } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
@@ -22,6 +23,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const domainStore = useDomainStore()
 
+const { addVisit } = useRecentDocs()
 const doc = ref<DocumentEntity | null>(null)
 const relations = ref<{ asSource: RelationEntity[]; asTarget: RelationEntity[] }>({ asSource: [], asTarget: [] })
 const loading = ref(true)
@@ -63,6 +65,14 @@ function facetLabel(facetType: string): string {
   return FACET_TYPE_LABELS[facetType] ?? facetType
 }
 
+function copyDocLink() {
+  if (!doc.value) return
+  const url = `${window.location.origin}/d/${doc.value.domain}/doc/${doc.value.id}`
+  navigator.clipboard.writeText(doc.value.docCode ? `${doc.value.docCode} ${url}` : url)
+    .then(() => ElMessage.success('문서 링크가 복사되었습니다'))
+    .catch(() => ElMessage.error('복사에 실패했습니다'))
+}
+
 const hasFile = computed(() => !!doc.value?.downloadUrl)
 
 const backPath = computed(() => {
@@ -86,6 +96,7 @@ onMounted(async () => {
     ])
     doc.value = docRes.data
     relations.value = relRes.data
+    addVisit(doc.value)
   } catch {
     ElMessage.error('문서를 불러올 수 없습니다')
     router.push(backPath.value)
@@ -97,9 +108,11 @@ onMounted(async () => {
 async function handleTransition(lifecycle: Lifecycle) {
   if (!doc.value) return
   try {
+    const fromLabel = LIFECYCLE_LABELS[doc.value.lifecycle] ?? doc.value.lifecycle
+    const toLabel = LIFECYCLE_LABELS[lifecycle] ?? lifecycle
     await ElMessageBox.confirm(
-      `${doc.value.lifecycle} → ${lifecycle}로 전환하시겠습니까?`,
-      '라이프사이클 전환',
+      `${fromLabel} → ${toLabel}(으)로 전환하시겠습니까?`,
+      '상태 전환',
     )
     const { data } = await documentsApi.transitionLifecycle(id.value, lifecycle)
     doc.value = data
@@ -358,6 +371,18 @@ async function handleEditSubmit() {
           <span v-if="breadcrumb" style="color: #909399; font-size: 12px">
             {{ doc?.domain }} > {{ breadcrumb }} >
           </span>
+          <span v-if="doc?.docCode" style="font-family: monospace; font-size: 13px; color: #409eff; margin-right: 2px">
+            {{ doc.docCode }}
+          </span>
+          <el-button
+            v-if="doc?.docCode"
+            text
+            size="small"
+            style="padding: 2px 4px; font-size: 12px; color: #909399"
+            @click.stop="copyDocLink"
+          >
+            복사
+          </el-button>
           <span style="font-size: 15px">{{ doc?.fileName ?? doc?.id ?? '문서 상세' }}</span>
         </div>
       </template>
@@ -387,12 +412,13 @@ async function handleEditSubmit() {
               :type="doc.freshness === 'FRESH' ? 'success' : doc.freshness === 'WARNING' ? 'warning' : 'danger'"
               size="small"
             >
-              {{ doc.freshness }}
+              {{ FRESHNESS_LABELS[doc.freshness] ?? doc.freshness }}
             </el-tag>
           </div>
 
           <!-- 상세 정보 -->
           <div style="font-size: 13px; color: #606266">
+            <p v-if="doc.docCode" style="margin: 8px 0"><strong>문서코드:</strong> <span style="font-family: monospace">{{ doc.docCode }}</span></p>
             <p style="margin: 8px 0"><strong>버전:</strong> v{{ doc.versionMajor }}.{{ doc.versionMinor }}</p>
             <p style="margin: 8px 0"><strong>형식:</strong> {{ doc.fileType?.toUpperCase() ?? '-' }}</p>
             <p style="margin: 8px 0"><strong>크기:</strong> {{ hasFile ? (doc.fileSize / 1024).toFixed(1) + ' KB' : '-' }}</p>
@@ -410,7 +436,7 @@ async function handleEditSubmit() {
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
               <strong style="color: #303133">분류</strong>
               <el-button
-                v-if="auth.hasMinRole('EMPLOYEE')"
+                v-if="auth.hasMinRole('EDITOR')"
                 text
                 size="small"
                 type="primary"
@@ -432,14 +458,14 @@ async function handleEditSubmit() {
               v-for="next in getNextLifecycles(doc.lifecycle)"
               :key="next"
               size="small"
-              type="primary"
+              :type="next === 'DRAFT' ? 'info' : next === 'DEPRECATED' ? 'danger' : 'primary'"
               @click="handleTransition(next as Lifecycle)"
               style="width: 100%"
             >
-              → {{ next }}
+              → {{ LIFECYCLE_LABELS[next] ?? next }}
             </el-button>
             <el-button
-              v-if="auth.hasMinRole('TEAM_LEAD')"
+              v-if="auth.hasMinRole('REVIEWER')"
               size="small"
               type="danger"
               @click="handleDelete"
@@ -487,7 +513,7 @@ async function handleEditSubmit() {
               <span style="font-weight: 600">관련 문서</span>
               <div style="display: flex; gap: 6px">
                 <el-button
-                  v-if="auth.hasMinRole('EMPLOYEE')"
+                  v-if="auth.hasMinRole('EDITOR')"
                   type="primary"
                   size="small"
                   @click="router.push(`/d/${domainCode}/compare?source=${id}`)"
@@ -495,7 +521,7 @@ async function handleEditSubmit() {
                   관계 설정
                 </el-button>
                 <el-button
-                  v-if="auth.hasMinRole('EMPLOYEE')"
+                  v-if="auth.hasMinRole('EDITOR')"
                   size="small"
                   @click="openRelationDialog"
                 >
@@ -518,7 +544,7 @@ async function handleEditSubmit() {
                 {{ rel.fileName }}
               </span>
               <el-button
-                v-if="auth.hasMinRole('EMPLOYEE')"
+                v-if="auth.hasMinRole('EDITOR')"
                 text
                 size="small"
                 type="danger"

@@ -16,16 +16,16 @@ interface UserItem {
 const users = ref<UserItem[]>([])
 const usersLoading = ref(false)
 
-const newUser = ref({ email: '', password: '', name: '', role: 'EMPLOYEE' as UserRole })
-const newApiKey = ref({ name: '', role: 'EXTERNAL' as UserRole })
+const newUser = ref({ email: '', password: '', name: '', role: 'EDITOR' as UserRole })
+const newApiKey = ref({ name: '', role: 'VIEWER' as UserRole })
 const generatedKey = ref<string | null>(null)
 const loading = ref(false)
 
 const ROLE_OPTIONS = [
-  { value: 'EXTERNAL', label: '외부업체' },
-  { value: 'EMPLOYEE', label: '직원' },
-  { value: 'TEAM_LEAD', label: '팀장' },
-  { value: 'EXECUTIVE', label: '임원' },
+  { value: 'VIEWER', label: '조회자' },
+  { value: 'EDITOR', label: '작성자' },
+  { value: 'REVIEWER', label: '검토자' },
+  { value: 'APPROVER', label: '승인자' },
   { value: 'ADMIN', label: '관리자' },
 ]
 
@@ -50,7 +50,7 @@ async function createUser() {
   try {
     await client.post('/auth/users', newUser.value)
     ElMessage.success('사용자가 생성되었습니다')
-    newUser.value = { email: '', password: '', name: '', role: 'EMPLOYEE' }
+    newUser.value = { email: '', password: '', name: '', role: 'EDITOR' }
     await loadUsers()
   } catch (err: unknown) {
     const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '생성에 실패했습니다'

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
 import { useRoute, useRouter } from 'vue-router'
@@ -10,11 +10,13 @@ const domainStore = useDomainStore()
 const route = useRoute()
 const router = useRouter()
 
+const collapsed = ref(false)
+
 const ROLE_LABELS: Record<string, string> = {
-  EXTERNAL: '외부업체',
-  EMPLOYEE: '직원',
-  TEAM_LEAD: '팀장',
-  EXECUTIVE: '임원',
+  VIEWER: '조회자',
+  EDITOR: '작성자',
+  REVIEWER: '검토자',
+  APPROVER: '승인자',
   ADMIN: '관리자',
 }
 
@@ -28,6 +30,8 @@ const activeMenu = computed(() => {
   return path
 })
 
+const sidebarWidth = computed(() => collapsed.value ? '64px' : '220px')
+
 onMounted(() => {
   domainStore.loadDomains()
 })
@@ -39,34 +43,45 @@ function handleLogout() {
 
 <template>
   <el-container style="height: 100vh; overflow: hidden">
-    <el-aside width="220px" style="background: #1d1e2c; display: flex; flex-direction: column; overflow: hidden">
-      <div style="padding: 20px 16px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0">
-        KMS
+    <el-aside :width="sidebarWidth" :style="{ background: '#1d1e2c', display: 'flex', flexDirection: 'column', overflow: 'hidden', transition: 'width 0.2s' }">
+      <!-- 로고 + 접기 버튼 -->
+      <div style="padding: 14px 12px; color: #fff; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 8px">
+        <span v-if="!collapsed">KMS</span>
+        <span v-else style="font-size: 14px">K</span>
+        <el-button
+          text
+          size="small"
+          style="color: #6b6e7e; padding: 2px; margin-left: auto"
+          @click="collapsed = !collapsed"
+        >
+          {{ collapsed ? '»' : '«' }}
+        </el-button>
       </div>
 
       <el-menu
         :default-active="activeMenu"
         :router="true"
+        :collapse="collapsed"
         background-color="#1d1e2c"
         text-color="#a3a6b4"
         active-text-color="#409eff"
         style="border-right: none; flex: 1; overflow-y: auto"
       >
         <!-- SYSTEM -->
-        <div style="padding: 16px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
+        <div v-if="!collapsed" style="padding: 16px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
           System
         </div>
         <el-menu-item index="/">
           <el-icon><component is="Monitor" /></el-icon>
-          <span>대시보드</span>
+          <template #title><span>대시보드</span></template>
         </el-menu-item>
         <el-menu-item index="/search">
           <el-icon><component is="Search" /></el-icon>
-          <span>통합 검색</span>
+          <template #title><span>통합 검색</span></template>
         </el-menu-item>
 
         <!-- DOMAINS -->
-        <div style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
+        <div v-if="!collapsed" style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
           Domains
         </div>
         <domain-menu-item
@@ -77,23 +92,23 @@ function handleLogout() {
 
         <!-- ADMIN -->
         <template v-if="auth.hasMinRole('ADMIN')">
-          <div style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
+          <div v-if="!collapsed" style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
             Admin
           </div>
           <el-menu-item index="/admin/domains">
             <el-icon><component is="Setting" /></el-icon>
-            <span>도메인 관리</span>
+            <template #title><span>도메인 관리</span></template>
           </el-menu-item>
           <el-menu-item index="/admin/users">
             <el-icon><component is="User" /></el-icon>
-            <span>사용자 관리</span>
+            <template #title><span>사용자 관리</span></template>
           </el-menu-item>
         </template>
       </el-menu>
 
       <!-- 하단 사용자 정보 -->
       <div style="flex-shrink: 0; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.06); background: #1d1e2c">
-        <div style="display: flex; align-items: center; justify-content: space-between">
+        <div v-if="!collapsed" style="display: flex; align-items: center; justify-content: space-between">
           <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
             <el-avatar :size="28" style="background: #409eff; flex-shrink: 0">
               {{ auth.user?.name?.charAt(0) ?? '' }}
@@ -111,6 +126,11 @@ function handleLogout() {
             로그아웃
           </el-button>
         </div>
+        <div v-else style="text-align: center">
+          <el-avatar :size="28" style="background: #409eff">
+            {{ auth.user?.name?.charAt(0) ?? '' }}
+          </el-avatar>
+        </div>
       </div>
     </el-aside>
 
@@ -121,3 +141,10 @@ function handleLogout() {
     </el-container>
   </el-container>
 </template>
+
+<style scoped>
+/* collapse 모드에서 el-menu의 기본 너비 오버라이드 */
+:deep(.el-menu--collapse) {
+  width: 64px !important;
+}
+</style>

@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
 import type { DocumentEntity, DocumentListQuery } from '@kms/shared'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
+const router = useRouter()
 
 const props = defineProps<{
   domainCode: string
@@ -25,6 +29,10 @@ const sortField = ref('createdAt')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const selectedRow = ref<DocumentEntity | null>(null)
 
+// 멀티셀렉트
+const selectedRows = ref<DocumentEntity[]>([])
+const bulkLoading = ref(false)
+
 const LIFECYCLE_TAG: Record<string, string> = {
   DRAFT: 'info',
   ACTIVE: 'success',
@@ -37,6 +45,29 @@ const SECURITY_TAG: Record<string, { type: string; label: string }> = {
   CONFIDENTIAL: { type: 'warning', label: '대외비' },
   SECRET: { type: 'danger', label: '기밀' },
 }
+
+const LIFECYCLE_LABEL_MAP: Record<string, string> = {
+  DRAFT: '임시저장',
+  ACTIVE: '사용중',
+  DEPRECATED: '만료',
+}
+
+// 선택된 문서들로부터 가능한 벌크 액션 계산
+const bulkActions = computed(() => {
+  if (selectedRows.value.length === 0) return []
+  const actions: Array<{ lifecycle: string; label: string; type: string }> = []
+  // 전체가 같은 상태여야 벌크 전환 가능
+  const lifecycles = new Set(selectedRows.value.map((d) => d.lifecycle))
+  if (lifecycles.size === 1) {
+    const current = [...lifecycles][0]
+    if (current === 'DRAFT') actions.push({ lifecycle: 'ACTIVE', label: '사용중으로 전환', type: 'success' })
+    if (current === 'ACTIVE') {
+      actions.push({ lifecycle: 'DRAFT', label: '임시저장으로 전환', type: 'info' })
+      actions.push({ lifecycle: 'DEPRECATED', label: '만료 처리', type: 'danger' })
+    }
+  }
+  return actions
+})
 
 async function fetchDocuments() {
   loading.value = true
@@ -55,6 +86,7 @@ async function fetchDocuments() {
     const { data } = await documentsApi.list(query)
     documents.value = data.data
     total.value = data.meta.total
+    selectedRows.value = []
   } finally {
     loading.value = false
   }
@@ -78,6 +110,40 @@ function handleSort(sort: { prop: string; order: string | null }) {
     sortField.value = sort.prop
     sortOrder.value = sort.order === 'ascending' ? 'asc' : 'desc'
     fetchDocuments()
+  }
+}
+
+function handleSelectionChange(rows: DocumentEntity[]) {
+  selectedRows.value = rows
+}
+
+async function handleBulkTransition(lifecycle: string) {
+  const count = selectedRows.value.length
+  const label = LIFECYCLE_LABEL_MAP[lifecycle] ?? lifecycle
+  try {
+    await ElMessageBox.confirm(
+      `선택한 ${count}건의 문서를 "${label}" 상태로 전환합니다.`,
+      '일괄 상태 전환',
+      { confirmButtonText: '전환', cancelButtonText: '취소', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+
+  bulkLoading.value = true
+  try {
+    const ids = selectedRows.value.map((d) => d.id)
+    const { data } = await documentsApi.bulkTransitionLifecycle(ids, lifecycle)
+    if (data.failed > 0) {
+      ElMessage.warning(`${data.succeeded}건 성공, ${data.failed}건 실패`)
+    } else {
+      ElMessage.success(`${data.succeeded}건 전환 완료`)
+    }
+    await fetchDocuments()
+  } catch {
+    ElMessage.error('일괄 전환에 실패했습니다')
+  } finally {
+    bulkLoading.value = false
   }
 }
 
@@ -115,6 +181,26 @@ defineExpose({ refresh: fetchDocuments })
         <el-option label="사용중" value="ACTIVE" />
         <el-option label="만료" value="DEPRECATED" />
       </el-select>
+
+      <!-- 벌크 액션 -->
+      <template v-if="selectedRows.length > 0">
+        <el-divider direction="vertical" />
+        <span style="font-size: 12px; color: #409eff; font-weight: 500">
+          {{ selectedRows.length }}건 선택
+        </span>
+        <el-button
+          v-for="action in bulkActions"
+          :key="action.lifecycle"
+          :type="action.type as 'success' | 'info' | 'danger'"
+          size="small"
+          plain
+          :loading="bulkLoading"
+          @click="handleBulkTransition(action.lifecycle)"
+        >
+          {{ action.label }}
+        </el-button>
+      </template>
+
       <span style="font-size: 12px; color: #909399; margin-left: auto">
         {{ total }}건
         <template v-if="Object.keys(props.filters ?? {}).length > 0">
@@ -131,10 +217,22 @@ defineExpose({ refresh: fetchDocuments })
       @row-click="handleRowClick"
       @row-dblclick="handleRowDblClick"
       @sort-change="handleSort"
+      @selection-change="handleSelectionChange"
       :row-class-name="getRowClassName"
       style="cursor: pointer"
       :header-cell-style="{ background: '#fafafa', color: '#606266' }"
     >
+      <el-table-column type="selection" width="40" />
+      <el-table-column label="문서코드" width="150" prop="docCode" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span
+            v-if="row.docCode"
+            style="font-family: monospace; font-size: 12px; color: #409eff; cursor: pointer"
+            @click.stop="router.push(`/d/${row.domain}/doc/${row.id}`)"
+          >{{ row.docCode }}</span>
+          <span v-else style="color: #c0c4cc">-</span>
+        </template>
+      </el-table-column>
       <el-table-column label="파일명" min-width="200" sortable="custom" prop="fileName" show-overflow-tooltip>
         <template #default="{ row }">
           {{ row.fileName ?? '(메타데이터만)' }}

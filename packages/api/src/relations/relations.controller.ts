@@ -34,8 +34,8 @@ export class RelationsController {
   }
 
   @Post('relations')
-  @Roles('EMPLOYEE')
-  @ApiOperation({ summary: '관계 생성 (직원 이상)' })
+  @Roles('EDITOR')
+  @ApiOperation({ summary: '관계 생성 (작성자 이상)' })
   async create(@Body() dto: CreateRelationDto, @Request() req: AuthRequest) {
     return this.relationsService.create(
       dto.sourceId,
@@ -47,8 +47,8 @@ export class RelationsController {
   }
 
   @Delete('relations/:id')
-  @Roles('EMPLOYEE')
-  @ApiOperation({ summary: '관계 삭제 (직원 이상)' })
+  @Roles('EDITOR')
+  @ApiOperation({ summary: '관계 삭제 (작성자 이상)' })
   async remove(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.relationsService.remove(id, req.user.sub)
   }

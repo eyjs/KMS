@@ -128,27 +128,60 @@ export class DocumentsService {
       fileName = data.title
     }
 
-    const document = await this.prisma.document.create({
-      data: {
-        domain: data.domain,
-        lifecycle: data.lifecycle ?? 'DRAFT',
-        securityLevel: data.securityLevel ?? 'INTERNAL',
-        filePath,
-        fileName,
-        fileType,
-        fileSize,
-        validUntil: data.validUntil ? new Date(data.validUntil) : null,
-        createdById: userId,
-        updatedById: userId,
-        classifications: {
-          create: Object.entries(data.classifications).map(([facetType, facetValue]) => ({
-            facetType,
-            facetValue,
-          })),
+    const lifecycle = data.lifecycle ?? 'ACTIVE'
+
+    // ACTIVE로 생성 시 동일 분류의 기존 ACTIVE 문서를 자동 만료
+    let supersededDocId: string | null = null
+    if (lifecycle === 'ACTIVE' && Object.keys(data.classifications).length > 0) {
+      supersededDocId = await this.autoDeprecateExisting(data.domain, data.classifications, userId)
+    }
+
+    // 문서 코드(채번) 자동 생성 — 동시성 충돌 시 1회 재시도
+    const createDocument = async (docCode: string) =>
+      this.prisma.document.create({
+        data: {
+          domain: data.domain,
+          docCode,
+          lifecycle,
+          securityLevel: data.securityLevel ?? 'INTERNAL',
+          filePath,
+          fileName,
+          fileType,
+          fileSize,
+          validUntil: data.validUntil ? new Date(data.validUntil) : null,
+          createdById: userId,
+          updatedById: userId,
+          classifications: {
+            create: Object.entries(data.classifications).map(([facetType, facetValue]) => ({
+              facetType,
+              facetValue,
+            })),
+          },
         },
-      },
-      include: { classifications: true },
-    })
+        include: { classifications: true },
+      })
+
+    let document: Awaited<ReturnType<typeof createDocument>>
+    try {
+      document = await createDocument(await this.generateDocCode(data.domain))
+    } catch (error: unknown) {
+      const isUniqueViolation = typeof error === 'object' && error !== null
+        && 'code' in error && (error as { code: string }).code === 'P2002'
+      if (!isUniqueViolation) throw error
+      // 동시성 충돌 — 코드 재생성 후 재시도
+      document = await createDocument(await this.generateDocCode(data.domain))
+    }
+
+    // 대체 관계 자동 생성
+    if (supersededDocId) {
+      await this.prisma.relation.create({
+        data: {
+          sourceId: document.id,
+          targetId: supersededDocId,
+          relationType: 'SUPERSEDES',
+        },
+      })
+    }
 
     await this.prisma.documentHistory.create({
       data: {
@@ -417,6 +450,24 @@ export class DocumentsService {
     return this.formatDocument(updated)
   }
 
+  async bulkTransitionLifecycle(ids: string[], lifecycle: Lifecycle, userId: string, userRole: UserRole) {
+    const results: Array<{ id: string; success: boolean; error?: string }> = []
+
+    for (const id of ids) {
+      try {
+        await this.transitionLifecycle(id, lifecycle, userId, userRole)
+        results.push({ id, success: true })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : '알 수 없는 오류'
+        results.push({ id, success: false, error: message })
+      }
+    }
+
+    const succeeded = results.filter((r) => r.success).length
+    const failed = results.filter((r) => !r.success).length
+    return { succeeded, failed, results }
+  }
+
   async softDelete(id: string, userId: string, userRole: UserRole) {
     const doc = await this.prisma.document.findFirst({
       where: { id, isDeleted: false },
@@ -547,7 +598,7 @@ export class DocumentsService {
   }
 
   async search(
-    params: { q?: string; domain?: string; lifecycle?: string; page: number; size: number },
+    params: { q?: string; domain?: string; lifecycle?: string; classifications?: string; page: number; size: number },
     userRole: UserRole,
   ) {
     const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
@@ -555,14 +606,38 @@ export class DocumentsService {
       .filter(([, level]) => level <= maxLevel)
       .map(([name]) => name)
 
-    const { q, domain, lifecycle, page = 1, size = 20 } = params
+    const { q, domain, lifecycle, classifications, page = 1, size = 20 } = params
+
+    // 분류 필터 파싱
+    let facetFilters: Array<{ classifications: { some: { facetType: string; facetValue: string } } }> = []
+    if (classifications) {
+      try {
+        const raw: unknown = JSON.parse(classifications)
+        if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+          facetFilters = Object.entries(raw as Record<string, unknown>)
+            .filter(([, v]) => typeof v === 'string' && v !== '')
+            .map(([type, value]) => ({
+              classifications: { some: { facetType: type, facetValue: value as string } },
+            }))
+        }
+      } catch { /* 잘못된 JSON은 필터 없이 검색 */ }
+    }
+
+    // 키워드: 파일명 또는 문서코드에서 검색
+    const keywordFilter = q ? {
+      OR: [
+        { fileName: { contains: q, mode: 'insensitive' as const } },
+        { docCode: { contains: q, mode: 'insensitive' as const } },
+      ],
+    } : {}
 
     const where = {
       isDeleted: false,
       securityLevel: { in: allowedLevels },
-      ...(q && { fileName: { contains: q, mode: 'insensitive' as const } }),
+      ...keywordFilter,
       ...(domain && { domain }),
       ...(lifecycle && { lifecycle }),
+      ...(facetFilters.length > 0 && { AND: facetFilters }),
     }
 
     const [data, total] = await Promise.all([
@@ -644,10 +719,93 @@ export class DocumentsService {
     return { warning, expired, noFile, staleDraft }
   }
 
+  /** 동일 분류의 기존 ACTIVE 문서를 조회 (중복 체크용) */
+  async checkDuplicate(domain: string, classifications: Record<string, string>, userRole: UserRole) {
+    const allowedLevels = this.getAllowedLevels(userRole)
+    const facetFilters = Object.entries(classifications).map(([type, value]) => ({
+      classifications: { some: { facetType: type, facetValue: value } },
+    }))
+
+    if (facetFilters.length === 0) return null
+
+    const existing = await this.prisma.document.findFirst({
+      where: {
+        domain,
+        lifecycle: 'ACTIVE',
+        isDeleted: false,
+        securityLevel: { in: allowedLevels },
+        AND: facetFilters,
+      },
+      include: { classifications: true },
+    })
+
+    return existing ? this.formatDocument(existing) : null
+  }
+
+  /** 동일 분류의 기존 ACTIVE 문서를 자동 만료 처리 */
+  private async autoDeprecateExisting(
+    domain: string,
+    classifications: Record<string, string>,
+    userId: string,
+  ): Promise<string | null> {
+    const facetFilters = Object.entries(classifications).map(([type, value]) => ({
+      classifications: { some: { facetType: type, facetValue: value } },
+    }))
+
+    if (facetFilters.length === 0) return null
+
+    const existingDocs = await this.prisma.document.findMany({
+      where: {
+        domain,
+        lifecycle: 'ACTIVE',
+        isDeleted: false,
+        AND: facetFilters,
+      },
+    })
+
+    if (existingDocs.length === 0) return null
+
+    for (const existing of existingDocs) {
+      await this.prisma.document.update({
+        where: { id: existing.id },
+        data: { lifecycle: 'DEPRECATED', updatedById: userId },
+      })
+
+      await this.prisma.documentHistory.create({
+        data: {
+          documentId: existing.id,
+          action: 'LIFECYCLE_CHANGE',
+          changes: { from: 'ACTIVE', to: 'DEPRECATED', reason: 'auto_superseded' },
+          userId,
+        },
+      })
+    }
+
+    // 가장 최근 문서의 ID를 반환 (SUPERSEDES 관계용)
+    return existingDocs[0].id
+  }
+
+  /** 문서 코드 자동 생성: {도메인코드}-{YYMM}-{NNN} */
+  private async generateDocCode(domain: string): Promise<string> {
+    const now = new Date()
+    const yymm = `${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}`
+    const prefix = `${domain}-${yymm}-`
+    const last = await this.prisma.document.findFirst({
+      where: { docCode: { startsWith: prefix } },
+      orderBy: { docCode: 'desc' },
+      select: { docCode: true },
+    })
+    const seq = last?.docCode
+      ? parseInt(last.docCode.slice(prefix.length), 10) + 1
+      : 1
+    return `${prefix}${String(seq).padStart(3, '0')}`
+  }
+
   /** API 응답 포맷 (filePath 미노출, downloadUrl 제공) */
   private formatDocument(
     doc: {
       id: string
+      docCode?: string | null
       domain: string
       lifecycle: string
       securityLevel: string
@@ -674,6 +832,7 @@ export class DocumentsService {
 
     return {
       id: doc.id,
+      docCode: doc.docCode ?? null,
       domain: doc.domain,
       lifecycle: doc.lifecycle,
       securityLevel: doc.securityLevel,

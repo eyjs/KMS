@@ -8,16 +8,18 @@ import {
   MaxLength,
   Matches,
   Min,
+  ValidateIf,
 } from 'class-validator'
 
 export class CreateDomainDto {
-  @IsNotEmpty()
+  @IsOptional()
+  @ValidateIf((o) => o.code !== undefined && o.code !== '')
   @IsString()
   @MaxLength(20)
   @Matches(/^[A-Z][A-Z0-9_-]*$/, {
     message: '코드는 대문자로 시작하고 대문자/숫자/하이픈/언더스코어만 허용됩니다',
   })
-  code!: string
+  code?: string
 
   @IsNotEmpty()
   @IsString()
@@ -58,10 +60,10 @@ export class CreateFacetDto {
   @MaxLength(50)
   facetType!: string
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
   @MaxLength(50)
-  code!: string
+  code?: string
 
   @IsNotEmpty()
   @IsString()

@@ -5,6 +5,13 @@ import {
   ConflictException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import {
+  FACET_TYPE_CODE_PREFIX,
+  FACET_DEFAULT_PREFIX,
+  DOMAIN_MAX_DEPTH,
+  DOMAIN_LEVEL_LABELS,
+  DOMAIN_GUIDANCE,
+} from '@kms/shared'
 import type { DomainMasterEntity } from '@kms/shared'
 import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from './dto/taxonomy.dto'
 
@@ -71,7 +78,62 @@ export class TaxonomyService {
     return domain
   }
 
+  /** 도메인 깊이 계산 (루트=0) */
+  private async getDomainDepth(code: string): Promise<number> {
+    let depth = 0
+    let current = await this.prisma.domainMaster.findUnique({
+      where: { code },
+      select: { parentCode: true },
+    })
+    while (current?.parentCode) {
+      depth++
+      current = await this.prisma.domainMaster.findUnique({
+        where: { code: current.parentCode },
+        select: { parentCode: true },
+      })
+    }
+    return depth
+  }
+
+  /** 도메인 코드 자동 생성 */
+  async generateDomainCode(parentCode?: string): Promise<string> {
+    if (!parentCode) {
+      // 루트: D01, D02, ...
+      const last = await this.prisma.domainMaster.findFirst({
+        where: { parentCode: null, code: { startsWith: 'D' } },
+        orderBy: { code: 'desc' },
+        select: { code: true },
+      })
+      const seq = last?.code ? parseInt(last.code.slice(1), 10) + 1 : 1
+      return `D${String(seq).padStart(2, '0')}`
+    }
+    // 하위: {parentCode}-01, {parentCode}-02, ...
+    const prefix = `${parentCode}-`
+    const last = await this.prisma.domainMaster.findFirst({
+      where: { parentCode, code: { startsWith: prefix } },
+      orderBy: { code: 'desc' },
+      select: { code: true },
+    })
+    const seq = last?.code
+      ? parseInt(last.code.slice(prefix.length), 10) + 1
+      : 1
+    return `${prefix}${String(seq).padStart(2, '0')}`
+  }
+
   async createDomain(dto: CreateDomainDto) {
+    let parentDomain: { requiredFacets: unknown; ssotKey: unknown } | null = null
+
+    // Facet 이름 충돌 검사 — 보험사/상품/문서유형 이름으로 도메인 생성 차단
+    const facetCollision = await this.prisma.facetMaster.findFirst({
+      where: { displayName: dto.displayName, isActive: true },
+    })
+    if (facetCollision) {
+      throw new BadRequestException(
+        `"${dto.displayName}"은(는) 분류(${facetCollision.facetType})에 이미 등록되어 있습니다. ` +
+        DOMAIN_GUIDANCE.facetGuide,
+      )
+    }
+
     if (dto.parentCode) {
       const parent = await this.prisma.domainMaster.findUnique({
         where: { code: dto.parentCode },
@@ -79,17 +141,39 @@ export class TaxonomyService {
       if (!parent || !parent.isActive) {
         throw new BadRequestException(`부모 도메인을 찾을 수 없습니다: ${dto.parentCode}`)
       }
+      parentDomain = parent
+
+      // 깊이 검증
+      const parentDepth = await this.getDomainDepth(dto.parentCode)
+      const newDepth = parentDepth + 1
+      if (newDepth >= DOMAIN_MAX_DEPTH) {
+        const maxLabel = DOMAIN_LEVEL_LABELS[DOMAIN_MAX_DEPTH - 1] ?? '최하위'
+        throw new BadRequestException(
+          `도메인은 "${maxLabel}" 단계까지 가능합니다. ${DOMAIN_GUIDANCE.facetGuide}`,
+        )
+      }
+    }
+
+    // 코드 자동 생성 (별칭 미제공 시)
+    const code = dto.code || await this.generateDomainCode(dto.parentCode)
+
+    // 부모가 있고 requiredFacets/ssotKey가 미제공이면 부모에서 상속
+    let requiredFacets = dto.requiredFacets ?? []
+    let ssotKey = dto.ssotKey ?? []
+    if (parentDomain && requiredFacets.length === 0 && ssotKey.length === 0) {
+      requiredFacets = (parentDomain.requiredFacets as string[]) ?? []
+      ssotKey = (parentDomain.ssotKey as string[]) ?? []
     }
 
     try {
       return await this.prisma.domainMaster.create({
         data: {
-          code: dto.code,
+          code,
           displayName: dto.displayName,
           parentCode: dto.parentCode ?? null,
           description: dto.description ?? null,
-          requiredFacets: dto.requiredFacets ?? [],
-          ssotKey: dto.ssotKey ?? [],
+          requiredFacets,
+          ssotKey,
           sortOrder: dto.sortOrder ?? 0,
         },
       })
@@ -100,7 +184,7 @@ export class TaxonomyService {
         'code' in error &&
         (error as { code: string }).code === 'P2002'
       ) {
-        throw new ConflictException(`이미 존재하는 도메인 코드입니다: ${dto.code}`)
+        throw new ConflictException(`이미 존재하는 도메인 코드입니다: ${code}`)
       }
       throw error
     }
@@ -154,12 +238,29 @@ export class TaxonomyService {
     })
   }
 
+  /** Facet 코드 자동 생성 */
+  async generateFacetCode(facetType: string): Promise<string> {
+    const prefix = FACET_TYPE_CODE_PREFIX[facetType] ?? FACET_DEFAULT_PREFIX
+    const last = await this.prisma.facetMaster.findFirst({
+      where: { facetType, code: { startsWith: prefix } },
+      orderBy: { code: 'desc' },
+      select: { code: true },
+    })
+    const seq = last?.code
+      ? parseInt(last.code.slice(prefix.length), 10) + 1
+      : 1
+    return `${prefix}${String(seq).padStart(3, '0')}`
+  }
+
   async createFacet(dto: CreateFacetDto) {
+    // 코드 자동 생성 (미제공 시)
+    const code = dto.code || await this.generateFacetCode(dto.facetType)
+
     try {
       return await this.prisma.facetMaster.create({
         data: {
           facetType: dto.facetType,
-          code: dto.code,
+          code,
           displayName: dto.displayName,
           parentCode: dto.parentCode ?? null,
           domain: dto.domain ?? null,
@@ -175,7 +276,7 @@ export class TaxonomyService {
         'code' in error &&
         (error as { code: string }).code === 'P2002'
       ) {
-        throw new ConflictException(`이미 존재하는 분류 코드입니다: ${dto.facetType}/${dto.code}`)
+        throw new ConflictException(`이미 존재하는 분류 코드입니다: ${dto.facetType}/${code}`)
       }
       throw error
     }

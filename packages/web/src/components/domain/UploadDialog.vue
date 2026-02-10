@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
 import { FACET_TYPE_LABELS } from '@kms/shared'
-import type { FacetMasterEntity, SecurityLevel, DomainMasterEntity } from '@kms/shared'
+import type { FacetMasterEntity, SecurityLevel, DomainMasterEntity, DocumentEntity } from '@kms/shared'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
@@ -30,6 +30,11 @@ const loading = ref(false)
 type CreateMode = 'upload' | 'metadata'
 const createMode = ref<CreateMode>('upload')
 
+// 중복 체크
+const duplicateDoc = ref<DocumentEntity | null>(null)
+const duplicateChecking = ref(false)
+let duplicateTimer: ReturnType<typeof setTimeout> | null = null
+
 function facetLabel(facetType: string): string {
   return FACET_TYPE_LABELS[facetType] ?? facetType
 }
@@ -45,6 +50,7 @@ watch(
   () => props.visible,
   async (visible) => {
     if (visible) {
+      duplicateDoc.value = null
       const { data: domains } = await taxonomyApi.getDomainsFlat()
       domain.value = domains.find((dm) => dm.code === props.domainCode) ?? null
 
@@ -76,6 +82,7 @@ watch(
       securityLevel.value = 'INTERNAL'
       validUntil.value = ''
       createMode.value = 'upload'
+      duplicateDoc.value = null
       for (const key of Object.keys(formValues)) {
         delete formValues[key]
       }
@@ -90,6 +97,53 @@ function requiredFacets(): string[] {
 
 function isLocked(facetType: string): boolean {
   return !!(props.initialFilters && props.initialFilters[facetType])
+}
+
+// 분류 선택이 모두 완료되면 중복 체크
+const allFacetsSelected = computed(() => {
+  const required = requiredFacets()
+  if (required.length === 0) return false
+  return required.every((ft) => !!formValues[ft])
+})
+
+watch(
+  () => ({ ...formValues }),
+  () => {
+    if (duplicateTimer) clearTimeout(duplicateTimer)
+    if (!allFacetsSelected.value) {
+      duplicateDoc.value = null
+      return
+    }
+    duplicateTimer = setTimeout(async () => {
+      duplicateChecking.value = true
+      try {
+        const classifications: Record<string, string> = {}
+        for (const ft of requiredFacets()) {
+          if (formValues[ft]) classifications[ft] = formValues[ft]
+        }
+        const { data } = await documentsApi.checkDuplicate(props.domainCode, classifications)
+        duplicateDoc.value = data
+      } catch {
+        duplicateDoc.value = null
+      } finally {
+        duplicateChecking.value = false
+      }
+    }, 300)
+  },
+  { deep: true },
+)
+
+// 분류 경로를 한국어 displayName으로 변환
+function classificationPath(): string {
+  const parts: string[] = []
+  for (const ft of requiredFacets()) {
+    const code = formValues[ft]
+    if (!code) continue
+    const options = facetOptions.value[ft] ?? []
+    const match = options.find((o) => o.code === code)
+    parts.push(match?.displayName ?? code)
+  }
+  return parts.join(' > ')
 }
 
 function handleFileChange(uploadFile: { raw: File }) {
@@ -144,7 +198,10 @@ async function handleSubmit() {
         validUntil: validUntil.value || undefined,
       })
     }
-    ElMessage.success(createMode.value === 'upload' ? '업로드 완료' : '문서 생성 완료')
+    const msg = duplicateDoc.value
+      ? '업로드 완료 — 기존 문서는 자동 만료 처리되었습니다'
+      : (createMode.value === 'upload' ? '업로드 완료' : '문서 생성 완료')
+    ElMessage.success(msg)
     emit('success')
     emit('update:visible', false)
   } catch (err: unknown) {
@@ -204,6 +261,25 @@ async function handleSubmit() {
         </el-select>
       </el-form-item>
 
+      <!-- 중복 경고 -->
+      <el-alert
+        v-if="duplicateDoc"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      >
+        <template #title>
+          <strong>{{ classificationPath() }}</strong> 경로에 사용중인 문서가 있습니다
+        </template>
+        <div style="margin-top: 4px; font-size: 12px; line-height: 1.6">
+          <div>{{ duplicateDoc.fileName ?? '(파일 없음)' }}
+            <span v-if="duplicateDoc.docCode" style="font-family: monospace; color: #909399; margin-left: 4px">{{ duplicateDoc.docCode }}</span>
+          </div>
+          <div style="color: #e6a23c">계속 등록하면 기존 문서는 자동으로 만료 처리됩니다</div>
+        </div>
+      </el-alert>
+
       <!-- 보안등급 -->
       <el-form-item label="보안등급">
         <el-select v-model="securityLevel" style="width: 100%">
@@ -259,8 +335,12 @@ async function handleSubmit() {
 
     <template #footer>
       <el-button @click="emit('update:visible', false)">취소</el-button>
-      <el-button type="primary" :loading="loading" @click="handleSubmit">
-        {{ createMode === 'upload' ? '업로드' : '생성' }}
+      <el-button
+        :type="duplicateDoc ? 'warning' : 'primary'"
+        :loading="loading"
+        @click="handleSubmit"
+      >
+        {{ duplicateDoc ? '대체 등록' : (createMode === 'upload' ? '업로드' : '생성') }}
       </el-button>
     </template>
   </el-dialog>

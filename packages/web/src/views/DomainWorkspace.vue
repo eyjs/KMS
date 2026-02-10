@@ -9,6 +9,7 @@ import ClassificationTree from '@/components/domain/ClassificationTree.vue'
 import DocumentTable from '@/components/document/DocumentTable.vue'
 import DocumentPreview from '@/components/document/DocumentPreview.vue'
 import UploadDialog from '@/components/domain/UploadDialog.vue'
+import { DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
 import type { DocumentEntity, DomainMasterEntity, CreateDomainDto, UpdateDomainDto } from '@kms/shared'
 
 const route = useRoute()
@@ -86,6 +87,21 @@ function navigateToChild(child: DomainMasterEntity) {
   router.push(`/d/${child.code}`)
 }
 
+// 도메인 깊이 계산
+function getDomainDepth(code: string): number {
+  let depth = 0
+  let current = domainStore.domainsFlat.find((d) => d.code === code)
+  while (current?.parentCode) {
+    depth++
+    current = domainStore.domainsFlat.find((d) => d.code === current!.parentCode)
+  }
+  return depth
+}
+
+const canAddChildDomain = computed(() =>
+  getDomainDepth(domainCode.value) + 1 < DOMAIN_MAX_DEPTH,
+)
+
 // 하위 도메인 CRUD
 const childDialogVisible = ref(false)
 const childDialogMode = ref<'create' | 'edit'>('create')
@@ -98,10 +114,12 @@ const childFormData = ref({
 })
 const editingChildCode = ref('')
 
-const childCodePrefix = computed(() => `${domainCode.value}-`)
-const childFullCode = computed(() => `${childCodePrefix.value}${childFormData.value.codeSuffix}`)
-
 function openChildCreateDialog() {
+  if (!canAddChildDomain.value) {
+    const maxLabel = DOMAIN_LEVEL_LABELS[DOMAIN_MAX_DEPTH - 1] ?? '최하위'
+    ElMessage.warning(`도메인은 "${maxLabel}" 단계까지 가능합니다. ${DOMAIN_GUIDANCE.facetGuide}`)
+    return
+  }
   childDialogMode.value = 'create'
   childFormData.value = { codeSuffix: '', displayName: '', description: '', sortOrder: 0 }
   childDialogVisible.value = true
@@ -122,19 +140,22 @@ function openChildEditDialog(child: DomainMasterEntity) {
 }
 
 async function handleChildSubmit() {
-  if (childDialogMode.value === 'create' && !childFormData.value.codeSuffix.trim()) {
-    ElMessage.warning('코드를 입력하세요')
+  if (!childFormData.value.displayName.trim()) {
+    ElMessage.warning('이름을 입력하세요')
     return
   }
   childDialogLoading.value = true
   try {
     if (childDialogMode.value === 'create') {
       const dto: CreateDomainDto = {
-        code: childFullCode.value,
         displayName: childFormData.value.displayName,
         parentCode: domainCode.value,
         description: childFormData.value.description || undefined,
         sortOrder: childFormData.value.sortOrder,
+      }
+      // 별칭(코드)을 입력한 경우에만 전달
+      if (childFormData.value.codeSuffix.trim()) {
+        dto.code = `${domainCode.value}-${childFormData.value.codeSuffix.trim()}`
       }
       await taxonomyApi.createDomain(dto)
       ElMessage.success('하위 도메인이 생성되었습니다')
@@ -251,7 +272,10 @@ async function handleChildDelete(child: DomainMasterEntity) {
         </span>
       </div>
       <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
-        <el-button v-if="isAdmin" size="small" @click="openChildCreateDialog">+ 추가</el-button>
+        <el-tooltip v-if="isAdmin && !canAddChildDomain" :content="`업무프로세스 단계까지 도달. ${DOMAIN_GUIDANCE.facetGuide}`" placement="top">
+          <el-button size="small" disabled>+ 추가</el-button>
+        </el-tooltip>
+        <el-button v-else-if="isAdmin" size="small" @click="openChildCreateDialog">+ 추가</el-button>
         <el-button type="primary" size="small" @click="openUpload">
           업로드
         </el-button>
@@ -376,18 +400,14 @@ async function handleChildDelete(child: DomainMasterEntity) {
       :close-on-click-modal="false"
     >
       <el-form label-width="90px" label-position="left">
-        <el-form-item label="코드" required>
-          <el-input
-            v-model="childFormData.codeSuffix"
-            :disabled="childDialogMode === 'edit'"
-            placeholder="예: AUTO"
-            maxlength="20"
-          >
-            <template #prepend>{{ childCodePrefix }}</template>
-          </el-input>
+        <el-form-item v-if="childDialogMode === 'edit'" label="코드">
+          <el-input :model-value="editingChildCode" disabled />
         </el-form-item>
         <el-form-item label="이름" required>
           <el-input v-model="childFormData.displayName" placeholder="예: 자동차보험 영업" maxlength="100" />
+          <div v-if="childDialogMode === 'create'" style="font-size: 11px; color: #909399; margin-top: 2px">
+            코드는 자동 생성됩니다
+          </div>
         </el-form-item>
         <el-form-item label="설명">
           <el-input v-model="childFormData.description" type="textarea" :rows="2" maxlength="500" />

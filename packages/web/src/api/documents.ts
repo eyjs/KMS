@@ -97,6 +97,13 @@ export const documentsApi = {
     return client.patch<DocumentEntity>(`/documents/${id}/lifecycle`, { lifecycle })
   },
 
+  bulkTransitionLifecycle(ids: string[], lifecycle: string) {
+    return client.patch<{ succeeded: number; failed: number; results: Array<{ id: string; success: boolean; error?: string }> }>(
+      '/documents/bulk/lifecycle',
+      { ids, lifecycle },
+    )
+  },
+
   delete(id: string) {
     return client.delete(`/documents/${id}`)
   },
@@ -130,7 +137,13 @@ export const documentsApi = {
     return `${baseURL}/documents/${id}/preview`
   },
 
-  search(params: { q?: string; domain?: string; lifecycle?: string; page?: number; size?: number }) {
+  checkDuplicate(domain: string, classifications: Record<string, string>) {
+    return client.get<DocumentEntity | null>('/documents/check-duplicate', {
+      params: { domain, classifications: JSON.stringify(classifications) },
+    })
+  },
+
+  search(params: { q?: string; domain?: string; lifecycle?: string; classifications?: string; page?: number; size?: number }) {
     return client.get<PaginatedResponse<DocumentEntity>>('/documents/search', { params })
   },
 

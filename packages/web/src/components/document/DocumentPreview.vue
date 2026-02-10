@@ -59,6 +59,7 @@ const fileUrl = computed(() => props.document.downloadUrl)
         </el-tag>
       </div>
       <div style="color: #606266">
+        <p v-if="document.docCode" style="margin: 4px 0; font-family: monospace">{{ document.docCode }}</p>
         <p style="margin: 4px 0">버전: v{{ document.versionMajor }}.{{ document.versionMinor }}</p>
         <p style="margin: 4px 0">크기: {{ (document.fileSize / 1024).toFixed(1) }} KB</p>
         <p style="margin: 4px 0">생성: {{ new Date(document.createdAt).toLocaleDateString('ko-KR') }}</p>

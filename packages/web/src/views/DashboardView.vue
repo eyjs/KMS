@@ -6,9 +6,11 @@ import { documentsApi } from '@/api/documents'
 import type { DocumentStats, RecentActivity, IssueCounts } from '@/api/documents'
 import { LIFECYCLE_LABELS } from '@kms/shared'
 import type { DomainMasterEntity, DocumentEntity } from '@kms/shared'
+import { useRecentDocs } from '@/composables/useRecentDocs'
 
 const router = useRouter()
 const domainStore = useDomainStore()
+const { recentDocs } = useRecentDocs()
 
 const stats = ref<DocumentStats | null>(null)
 const recentActivities = ref<RecentActivity[]>([])
@@ -335,6 +337,31 @@ function formatTimeAgo(dateStr: string): string {
         </el-table-column>
       </el-table>
       <el-empty v-if="!loading && (stats?.byDomain ?? []).length === 0" description="도메인이 없습니다" />
+    </el-card>
+
+    <!-- 최근 열람 -->
+    <el-card v-if="recentDocs.length > 0" shadow="never" style="margin-bottom: 10px">
+      <template #header>
+        <span style="font-weight: 600; font-size: 14px">최근 열람 문서</span>
+      </template>
+      <div>
+        <div
+          v-for="entry in recentDocs.slice(0, 10)"
+          :key="entry.id"
+          style="display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f2f3f5; font-size: 13px; cursor: pointer"
+          @click="router.push(`/d/${entry.domain}/doc/${entry.id}`)"
+        >
+          <span v-if="entry.docCode" style="font-family: monospace; color: #409eff; width: 130px; flex-shrink: 0">
+            {{ entry.docCode }}
+          </span>
+          <span style="color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+            {{ entry.fileName ?? '(메타데이터만)' }}
+          </span>
+          <span style="color: #c0c4cc; font-size: 12px; flex-shrink: 0">
+            {{ formatTimeAgo(entry.visitedAt) }}
+          </span>
+        </div>
+      </div>
     </el-card>
 
     <!-- 최근 활동 -->

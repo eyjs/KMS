@@ -1,7 +1,7 @@
 import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsDateString } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 
-const VALID_ROLES = ['EXTERNAL', 'EMPLOYEE', 'TEAM_LEAD', 'EXECUTIVE', 'ADMIN'] as const
+const VALID_ROLES = ['VIEWER', 'EDITOR', 'REVIEWER', 'APPROVER', 'ADMIN'] as const
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@company.com' })
@@ -36,13 +36,13 @@ export class CreateUserDto {
   @IsString()
   name!: string
 
-  @ApiProperty({ enum: VALID_ROLES, example: 'EMPLOYEE' })
+  @ApiProperty({ enum: VALID_ROLES, example: 'EDITOR' })
   @IsEnum(VALID_ROLES, { message: '유효한 역할이 아닙니다' })
   role!: (typeof VALID_ROLES)[number]
 }
 
 export class UpdateUserRoleDto {
-  @ApiProperty({ enum: VALID_ROLES, example: 'EMPLOYEE' })
+  @ApiProperty({ enum: VALID_ROLES, example: 'EDITOR' })
   @IsEnum(VALID_ROLES, { message: '유효한 역할이 아닙니다' })
   role!: (typeof VALID_ROLES)[number]
 }
@@ -53,7 +53,7 @@ export class CreateApiKeyDto {
   @IsString()
   name!: string
 
-  @ApiProperty({ enum: VALID_ROLES, example: 'EXTERNAL' })
+  @ApiProperty({ enum: VALID_ROLES, example: 'VIEWER' })
   @IsEnum(VALID_ROLES, { message: '유효한 역할이 아닙니다' })
   role!: (typeof VALID_ROLES)[number]
 

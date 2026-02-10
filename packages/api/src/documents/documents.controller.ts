@@ -32,6 +32,7 @@ import {
   CreateDocumentBodyDto,
   UpdateDocumentDto,
   TransitionLifecycleDto,
+  BulkTransitionDto,
   IssueQueryDto,
 } from './dto/documents.dto'
 import type { UserRole } from '@kms/shared'
@@ -128,7 +129,7 @@ export class DocumentsController {
   ) {
     return this.documentsService.getRecent(
       parseInt(limit ?? '10', 10),
-      req?.user.role ?? 'EXTERNAL',
+      req?.user.role ?? 'VIEWER',
     )
   }
 
@@ -139,7 +140,7 @@ export class DocumentsController {
     @Query('groupBy') groupBy: string,
     @Request() req?: AuthRequest,
   ) {
-    return this.documentsService.getCounts(domain, groupBy, req?.user.role ?? 'EXTERNAL')
+    return this.documentsService.getCounts(domain, groupBy, req?.user.role ?? 'VIEWER')
   }
 
   @Get('issues')
@@ -162,19 +163,42 @@ export class DocumentsController {
     return this.documentsService.getIssueCounts(req.user.role)
   }
 
+  @Get('check-duplicate')
+  @ApiOperation({ summary: '동일 분류의 ACTIVE 문서 존재 여부 확인' })
+  async checkDuplicate(
+    @Query('domain') domain: string,
+    @Query('classifications') classifications: string,
+    @Request() req: AuthRequest,
+  ) {
+    if (!domain) throw new BadRequestException('domain은 필수입니다')
+    let parsed: Record<string, string>
+    try {
+      const raw: unknown = JSON.parse(classifications)
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error()
+      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof key !== 'string' || typeof value !== 'string') throw new Error()
+      }
+      parsed = raw as Record<string, string>
+    } catch {
+      throw new BadRequestException('classifications은 유효한 JSON 객체여야 합니다')
+    }
+    return this.documentsService.checkDuplicate(domain, parsed, req.user.role)
+  }
+
   @Get('search')
   @ApiOperation({ summary: '통합 검색' })
   async search(
     @Query('q') q?: string,
     @Query('domain') domain?: string,
     @Query('lifecycle') lifecycle?: string,
+    @Query('classifications') classifications?: string,
     @Query('page') page?: string,
     @Query('size') size?: string,
     @Request() req?: AuthRequest,
   ) {
     return this.documentsService.search(
-      { q, domain, lifecycle, page: parseInt(page ?? '1', 10), size: parseInt(size ?? '20', 10) },
-      req?.user.role ?? 'EXTERNAL',
+      { q, domain, lifecycle, classifications, page: parseInt(page ?? '1', 10), size: parseInt(size ?? '20', 10) },
+      req?.user.role ?? 'VIEWER',
     )
   }
 
@@ -194,6 +218,15 @@ export class DocumentsController {
     return this.documentsService.update(id, body, req.user.sub, req.user.role)
   }
 
+  @Patch('bulk/lifecycle')
+  @ApiOperation({ summary: '일괄 라이프사이클 전환' })
+  async bulkTransitionLifecycle(
+    @Body() body: BulkTransitionDto,
+    @Request() req: AuthRequest,
+  ) {
+    return this.documentsService.bulkTransitionLifecycle(body.ids, body.lifecycle, req.user.sub, req.user.role)
+  }
+
   @Patch(':id/lifecycle')
   @ApiOperation({ summary: '라이프사이클 전환' })
   async transitionLifecycle(
@@ -205,7 +238,7 @@ export class DocumentsController {
   }
 
   @Delete(':id')
-  @Roles('TEAM_LEAD')
+  @Roles('REVIEWER')
   @ApiOperation({ summary: '문서 논리 삭제 (팀장 이상)' })
   async remove(@Param('id') id: string, @Request() req: AuthRequest) {
     await this.documentsService.softDelete(id, req.user.sub, req.user.role)

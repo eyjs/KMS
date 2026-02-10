@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsInt, IsISO8601, Min, Max, IsNotEmpty, ValidateIf } from 'class-validator'
+import { IsString, IsOptional, IsEnum, IsInt, IsISO8601, Min, Max, IsNotEmpty, ValidateIf, IsArray, ArrayMinSize, ArrayMaxSize, IsUUID } from 'class-validator'
 import { Transform, Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
 
@@ -125,6 +125,19 @@ export class IssueQueryDto {
 }
 
 export class TransitionLifecycleDto {
+  @ApiProperty({ enum: VALID_LIFECYCLES })
+  @IsEnum(VALID_LIFECYCLES, { message: '유효한 라이프사이클 상태가 아닙니다' })
+  lifecycle!: (typeof VALID_LIFECYCLES)[number]
+}
+
+export class BulkTransitionDto {
+  @ApiProperty({ description: '문서 ID 배열 (최대 100건)' })
+  @IsArray()
+  @ArrayMinSize(1, { message: '최소 1건 이상 선택해야 합니다' })
+  @ArrayMaxSize(100, { message: '최대 100건까지 일괄 처리 가능합니다' })
+  @IsUUID('4', { each: true, message: '유효한 문서 ID가 아닙니다' })
+  ids!: string[]
+
   @ApiProperty({ enum: VALID_LIFECYCLES })
   @IsEnum(VALID_LIFECYCLES, { message: '유효한 라이프사이클 상태가 아닙니다' })
   lifecycle!: (typeof VALID_LIFECYCLES)[number]

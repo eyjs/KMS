@@ -16,7 +16,7 @@ model User {
   email        String   @unique @db.VarChar(255)
   passwordHash String   @map("password_hash") @db.VarChar(255)
   name         String   @db.VarChar(100)
-  role         String   @default("EMPLOYEE") @db.VarChar(20)
+  role         String   @default("EDITOR") @db.VarChar(20)
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
@@ -84,6 +84,7 @@ model FacetMaster {
 
 model Document {
   id                 String   @id @default(uuid()) @db.Uuid
+  docCode            String?  @unique @map("doc_code") @db.VarChar(30)
   domain             String   @db.VarChar(20)
   lifecycle          String   @default("DRAFT") @db.VarChar(20)
   securityLevel      String   @default("INTERNAL") @map("security_level") @db.VarChar(20)
@@ -189,7 +190,7 @@ model ApiKey {
   keyHash    String    @unique @map("key_hash") @db.VarChar(64)
   keyPrefix  String    @map("key_prefix") @db.VarChar(8)
   name       String    @db.VarChar(100)
-  role       String    @default("EXTERNAL") @db.VarChar(20)
+  role       String    @default("VIEWER") @db.VarChar(20)
   expiresAt  DateTime? @map("expires_at")
   isActive   Boolean   @default(true) @map("is_active")
   createdAt  DateTime  @default(now()) @map("created_at")

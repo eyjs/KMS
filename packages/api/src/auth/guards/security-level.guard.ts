@@ -15,10 +15,10 @@ import type { SecurityLevel, UserRole } from '@kms/shared'
  * 2. 또는 서비스 레벨에서 canAccessDocument() 정적 메서드 사용
  *
  * 역할별 접근 범위:
- * - EXTERNAL: PUBLIC만
- * - EMPLOYEE: PUBLIC, INTERNAL
- * - TEAM_LEAD: PUBLIC, INTERNAL, CONFIDENTIAL
- * - EXECUTIVE: PUBLIC, INTERNAL, CONFIDENTIAL, SECRET
+ * - VIEWER: PUBLIC만
+ * - EDITOR: PUBLIC, INTERNAL
+ * - REVIEWER: PUBLIC, INTERNAL, CONFIDENTIAL
+ * - APPROVER: PUBLIC, INTERNAL, CONFIDENTIAL, SECRET
  * - ADMIN: 전체
  */
 @Injectable()
