@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
 import { FACET_TYPE_LABELS, LIFECYCLE_LABELS } from '@kms/shared'
@@ -8,6 +8,7 @@ import type { DocumentEntity, DomainMasterEntity } from '@kms/shared'
 const props = defineProps<{
   sourceDocument: DocumentEntity
   excludeId?: string
+  existingRelations?: Map<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -96,6 +97,10 @@ async function loadDocuments() {
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 
 function handleSearch() {
   if (searchTimer) clearTimeout(searchTimer)
@@ -201,6 +206,14 @@ function lifecycleType(lifecycle: string): string {
             <span style="font-size: 13px; font-weight: 500; color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
               {{ doc.fileName ?? doc.docCode ?? '(제목 없음)' }}
             </span>
+            <el-tag
+              v-if="props.existingRelations?.has(doc.id)"
+              size="small"
+              type="info"
+              style="flex-shrink: 0"
+            >
+              {{ props.existingRelations.get(doc.id) }}
+            </el-tag>
             <el-tag size="small" :type="lifecycleType(doc.lifecycle)">
               {{ LIFECYCLE_LABELS[doc.lifecycle] ?? doc.lifecycle }}
             </el-tag>

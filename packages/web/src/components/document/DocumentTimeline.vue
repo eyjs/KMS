@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { documentsApi } from '@/api/documents'
 import type { DocumentHistoryEntry } from '@/api/documents'
-import { FACET_TYPE_LABELS } from '@kms/shared'
+import { FACET_TYPE_LABELS, ACTION_LABELS, ACTION_TAG_TYPES, RELATION_TYPE_LABELS } from '@kms/shared'
 
 const props = defineProps<{
   documentId: string
@@ -10,34 +10,6 @@ const props = defineProps<{
 
 const history = ref<DocumentHistoryEntry[]>([])
 const loading = ref(false)
-
-const ACTION_LABELS: Record<string, string> = {
-  CREATE: '최초 업로드',
-  UPDATE: '문서 수정',
-  LIFECYCLE_CHANGE: '상태 변경',
-  DELETE: '삭제',
-  FILE_ATTACH: '파일 첨부',
-  RELATION_ADD: '관계 추가',
-  RELATION_REMOVE: '관계 삭제',
-}
-
-const ACTION_TYPES: Record<string, string> = {
-  CREATE: 'success',
-  UPDATE: 'primary',
-  LIFECYCLE_CHANGE: 'warning',
-  DELETE: 'danger',
-  FILE_ATTACH: 'primary',
-  RELATION_ADD: 'success',
-  RELATION_REMOVE: 'danger',
-}
-
-const RELATION_TYPE_LABELS: Record<string, string> = {
-  PARENT_OF: '상위',
-  CHILD_OF: '하위',
-  SIBLING: '형제',
-  REFERENCE: '참조',
-  SUPERSEDES: '대체',
-}
 
 onMounted(async () => {
   loading.value = true
@@ -91,7 +63,7 @@ function formatChanges(action: string, changes: Record<string, unknown> | null):
       <el-timeline-item
         v-for="entry in history"
         :key="entry.id"
-        :type="ACTION_TYPES[entry.action] ?? 'info'"
+        :type="ACTION_TAG_TYPES[entry.action] ?? 'info'"
         :timestamp="new Date(entry.createdAt).toLocaleString('ko-KR')"
         placement="top"
       >

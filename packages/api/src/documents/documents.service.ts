@@ -209,6 +209,15 @@ export class DocumentsService {
       ? { equals: securityLevel }
       : { in: allowedLevels }
 
+    // 도메인 필터: 하위 도메인 포함
+    let domainFilter: { domain?: string | { in: string[] } } = {}
+    if (domain) {
+      const descendantCodes = await this.taxonomy.getDescendantCodes(domain)
+      domainFilter = descendantCodes.length > 1
+        ? { domain: { in: descendantCodes } }
+        : { domain }
+    }
+
     // 동적 facet 필터: classifications JSON → AND 조건
     let parsed: Record<string, string> = {}
     if (classifications) {
@@ -227,7 +236,7 @@ export class DocumentsService {
 
     const where = {
       isDeleted: false,
-      ...(domain && { domain }),
+      ...domainFilter,
       ...(lifecycle && { lifecycle }),
       securityLevel: effectiveSecurityLevel,
       ...(facetFilters.length > 0 && { AND: facetFilters }),
@@ -236,7 +245,10 @@ export class DocumentsService {
     const [data, total] = await Promise.all([
       this.prisma.document.findMany({
         where,
-        include: { classifications: true },
+        include: {
+          classifications: true,
+          _count: { select: { sourceRelations: true, targetRelations: true } },
+        },
         orderBy: { [sort]: order },
         skip: (page - 1) * size,
         take: size,
@@ -623,6 +635,15 @@ export class DocumentsService {
       } catch { /* 잘못된 JSON은 필터 없이 검색 */ }
     }
 
+    // 도메인 필터: 하위 도메인 포함
+    let domainFilter: { domain?: string | { in: string[] } } = {}
+    if (domain) {
+      const descendantCodes = await this.taxonomy.getDescendantCodes(domain)
+      domainFilter = descendantCodes.length > 1
+        ? { domain: { in: descendantCodes } }
+        : { domain }
+    }
+
     // 키워드: 파일명 또는 문서코드에서 검색
     const keywordFilter = q ? {
       OR: [
@@ -635,7 +656,7 @@ export class DocumentsService {
       isDeleted: false,
       securityLevel: { in: allowedLevels },
       ...keywordFilter,
-      ...(domain && { domain }),
+      ...domainFilter,
       ...(lifecycle && { lifecycle }),
       ...(facetFilters.length > 0 && { AND: facetFilters }),
     }
@@ -643,7 +664,10 @@ export class DocumentsService {
     const [data, total] = await Promise.all([
       this.prisma.document.findMany({
         where,
-        include: { classifications: true },
+        include: {
+          classifications: true,
+          _count: { select: { sourceRelations: true, targetRelations: true } },
+        },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * size,
         take: size,
@@ -861,12 +885,17 @@ export class DocumentsService {
       createdAt: Date
       updatedAt: Date
       classifications: Array<{ facetType: string; facetValue: string }>
+      _count?: { sourceRelations?: number; targetRelations?: number }
     },
   ) {
     const classifications: Record<string, string> = {}
     for (const c of doc.classifications) {
       classifications[c.facetType] = c.facetValue
     }
+
+    const relationCount = doc._count
+      ? (doc._count.sourceRelations ?? 0) + (doc._count.targetRelations ?? 0)
+      : undefined
 
     return {
       id: doc.id,
@@ -889,6 +918,7 @@ export class DocumentsService {
       updatedAt: doc.updatedAt.toISOString(),
       classifications,
       freshness: this.calcFreshness(doc),
+      ...(relationCount !== undefined && { relationCount }),
     }
   }
 

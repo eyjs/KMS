@@ -85,6 +85,21 @@ export const LIFECYCLE_LABELS: Record<string, string> = {
   DEPRECATED: '만료',
 }
 
+export const SECURITY_LEVEL_LABELS: Record<string, string> = {
+  PUBLIC: '공개',
+  INTERNAL: '사내용',
+  CONFIDENTIAL: '대외비(2급)',
+  SECRET: '기밀(1급)',
+}
+
+export const RELATION_TYPE_LABELS: Record<string, string> = {
+  PARENT_OF: '상위',
+  CHILD_OF: '하위',
+  SIBLING: '형제',
+  REFERENCE: '참조',
+  SUPERSEDES: '대체',
+}
+
 export const FRESHNESS_LABELS: Record<string, string> = {
   FRESH: '정상',
   WARNING: '갱신필요',
@@ -136,6 +151,34 @@ export const DOMAIN_LEVEL_LABELS: Record<number, string> = {
   1: '업무영역',
   2: '세부업무',
   3: '업무프로세스',
+}
+
+// ============================================================
+// 문서 이력 액션 라벨 + 태그 타입
+// ============================================================
+
+export const ACTION_LABELS: Record<string, string> = {
+  CREATE: '업로드',
+  UPDATE: '수정',
+  LIFECYCLE_CHANGE: '상태 변경',
+  DELETE: '삭제',
+  FILE_ATTACH: '파일 첨부',
+  RELATION_ADD: '관계 추가',
+  RELATION_REMOVE: '관계 삭제',
+  SECURITY_CHANGE: '보안등급 변경',
+  CLASSIFICATION_CHANGE: '분류 변경',
+}
+
+export const ACTION_TAG_TYPES: Record<string, string> = {
+  CREATE: 'success',
+  UPDATE: 'primary',
+  LIFECYCLE_CHANGE: 'warning',
+  DELETE: 'danger',
+  FILE_ATTACH: 'primary',
+  RELATION_ADD: 'success',
+  RELATION_REMOVE: 'danger',
+  SECURITY_CHANGE: 'warning',
+  CLASSIFICATION_CHANGE: 'primary',
 }
 
 /** 도메인 생성 안내 — 조직이 아닌 업무 기준임을 강제 */

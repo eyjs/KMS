@@ -6,7 +6,7 @@ import { relationsApi } from '@/api/relations'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
-import { LIFECYCLE_TRANSITIONS, FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
+import { LIFECYCLE_TRANSITIONS, FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
 import { useRecentDocs } from '@/composables/useRecentDocs'
 import type { DocumentEntity, Lifecycle, RelationEntity, RelationType, FacetMasterEntity } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -28,21 +28,6 @@ const { addVisit } = useRecentDocs()
 const doc = ref<DocumentEntity | null>(null)
 const relations = ref<{ asSource: RelationEntity[]; asTarget: RelationEntity[] }>({ asSource: [], asTarget: [] })
 const loading = ref(true)
-
-const SECURITY_LABELS: Record<string, string> = {
-  PUBLIC: '공개',
-  INTERNAL: '사내용',
-  CONFIDENTIAL: '대외비(2급)',
-  SECRET: '기밀(1급)',
-}
-
-const RELATION_LABELS: Record<string, string> = {
-  PARENT_OF: '상위 문서',
-  CHILD_OF: '하위 문서',
-  SIBLING: '형제 문서',
-  REFERENCE: '참조',
-  SUPERSEDES: '대체',
-}
 
 const RELATION_TYPES: Array<{ value: RelationType; label: string }> = [
   { value: 'PARENT_OF', label: '상위 문서 (PARENT_OF)' },
@@ -207,6 +192,17 @@ const allRelations = computed(() => {
     })
   }
   return result
+})
+
+// 빠른추가 탐색기에 전달할 기존 관계 Map
+const existingRelationsMap = computed(() => {
+  const map = new Map<string, string>()
+  for (const rel of allRelations.value) {
+    if (!map.has(rel.docId)) {
+      map.set(rel.docId, RELATION_TYPE_LABELS[rel.type] ?? rel.type)
+    }
+  }
+  return map
 })
 
 // ============================================================
@@ -389,7 +385,7 @@ async function handleEditSubmit() {
               :type="doc.securityLevel === 'SECRET' ? 'danger' : doc.securityLevel === 'CONFIDENTIAL' ? 'warning' : ''"
               size="small"
             >
-              {{ SECURITY_LABELS[doc.securityLevel] ?? doc.securityLevel }}
+              {{ SECURITY_LEVEL_LABELS[doc.securityLevel] ?? doc.securityLevel }}
             </el-tag>
             <el-tag
               v-if="doc.freshness"
@@ -520,7 +516,7 @@ async function handleEditSubmit() {
               :key="rel.id"
               style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f2f3f5"
             >
-              <el-tag size="small" type="info">{{ RELATION_LABELS[rel.type] ?? rel.type }}</el-tag>
+              <el-tag size="small" type="info">{{ RELATION_TYPE_LABELS[rel.type] ?? rel.type }}</el-tag>
               <span
                 style="font-size: 13px; color: #303133; flex: 1; cursor: pointer"
                 @click="router.push(`/d/${doc!.domain}/doc/${rel.docId}`)"
@@ -557,6 +553,7 @@ async function handleEditSubmit() {
             v-if="doc"
             :source-document="doc"
             :exclude-id="doc.id"
+            :existing-relations="existingRelationsMap"
             @select="handleQuickAddSelect"
           />
         </div>

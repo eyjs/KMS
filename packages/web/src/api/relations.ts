@@ -15,6 +15,13 @@ export const relationsApi = {
     )
   },
 
+  getDomainGraph(domainCode: string, maxNodes: number = 200) {
+    return client.get<RelationGraphResponse>(
+      `/relations/graph/domain/${domainCode}`,
+      { params: { maxNodes } },
+    )
+  },
+
   create(sourceId: string, targetId: string, relationType: RelationType) {
     return client.post<RelationEntity>('/relations', { sourceId, targetId, relationType })
   },

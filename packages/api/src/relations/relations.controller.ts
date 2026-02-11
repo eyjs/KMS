@@ -28,6 +28,17 @@ interface AuthRequest {
 export class RelationsController {
   constructor(private readonly relationsService: RelationsService) {}
 
+  @Get('relations/graph/domain/:domainCode')
+  @ApiOperation({ summary: '도메인 관계 그래프 조회' })
+  async getDomainRelationGraph(
+    @Param('domainCode') domainCode: string,
+    @Query('maxNodes') maxNodes: string | undefined,
+    @Request() req: AuthRequest,
+  ) {
+    const max = maxNodes ? Math.min(parseInt(maxNodes, 10) || 200, 500) : 200
+    return this.relationsService.getRelationGraphByDomain(domainCode, req.user.role, max)
+  }
+
   @Get('documents/:id/relations/graph')
   @ApiOperation({ summary: '관계 그래프 조회 (BFS)' })
   async getRelationGraph(
@@ -62,6 +73,6 @@ export class RelationsController {
   @Roles('EDITOR')
   @ApiOperation({ summary: '관계 삭제 (작성자 이상)' })
   async remove(@Param('id') id: string, @Request() req: AuthRequest) {
-    return this.relationsService.remove(id, req.user.sub)
+    return this.relationsService.remove(id, req.user.sub, req.user.role)
   }
 }

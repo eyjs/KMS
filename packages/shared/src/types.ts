@@ -100,6 +100,7 @@ export interface DocumentEntity {
   updatedAt: string
   classifications: Record<string, string>
   freshness: Freshness | null
+  relationCount?: number
 }
 
 export interface RelationEntity {

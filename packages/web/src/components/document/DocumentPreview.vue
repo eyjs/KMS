@@ -3,19 +3,12 @@ import { computed } from 'vue'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
 import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
 import CsvViewer from '@/components/viewer/CsvViewer.vue'
-import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
+import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS } from '@kms/shared'
 import type { DocumentEntity } from '@kms/shared'
 
 const props = defineProps<{
   document: DocumentEntity
 }>()
-
-const SECURITY_LABELS: Record<string, string> = {
-  PUBLIC: '공개',
-  INTERNAL: '사내용',
-  CONFIDENTIAL: '대외비(2급)',
-  SECRET: '기밀(1급)',
-}
 
 const LIFECYCLE_TAG: Record<string, string> = {
   DRAFT: 'info',
@@ -48,7 +41,7 @@ const fileUrl = computed(() => props.document.downloadUrl)
           :type="document.securityLevel === 'SECRET' ? 'danger' : document.securityLevel === 'CONFIDENTIAL' ? 'warning' : ''"
           size="small"
         >
-          {{ SECURITY_LABELS[document.securityLevel] ?? document.securityLevel }}
+          {{ SECURITY_LEVEL_LABELS[document.securityLevel] ?? document.securityLevel }}
         </el-tag>
         <el-tag
           v-if="document.freshness"

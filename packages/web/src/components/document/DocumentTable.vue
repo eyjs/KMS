@@ -5,6 +5,7 @@ import { documentsApi } from '@/api/documents'
 import { LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
 import type { DocumentEntity, DocumentListQuery } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Connection } from '@element-plus/icons-vue'
 
 const router = useRouter()
 
@@ -44,12 +45,6 @@ const SECURITY_TAG: Record<string, { type: string; label: string }> = {
   INTERNAL: { type: '', label: '사내용' },
   CONFIDENTIAL: { type: 'warning', label: '대외비' },
   SECRET: { type: 'danger', label: '기밀' },
-}
-
-const LIFECYCLE_LABEL_MAP: Record<string, string> = {
-  DRAFT: '임시저장',
-  ACTIVE: '사용중',
-  DEPRECATED: '만료',
 }
 
 // 선택된 문서들로부터 가능한 벌크 액션 계산
@@ -119,7 +114,7 @@ function handleSelectionChange(rows: DocumentEntity[]) {
 
 async function handleBulkTransition(lifecycle: string) {
   const count = selectedRows.value.length
-  const label = LIFECYCLE_LABEL_MAP[lifecycle] ?? lifecycle
+  const label = LIFECYCLE_LABELS[lifecycle] ?? lifecycle
   try {
     await ElMessageBox.confirm(
       `선택한 ${count}건의 문서를 "${label}" 상태로 전환합니다.`,
@@ -235,7 +230,10 @@ defineExpose({ refresh: fetchDocuments })
       </el-table-column>
       <el-table-column label="파일명" min-width="200" sortable="custom" prop="fileName" show-overflow-tooltip>
         <template #default="{ row }">
-          {{ row.fileName ?? '(메타데이터만)' }}
+          <span>{{ row.fileName ?? '(메타데이터만)' }}</span>
+          <el-tooltip v-if="row.relationCount > 0" :content="`관계 ${row.relationCount}건`" placement="top">
+            <el-icon style="margin-left: 4px; color: #409eff; vertical-align: middle"><Connection /></el-icon>
+          </el-tooltip>
         </template>
       </el-table-column>
       <el-table-column label="상태" width="90">

@@ -6,6 +6,7 @@ import { useDomainStore } from '@/stores/domain'
 import { documentsApi } from '@/api/documents'
 import type { DocumentStats, RecentActivity, IssueCounts } from '@/api/documents'
 import type { DomainMasterEntity, DocumentEntity } from '@kms/shared'
+import { ACTION_LABELS, ACTION_TAG_TYPES } from '@kms/shared'
 import { useRecentDocs } from '@/composables/useRecentDocs'
 import StatusTag from '@/components/common/StatusTag.vue'
 
@@ -17,13 +18,6 @@ const stats = ref<DocumentStats | null>(null)
 const recentActivities = ref<RecentActivity[]>([])
 const loading = ref(true)
 const errorState = ref(false)
-
-const ACTION_LABELS: Record<string, string> = {
-  CREATE: '업로드',
-  UPDATE: '수정',
-  LIFECYCLE_CHANGE: '상태 변경',
-  DELETE: '삭제',
-}
 
 interface FlatDomainRow {
   domain: string
@@ -434,7 +428,7 @@ function formatTimeAgo(dateStr: string): string {
           <span style="color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
             {{ activity.fileName }}
           </span>
-          <el-tag size="small">{{ ACTION_LABELS[activity.action] ?? activity.action }}</el-tag>
+          <el-tag size="small" :type="ACTION_TAG_TYPES[activity.action] ?? 'info'">{{ ACTION_LABELS[activity.action] ?? activity.action }}</el-tag>
           <el-tag size="small" type="info">{{ activity.domain }}</el-tag>
         </div>
       </div>

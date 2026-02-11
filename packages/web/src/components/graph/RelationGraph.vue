@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { Network } from 'vis-network/standalone'
 import { DataSet } from 'vis-data/standalone'
-import { LIFECYCLE_LABELS, FACET_TYPE_LABELS } from '@kms/shared'
+import { LIFECYCLE_LABELS, FACET_TYPE_LABELS, SECURITY_LEVEL_LABELS } from '@kms/shared'
 import type { GraphNode, GraphEdge, RelationGraphResponse } from '@kms/shared'
 
 const props = defineProps<{
@@ -22,13 +22,6 @@ let nodesDataSet: DataSet<Record<string, unknown>> | null = null
 let edgesDataSet: DataSet<Record<string, unknown>> | null = null
 // edge id → 관계유형 매핑 (간선 클릭 시 삭제 확인용)
 const edgeRelationMap = new Map<string, string>()
-
-const SECURITY_LABELS: Record<string, string> = {
-  PUBLIC: '공개',
-  INTERNAL: '사내용',
-  CONFIDENTIAL: '대외비(2급)',
-  SECRET: '기밀(1급)',
-}
 
 // 라이프사이클별 노드 색상
 const LIFECYCLE_COLORS: Record<string, { background: string; border: string }> = {
@@ -57,7 +50,7 @@ function buildNodeTitle(node: GraphNode): string {
   if (node.fileName) lines.push(`파일: ${node.fileName}`)
   lines.push(`도메인: ${node.domain}`)
   lines.push(`상태: ${LIFECYCLE_LABELS[node.lifecycle] ?? node.lifecycle}`)
-  lines.push(`보안: ${SECURITY_LABELS[node.securityLevel] ?? node.securityLevel}`)
+  lines.push(`보안: ${SECURITY_LEVEL_LABELS[node.securityLevel] ?? node.securityLevel}`)
   if (Object.keys(node.classifications).length > 0) {
     lines.push(`분류: ${Object.entries(node.classifications).map(([k, v]) => `${FACET_TYPE_LABELS[k] ?? k}: ${v}`).join(', ')}`)
   }

@@ -5,13 +5,17 @@ import {
   ForbiddenException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { TaxonomyService } from '../taxonomy/taxonomy.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
-import { RELATION_META } from '@kms/shared'
+import { RELATION_META, SECURITY_LEVEL_ORDER } from '@kms/shared'
 import type { RelationType, UserRole, SecurityLevel, GraphNode, GraphEdge } from '@kms/shared'
 
 @Injectable()
 export class RelationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly taxonomy: TaxonomyService,
+  ) {}
 
   async findByDocument(documentId: string, userRole: UserRole) {
     const doc = await this.prisma.document.findFirst({
@@ -128,9 +132,21 @@ export class RelationsService {
     return relation
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, userId: string, userRole: UserRole) {
     const relation = await this.prisma.relation.findUnique({ where: { id } })
     if (!relation) throw new NotFoundException('관계를 찾을 수 없습니다')
+
+    // 보안 등급 접근 확인
+    const [source, target] = await Promise.all([
+      this.prisma.document.findFirst({ where: { id: relation.sourceId, isDeleted: false }, select: { securityLevel: true } }),
+      this.prisma.document.findFirst({ where: { id: relation.targetId, isDeleted: false }, select: { securityLevel: true } }),
+    ])
+    if (source && !SecurityLevelGuard.canAccess(userRole, source.securityLevel as SecurityLevel)) {
+      throw new ForbiddenException('출발 문서에 대한 접근 권한이 없습니다')
+    }
+    if (target && !SecurityLevelGuard.canAccess(userRole, target.securityLevel as SecurityLevel)) {
+      throw new ForbiddenException('대상 문서에 대한 접근 권한이 없습니다')
+    }
 
     // 양방향이면 역방향도 삭제
     const meta = RELATION_META[relation.relationType as RelationType]
@@ -277,6 +293,84 @@ export class RelationsService {
       nodes: [...nodeMap.values()],
       edges: validEdges,
       centerId: documentId,
+    }
+  }
+
+  /** 도메인 내 관계가 있는 문서들의 그래프 반환 */
+  async getRelationGraphByDomain(domainCode: string, userRole: UserRole, maxNodes: number = 200) {
+    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
+    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
+      .filter(([, level]) => level <= maxLevel)
+      .map(([name]) => name)
+
+    // 도메인 + 하위 도메인 코드 수집
+    const domainCodes = await this.taxonomy.getDescendantCodes(domainCode)
+
+    // 관계가 있는 문서만 조회 (성능: 관계 테이블 기준)
+    const relations = await this.prisma.relation.findMany({
+      where: {
+        OR: [
+          { source: { domain: { in: domainCodes }, isDeleted: false, securityLevel: { in: allowedLevels } } },
+          { target: { domain: { in: domainCodes }, isDeleted: false, securityLevel: { in: allowedLevels } } },
+        ],
+      },
+      select: { id: true, sourceId: true, targetId: true, relationType: true },
+    })
+
+    // 관련 문서 ID 수집
+    const docIds = new Set<string>()
+    for (const r of relations) {
+      docIds.add(r.sourceId)
+      docIds.add(r.targetId)
+    }
+
+    // 노드 수 상한 초과 시 조기 반환
+    if (docIds.size > maxNodes) {
+      return { nodes: [], edges: [], centerId: '' }
+    }
+
+    // 문서 일괄 조회
+    const docs = await this.prisma.document.findMany({
+      where: {
+        id: { in: [...docIds] },
+        isDeleted: false,
+        securityLevel: { in: allowedLevels },
+      },
+      include: { classifications: true },
+    })
+
+    const nodeMap = new Map<string, GraphNode>()
+    for (const doc of docs) {
+      const classifications: Record<string, string> = {}
+      for (const c of doc.classifications) {
+        classifications[c.facetType] = c.facetValue
+      }
+      nodeMap.set(doc.id, {
+        id: doc.id,
+        docCode: doc.docCode,
+        fileName: doc.fileName,
+        domain: doc.domain,
+        lifecycle: doc.lifecycle as GraphNode['lifecycle'],
+        securityLevel: doc.securityLevel as GraphNode['securityLevel'],
+        classifications,
+        depth: 0,
+      })
+    }
+
+    // 양쪽 노드가 모두 있는 엣지만 반환
+    const edges: GraphEdge[] = relations
+      .filter((r) => nodeMap.has(r.sourceId) && nodeMap.has(r.targetId))
+      .map((r) => ({
+        id: r.id,
+        sourceId: r.sourceId,
+        targetId: r.targetId,
+        relationType: r.relationType as GraphEdge['relationType'],
+      }))
+
+    return {
+      nodes: [...nodeMap.values()],
+      edges,
+      centerId: '',
     }
   }
 }

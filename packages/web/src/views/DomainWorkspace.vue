@@ -9,8 +9,10 @@ import ClassificationTree from '@/components/domain/ClassificationTree.vue'
 import DocumentTable from '@/components/document/DocumentTable.vue'
 import DocumentPreview from '@/components/document/DocumentPreview.vue'
 import UploadDialog from '@/components/domain/UploadDialog.vue'
+import RelationGraph from '@/components/graph/RelationGraph.vue'
+import { relationsApi } from '@/api/relations'
 import { DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
-import type { DocumentEntity, DomainMasterEntity, CreateDomainDto, UpdateDomainDto } from '@kms/shared'
+import type { DocumentEntity, DomainMasterEntity, CreateDomainDto, UpdateDomainDto, RelationGraphResponse } from '@kms/shared'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +26,10 @@ const showPreview = ref(true)
 const showUpload = ref(false)
 const activeTab = ref<'list' | 'graph'>('list')
 const docTableRef = ref<InstanceType<typeof DocumentTable>>()
+
+// 그래프 데이터
+const graphData = ref<RelationGraphResponse | null>(null)
+const graphLoading = ref(false)
 
 // 하위 도메인
 const childDomains = computed(() =>
@@ -51,6 +57,26 @@ watch(domainCode, (code) => {
     selectedDoc.value = null
   }
 }, { immediate: true })
+
+async function loadDomainGraph() {
+  graphLoading.value = true
+  try {
+    const { data } = await relationsApi.getDomainGraph(domainCode.value)
+    graphData.value = data
+  } catch {
+    graphData.value = null
+  } finally {
+    graphLoading.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'graph') loadDomainGraph()
+})
+
+function handleGraphNodeClick(nodeId: string) {
+  router.push(`/d/${domainCode.value}/doc/${nodeId}`)
+}
 
 function handleTreeSelect(treeFilters: Record<string, string>) {
   filters.value = treeFilters
@@ -357,8 +383,21 @@ async function handleChildDelete(child: DomainMasterEntity) {
             />
           </template>
           <template v-else>
-            <div style="display: flex; align-items: center; justify-content: center; height: 100%">
-              <el-empty description="관계 그래프는 추후 구현 예정입니다" />
+            <div style="height: 100%; display: flex; flex-direction: column">
+              <div style="display: flex; justify-content: flex-end; padding-bottom: 8px; flex-shrink: 0">
+                <el-button size="small" :loading="graphLoading" @click="loadDomainGraph">새로고침</el-button>
+              </div>
+              <div style="flex: 1; min-height: 0">
+                <RelationGraph
+                  v-if="graphData && graphData.nodes.length > 0"
+                  :data="graphData"
+                  :loading="graphLoading"
+                  @node-click="handleGraphNodeClick"
+                />
+                <div v-else-if="!graphLoading" style="display: flex; align-items: center; justify-content: center; height: 100%">
+                  <el-empty description="관계가 설정된 문서가 없습니다" />
+                </div>
+              </div>
             </div>
           </template>
         </el-card>

@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
-import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
+import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
 import type { DocumentEntity, RelationType, RelationGraphResponse } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
@@ -34,13 +34,6 @@ const RELATION_OPTIONS: Array<{ value: RelationType; label: string; desc: string
   { value: 'REFERENCE', label: '참조', desc: '단방향 참조 관계' },
   { value: 'SUPERSEDES', label: '대체', desc: '이 문서가 대상을 대체' },
 ]
-
-const SECURITY_LABELS: Record<string, string> = {
-  PUBLIC: '공개',
-  INTERNAL: '사내용',
-  CONFIDENTIAL: '대외비(2급)',
-  SECRET: '기밀(1급)',
-}
 
 function facetLabel(key: string): string {
   return FACET_TYPE_LABELS[key] ?? key
@@ -92,13 +85,22 @@ async function handleNodeDoubleClick(nodeId: string) {
   }
 }
 
-const RELATION_TYPE_LABELS: Record<string, string> = {
-  PARENT_OF: '상위',
-  CHILD_OF: '하위',
-  SIBLING: '형제',
-  REFERENCE: '참조',
-  SUPERSEDES: '대체',
-}
+// 탐색기에 전달할 기존 관계 Map
+const existingRelationsMap = computed(() => {
+  const map = new Map<string, string>()
+  if (!graphData.value) return map
+  for (const edge of graphData.value.edges) {
+    const relLabel = RELATION_TYPE_LABELS[edge.relationType] ?? edge.relationType
+    // 소스 문서 기준으로 관련 문서 ID → 관계 라벨
+    if (edge.sourceId === sourceId.value && !map.has(edge.targetId)) {
+      map.set(edge.targetId, relLabel)
+    }
+    if (edge.targetId === sourceId.value && !map.has(edge.sourceId)) {
+      map.set(edge.sourceId, relLabel)
+    }
+  }
+  return map
+})
 
 async function handleEdgeClick(edgeId: string, relationType: string) {
   const relLabel = RELATION_TYPE_LABELS[relationType] ?? relationType
@@ -154,7 +156,9 @@ async function handleSave() {
 }
 
 function goBack() {
-  if (sourceDoc.value) {
+  if (window.history.state?.back) {
+    router.back()
+  } else if (sourceDoc.value) {
     router.push(`/d/${domainCode.value}/doc/${sourceDoc.value.id}`)
   } else {
     router.push(`/d/${domainCode.value}`)
@@ -208,6 +212,7 @@ function goBack() {
           v-if="sourceDoc"
           :source-document="sourceDoc"
           :exclude-id="sourceId"
+          :existing-relations="existingRelationsMap"
           @select="handleExplorerSelect"
         />
       </el-card>
@@ -241,7 +246,7 @@ function goBack() {
               <el-tag size="small" :type="targetDoc.lifecycle === 'ACTIVE' ? 'success' : targetDoc.lifecycle === 'DRAFT' ? 'info' : 'danger'">
                 {{ LIFECYCLE_LABELS[targetDoc.lifecycle] ?? targetDoc.lifecycle }}
               </el-tag>
-              <el-tag size="small">{{ SECURITY_LABELS[targetDoc.securityLevel] ?? targetDoc.securityLevel }}</el-tag>
+              <el-tag size="small">{{ SECURITY_LEVEL_LABELS[targetDoc.securityLevel] ?? targetDoc.securityLevel }}</el-tag>
             </div>
             <div style="font-size: 11px; color: #606266; margin-top: 4px">
               {{ targetDoc.domain }}

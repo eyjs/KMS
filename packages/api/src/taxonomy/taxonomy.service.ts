@@ -68,6 +68,33 @@ export class TaxonomyService {
     })
   }
 
+  /** 지정 도메인 + 모든 하위 도메인 코드를 BFS로 수집 */
+  async getDescendantCodes(code: string): Promise<string[]> {
+    const all = await this.prisma.domainMaster.findMany({
+      where: { isActive: true },
+      select: { code: true, parentCode: true },
+    })
+    const childrenMap = new Map<string, string[]>()
+    for (const d of all) {
+      if (d.parentCode) {
+        const siblings = childrenMap.get(d.parentCode) ?? []
+        siblings.push(d.code)
+        childrenMap.set(d.parentCode, siblings)
+      }
+    }
+    const result: string[] = [code]
+    const queue = [code]
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      const children = childrenMap.get(current) ?? []
+      for (const child of children) {
+        result.push(child)
+        queue.push(child)
+      }
+    }
+    return result
+  }
+
   async validateDomain(code: string) {
     const domain = await this.prisma.domainMaster.findUnique({
       where: { code },
