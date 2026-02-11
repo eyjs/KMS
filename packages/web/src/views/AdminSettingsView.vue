@@ -30,6 +30,7 @@ async function loadFacetTypes() {
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const dialogLoading = ref(false)
+const editingIsSystem = ref(false)
 
 const form = ref({
   code: '',
@@ -41,12 +42,14 @@ const form = ref({
 
 function openCreateDialog() {
   dialogMode.value = 'create'
+  editingIsSystem.value = false
   form.value = { code: '', displayName: '', codePrefix: '', description: '', sortOrder: 0 }
   dialogVisible.value = true
 }
 
 function openEditDialog(ft: FacetTypeMasterEntity) {
   dialogMode.value = 'edit'
+  editingIsSystem.value = ft.isSystem
   form.value = {
     code: ft.code,
     displayName: ft.displayName,
@@ -132,7 +135,12 @@ async function handleDelete(ft: FacetTypeMasterEntity) {
         문서 분류에 사용할 유형을 관리합니다. 도메인에서 필수 분류로 지정하면 문서 등록 시 해당 유형의 값을 선택해야 합니다.
       </div>
       <el-table :data="facetTypes" size="small" :header-cell-style="{ background: '#fafafa' }">
-        <el-table-column prop="code" label="코드" width="140" />
+        <el-table-column prop="code" label="코드" width="140">
+          <template #default="{ row }">
+            {{ row.code }}
+            <el-tag v-if="row.isSystem" size="small" type="danger" style="margin-left: 6px">시스템</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="displayName" label="이름" width="140" />
         <el-table-column prop="codePrefix" label="코드 접두어" width="100" align="center" />
         <el-table-column prop="description" label="설명" min-width="200">
@@ -144,7 +152,7 @@ async function handleDelete(ft: FacetTypeMasterEntity) {
         <el-table-column label="" width="120" align="center">
           <template #default="{ row }">
             <el-button text size="small" type="primary" @click="openEditDialog(row)">수정</el-button>
-            <el-button text size="small" type="danger" @click="handleDelete(row)">삭제</el-button>
+            <el-button v-if="!row.isSystem" text size="small" type="danger" @click="handleDelete(row)">삭제</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -170,12 +178,19 @@ async function handleDelete(ft: FacetTypeMasterEntity) {
           </div>
         </el-form-item>
         <el-form-item label="이름" required>
-          <el-input v-model="form.displayName" placeholder="예: 보험사, 지역" maxlength="100" />
+          <el-input v-model="form.displayName" placeholder="예: 업체, 지역" maxlength="100" />
         </el-form-item>
         <el-form-item label="코드 접두어" required>
-          <el-input v-model="form.codePrefix" placeholder="예: C, R" maxlength="5" style="width: 120px" />
+          <el-input
+            v-model="form.codePrefix"
+            :disabled="editingIsSystem"
+            placeholder="예: C, R"
+            maxlength="5"
+            style="width: 120px"
+          />
           <div style="font-size: 11px; color: #909399; margin-top: 2px">
             분류 값의 자동 생성 코드 접두어 (예: C → C001, C002)
+            <template v-if="editingIsSystem"> — 시스템 유형은 변경 불가</template>
           </div>
         </el-form-item>
         <el-form-item label="설명">

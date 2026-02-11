@@ -143,6 +143,7 @@ export interface FacetTypeMasterEntity {
   description: string | null
   sortOrder: number
   isActive: boolean
+  isSystem: boolean
   createdAt: string
 }
 

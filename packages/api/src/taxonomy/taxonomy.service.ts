@@ -49,6 +49,7 @@ export class TaxonomyService {
         codePrefix: dto.codePrefix,
         description: dto.description ?? null,
         sortOrder: dto.sortOrder ?? 0,
+        isSystem: false,
       },
     })
   }
@@ -60,6 +61,12 @@ export class TaxonomyService {
     if (!facetType) {
       throw new NotFoundException(`분류 유형을 찾을 수 없습니다: ${code}`)
     }
+
+    // 시스템 유형: 코드 접두어 실제 변경 차단 (기존 값 그대로 전송은 허용)
+    if (facetType.isSystem && dto.codePrefix !== undefined && dto.codePrefix !== facetType.codePrefix) {
+      throw new BadRequestException('시스템 분류 유형의 코드 접두어는 변경할 수 없습니다')
+    }
+
     return this.prisma.facetTypeMaster.update({
       where: { code },
       data: {
@@ -77,6 +84,11 @@ export class TaxonomyService {
     })
     if (!facetType) {
       throw new NotFoundException(`분류 유형을 찾을 수 없습니다: ${code}`)
+    }
+
+    // 시스템 분류 유형은 삭제 불가
+    if (facetType.isSystem) {
+      throw new BadRequestException('시스템 분류 유형은 삭제할 수 없습니다')
     }
 
     // 1) 분류 값이 있으면 거부

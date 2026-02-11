@@ -35,6 +35,7 @@ CREATE TABLE "facet_type_master" (
     "description" VARCHAR(500),
     "sort_order" INTEGER NOT NULL DEFAULT 0,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "is_system" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "facet_type_master_pkey" PRIMARY KEY ("code")

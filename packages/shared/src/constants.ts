@@ -168,9 +168,9 @@ export const ACTION_TAG_TYPES: Record<string, string> = {
 export const DOMAIN_GUIDANCE = {
   principle: '도메인은 불변하는 업무 단위입니다. 조직(본부/부서/팀)이 아닌 업무를 기준으로 설정하세요.',
   examples: {
-    correct: ['영업', '수수료', '계약관리', '보상', '신계약', '정산'],
-    wrong: ['영업본부', '법인영업부', '대기업팀', '삼성생명', '종신보험'],
+    correct: ['일반', '경영/관리', '기술', '영업', '연구개발', '정산'],
+    wrong: ['영업본부', '법인영업부', '대기업팀', 'A회사', 'B상품'],
   },
-  facetGuide: '보험사·상품·문서유형은 분류(Facet)에서 관리합니다.',
+  facetGuide: '업체·상품·문서유형 등은 분류(Facet)에서 관리합니다.',
 }
 

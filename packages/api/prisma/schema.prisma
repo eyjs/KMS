@@ -64,6 +64,7 @@ model FacetTypeMaster {
   description String?  @db.VarChar(500)
   sortOrder   Int      @default(0) @map("sort_order")
   isActive    Boolean  @default(true) @map("is_active")
+  isSystem    Boolean  @default(false) @map("is_system")
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("facet_type_master")
