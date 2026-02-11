@@ -5,9 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { TaxonomyService } from '../taxonomy/taxonomy.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
 import {
   LIFECYCLE_TRANSITIONS,
@@ -21,6 +19,8 @@ import type {
   Freshness,
   DocumentListQuery,
 } from '@kms/shared'
+import * as crypto from 'crypto'
+import * as fs from 'fs'
 
 type IssueType = 'warning' | 'expired' | 'no_file' | 'stale_draft'
 
@@ -28,7 +28,6 @@ type IssueType = 'warning' | 'expired' | 'no_file' | 'stale_draft'
 export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly taxonomy: TaxonomyService,
   ) {}
 
   /** 역할별 접근 가능 보안등급 목록 */
@@ -39,7 +38,7 @@ export class DocumentsService {
       .map(([name]) => name)
   }
 
-  /** 이슈 유형별 Prisma where 조건 빌더 (validUntil 또는 reviewedAt ?? updatedAt 기준) */
+  /** 이슈 유형별 Prisma where 조건 빌더 */
   private buildIssueWhere(type: IssueType, allowedLevels: string[]) {
     const baseWhere = {
       isDeleted: false,
@@ -53,27 +52,21 @@ export class DocumentsService {
 
     switch (type) {
       case 'warning':
-        // WARNING: validUntil 30일 이내 OR 기존 시간 기반 로직
         return {
           ...baseWhere,
           lifecycle: 'ACTIVE',
           OR: [
-            // validUntil 기준: 아직 만료되지 않았지만 HOT일 이내
             { validUntil: { gte: now, lt: hotFromNow } },
-            // 기존 로직: validUntil 없는 문서
             { validUntil: null, reviewedAt: { lt: hotDate, gte: warmDate } },
             { validUntil: null, reviewedAt: null, updatedAt: { lt: hotDate, gte: warmDate } },
           ],
         }
       case 'expired':
-        // EXPIRED: validUntil 지남 OR 기존 시간 기반 로직
         return {
           ...baseWhere,
           lifecycle: 'ACTIVE',
           OR: [
-            // validUntil 기준: 이미 만료
             { validUntil: { lt: now } },
-            // 기존 로직: validUntil 없는 문서
             { validUntil: null, reviewedAt: { lt: warmDate } },
             { validUntil: null, reviewedAt: null, updatedAt: { lt: warmDate } },
           ],
@@ -93,101 +86,82 @@ export class DocumentsService {
     }
   }
 
+  /** SHA-256 해시 계산 */
+  private calculateFileHash(filePath: string): string {
+    const buffer = fs.readFileSync(filePath)
+    return crypto.createHash('sha256').update(buffer).digest('hex')
+  }
+
   async create(
     data: {
-      domain: string
-      classifications: Record<string, string>
       securityLevel?: SecurityLevel
-      lifecycle?: Lifecycle
-      title?: string
       validUntil?: string
     },
     file: Express.Multer.File | null,
     userId: string,
   ) {
-    await this.taxonomy.validateDomain(data.domain)
-    await this.taxonomy.validateClassifications(data.domain, data.classifications)
-
-    let filePath: string | null = null
-    let fileName: string | null = null
-    let fileType: string | null = null
-    let fileSize: number = 0
-
-    if (file) {
-      // multer가 latin1로 디코딩하는 파일명을 UTF-8로 복원
-      const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8')
-      const ext = originalName.split('.').pop()?.toLowerCase()
-      if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
-        throw new BadRequestException('허용되지 않는 파일 형식입니다')
-      }
-      filePath = file.path
-      fileName = originalName
-      fileType = ext
-      fileSize = file.size
-    } else if (data.title) {
-      fileName = data.title
+    if (!file) {
+      throw new BadRequestException('파일이 필요합니다')
     }
 
-    const lifecycle = data.lifecycle ?? 'ACTIVE'
-
-    // ACTIVE로 생성 시 동일 분류의 기존 ACTIVE 문서를 자동 만료
-    let supersededDocId: string | null = null
-    if (lifecycle === 'ACTIVE' && Object.keys(data.classifications).length > 0) {
-      supersededDocId = await this.autoDeprecateExisting(data.domain, data.classifications, userId)
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8')
+    const ext = originalName.split('.').pop()?.toLowerCase()
+    if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
+      throw new BadRequestException('허용되지 않는 파일 형식입니다')
     }
 
-    // 문서 코드(채번) 자동 생성 — 동시성 충돌 시 1회 재시도
+    // SHA-256 해시 계산 + 중복 체크
+    const fileHash = this.calculateFileHash(file.path)
+    const existing = await this.prisma.document.findFirst({
+      where: { fileHash, isDeleted: false },
+    })
+    if (existing) {
+      // 업로드된 파일 삭제
+      try { fs.unlinkSync(file.path) } catch { /* 임시 파일 삭제 실패 무시 */ }
+      throw new ConflictException({
+        message: '동일한 파일이 이미 존재합니다',
+        existingDocumentId: existing.id,
+        existingDocCode: existing.docCode,
+        existingFileName: existing.fileName,
+      })
+    }
+
+    // 문서 코드 생성: DOC-{YYMM}-{NNN}
     const createDocument = async (docCode: string) =>
       this.prisma.document.create({
         data: {
-          domain: data.domain,
           docCode,
-          lifecycle,
+          lifecycle: 'DRAFT',
           securityLevel: data.securityLevel ?? 'INTERNAL',
-          filePath,
-          fileName,
-          fileType,
-          fileSize,
+          filePath: file.path,
+          fileName: originalName,
+          fileType: ext,
+          fileSize: file.size,
+          fileHash,
           validUntil: data.validUntil ? new Date(data.validUntil) : null,
           createdById: userId,
           updatedById: userId,
-          classifications: {
-            create: Object.entries(data.classifications).map(([facetType, facetValue]) => ({
-              facetType,
-              facetValue,
-            })),
-          },
-        },
-        include: { classifications: true },
-      })
-
-    let document: Awaited<ReturnType<typeof createDocument>>
-    try {
-      document = await createDocument(await this.generateDocCode(data.domain))
-    } catch (error: unknown) {
-      const isUniqueViolation = typeof error === 'object' && error !== null
-        && 'code' in error && (error as { code: string }).code === 'P2002'
-      if (!isUniqueViolation) throw error
-      // 동시성 충돌 — 코드 재생성 후 재시도
-      document = await createDocument(await this.generateDocCode(data.domain))
-    }
-
-    // 대체 관계 자동 생성
-    if (supersededDocId) {
-      await this.prisma.relation.create({
-        data: {
-          sourceId: document.id,
-          targetId: supersededDocId,
-          relationType: 'SUPERSEDES',
         },
       })
+
+    let document: Awaited<ReturnType<typeof createDocument>> | undefined
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        document = await createDocument(await this.generateDocCode())
+        break
+      } catch (error: unknown) {
+        const isUniqueViolation = typeof error === 'object' && error !== null
+          && 'code' in error && (error as { code: string }).code === 'P2002'
+        if (!isUniqueViolation || attempt === 2) throw error
+      }
     }
+    if (!document) throw new BadRequestException('문서 코드 생성에 실패했습니다')
 
     await this.prisma.documentHistory.create({
       data: {
         documentId: document.id,
         action: 'CREATE',
-        changes: { classifications: data.classifications },
+        changes: { fileName: originalName },
         userId,
       },
     })
@@ -195,59 +169,88 @@ export class DocumentsService {
     return this.formatDocument(document)
   }
 
+  /** 대량 업로드 */
+  async bulkCreate(
+    files: Express.Multer.File[],
+    securityLevel: SecurityLevel | undefined,
+    userId: string,
+  ) {
+    const results: Array<{
+      fileName: string
+      success: boolean
+      documentId?: string
+      docCode?: string | null
+      error?: string
+      existingDocumentId?: string
+    }> = []
+
+    for (const file of files) {
+      try {
+        const doc = await this.create({ securityLevel }, file, userId)
+        results.push({
+          fileName: file.originalname,
+          success: true,
+          documentId: doc.id,
+          docCode: doc.docCode,
+        })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : '알 수 없는 오류'
+        const conflictData = err instanceof ConflictException
+          ? (err.getResponse() as Record<string, unknown>)
+          : undefined
+        results.push({
+          fileName: file.originalname,
+          success: false,
+          error: message,
+          existingDocumentId: conflictData?.existingDocumentId as string | undefined,
+        })
+      }
+    }
+
+    return {
+      succeeded: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+      results,
+    }
+  }
+
   async findAll(query: DocumentListQuery, userRole: UserRole) {
-    const { domain, lifecycle, securityLevel, classifications, page = 1, size = 20, sort = 'createdAt', order = 'desc' } = query
+    const { domain, lifecycle, securityLevel, orphan, page = 1, size = 20, sort = 'createdAt', order = 'desc' } = query
 
-    // 보안 등급 필터: 사용자 역할에 따라 접근 가능한 문서만
-    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
-    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
-      .filter(([, level]) => level <= maxLevel)
-      .map(([name]) => name)
-
-    // securityLevel이 지정된 경우, 사용자 접근 가능 범위와 교차 검증
+    const allowedLevels = this.getAllowedLevels(userRole)
     const effectiveSecurityLevel = securityLevel && allowedLevels.includes(securityLevel)
       ? { equals: securityLevel }
       : { in: allowedLevels }
 
-    // 도메인 필터: 하위 도메인 포함
-    let domainFilter: { domain?: string | { in: string[] } } = {}
+    // 도메인 필터: placement 기반
+    let domainFilter = {}
     if (domain) {
-      const descendantCodes = await this.taxonomy.getDescendantCodes(domain)
-      domainFilter = descendantCodes.length > 1
-        ? { domain: { in: descendantCodes } }
-        : { domain }
-    }
-
-    // 동적 facet 필터: classifications JSON → AND 조건
-    let parsed: Record<string, string> = {}
-    if (classifications) {
-      try {
-        const raw: unknown = JSON.parse(classifications)
-        if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
-          parsed = raw as Record<string, string>
-        }
-      } catch {
-        throw new BadRequestException('classifications는 유효한 JSON이어야 합니다')
+      domainFilter = {
+        placements: { some: { domainCode: domain } },
       }
     }
-    const facetFilters = Object.entries(parsed).map(([type, value]) => ({
-      classifications: { some: { facetType: type, facetValue: String(value) } },
-    }))
+
+    // 고아 필터
+    let orphanFilter = {}
+    if (orphan) {
+      orphanFilter = {
+        placements: { none: {} },
+      }
+    }
 
     const where = {
       isDeleted: false,
       ...domainFilter,
+      ...orphanFilter,
       ...(lifecycle && { lifecycle }),
       securityLevel: effectiveSecurityLevel,
-      ...(facetFilters.length > 0 && { AND: facetFilters }),
     }
 
     const [data, total] = await Promise.all([
       this.prisma.document.findMany({
         where,
         include: {
-          classifications: true,
-          _count: { select: { sourceRelations: true, targetRelations: true } },
+          _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
         },
         orderBy: { [sort]: order },
         skip: (page - 1) * size,
@@ -257,7 +260,69 @@ export class DocumentsService {
     ])
 
     return {
-      data: data.map((d: Parameters<DocumentsService['formatDocument']>[0]) => this.formatDocument(d)),
+      data: data.map((d) => this.formatDocument(d)),
+      meta: { total, page, size, totalPages: Math.ceil(total / size) },
+    }
+  }
+
+  /** 내가 올린 문서 목록 */
+  async findMyDocuments(userId: string, userRole: UserRole, page: number = 1, size: number = 20, orphan?: boolean | null) {
+    const where: Record<string, unknown> = {
+      createdById: userId,
+      isDeleted: false,
+    }
+
+    // 서버 사이드 배치 필터
+    if (orphan === true) {
+      where.placements = { none: {} }
+    } else if (orphan === false) {
+      where.placements = { some: {} }
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where,
+        include: {
+          _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * size,
+        take: size,
+      }),
+      this.prisma.document.count({ where }),
+    ])
+
+    return {
+      data: data.map((d) => this.formatDocument(d)),
+      meta: { total, page, size, totalPages: Math.ceil(total / size) },
+    }
+  }
+
+  /** 고아 문서 목록 */
+  async findOrphans(userRole: UserRole, page: number = 1, size: number = 20) {
+    const allowedLevels = this.getAllowedLevels(userRole)
+
+    const where = {
+      isDeleted: false,
+      securityLevel: { in: allowedLevels },
+      placements: { none: {} },
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where,
+        include: {
+          _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * size,
+        take: size,
+      }),
+      this.prisma.document.count({ where }),
+    ])
+
+    return {
+      data: data.map((d) => this.formatDocument(d)),
       meta: { total, page, size, totalPages: Math.ceil(total / size) },
     }
   }
@@ -265,7 +330,16 @@ export class DocumentsService {
   async findOne(id: string, userRole: UserRole) {
     const doc = await this.prisma.document.findFirst({
       where: { id, isDeleted: false },
-      include: { classifications: true },
+      include: {
+        _count: { select: { placements: true } },
+        placements: {
+          include: {
+            domain: { select: { displayName: true } },
+            category: { select: { name: true } },
+            user: { select: { name: true } },
+          },
+        },
+      },
     })
 
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
@@ -276,10 +350,25 @@ export class DocumentsService {
       )
     }
 
-    return this.formatDocument(doc)
+    return {
+      ...this.formatDocument(doc),
+      placements: doc.placements.map((p) => ({
+        id: p.id,
+        documentId: p.documentId,
+        domainCode: p.domainCode,
+        domainName: p.domain.displayName,
+        categoryId: p.categoryId,
+        categoryName: p.category?.name ?? null,
+        placedBy: p.placedBy,
+        placedByName: p.user?.name ?? null,
+        placedAt: p.placedAt.toISOString(),
+        alias: p.alias,
+        note: p.note,
+      })),
+    }
   }
 
-  /** 내부 전용 — filePath 포함하여 반환 (file download에서 사용) */
+  /** 내부 전용 — filePath 포함하여 반환 */
   async findOneInternal(id: string, userRole: UserRole) {
     const doc = await this.prisma.document.findFirst({
       where: { id, isDeleted: false },
@@ -311,6 +400,8 @@ export class DocumentsService {
       throw new BadRequestException('허용되지 않는 파일 형식입니다')
     }
 
+    const fileHash = this.calculateFileHash(file.path)
+
     const updated = await this.prisma.document.update({
       where: { id },
       data: {
@@ -318,9 +409,9 @@ export class DocumentsService {
         fileName: originalName,
         fileType: ext,
         fileSize: file.size,
+        fileHash,
         updatedBy: { connect: { id: userId } },
       },
-      include: { classifications: true },
     })
 
     await this.prisma.documentHistory.create({
@@ -338,9 +429,9 @@ export class DocumentsService {
   async update(
     id: string,
     data: {
-      classifications?: Record<string, string>
       securityLevel?: SecurityLevel
       validUntil?: string | null
+      fileName?: string
       rowVersion: number
     },
     userId: string,
@@ -348,6 +439,7 @@ export class DocumentsService {
   ) {
     const doc = await this.prisma.document.findFirst({
       where: { id, isDeleted: false },
+      include: { _count: { select: { placements: true } } },
     })
 
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
@@ -364,41 +456,31 @@ export class DocumentsService {
       throw new ForbiddenException('보안 등급 변경은 ADMIN만 가능합니다')
     }
 
-    if (data.classifications) {
-      await this.taxonomy.validateClassifications(doc.domain, data.classifications)
+    // 파일명 변경: 업로더 또는 ADMIN만 가능
+    if (data.fileName && data.fileName !== doc.fileName) {
+      if (doc.createdById !== userId && userRole !== 'ADMIN') {
+        throw new ForbiddenException('원본 파일명은 업로더 또는 관리자만 변경할 수 있습니다')
+      }
     }
 
-    // 트랜잭션으로 분류 업데이트 + 문서 업데이트 원자적 실행
-    const updated = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      if (data.classifications) {
-        await tx.classification.deleteMany({ where: { documentId: id } })
-        await tx.classification.createMany({
-          data: Object.entries(data.classifications).map(([facetType, facetValue]) => ({
-            documentId: id,
-            facetType,
-            facetValue,
-          })),
-        })
-      }
-
-      return tx.document.update({
-        where: { id },
-        data: {
-          updatedBy: { connect: { id: userId } },
-          ...(data.securityLevel && { securityLevel: data.securityLevel }),
-          ...(data.validUntil !== undefined && {
-            validUntil: data.validUntil ? new Date(data.validUntil) : null,
-          }),
-        },
-        include: { classifications: true },
-      })
+    const updated = await this.prisma.document.update({
+      where: { id },
+      data: {
+        updatedBy: { connect: { id: userId } },
+        ...(data.securityLevel && { securityLevel: data.securityLevel }),
+        ...(data.fileName && { fileName: data.fileName }),
+        ...(data.validUntil !== undefined && {
+          validUntil: data.validUntil ? new Date(data.validUntil) : null,
+        }),
+      },
+      include: { _count: { select: { placements: true } } },
     })
 
     await this.prisma.documentHistory.create({
       data: {
         documentId: id,
         action: 'UPDATE',
-        changes: { classifications: data.classifications, securityLevel: data.securityLevel },
+        changes: { securityLevel: data.securityLevel, fileName: data.fileName },
         userId,
       },
     })
@@ -424,30 +506,12 @@ export class DocumentsService {
       )
     }
 
-    // ACTIVE 전환 시 SSOT 사전 검증 (사용자 친화적 메시지)
-    if (lifecycle === 'ACTIVE' && doc.classificationHash) {
-      const existing = await this.prisma.document.findFirst({
-        where: {
-          classificationHash: doc.classificationHash,
-          lifecycle: 'ACTIVE',
-          isDeleted: false,
-          id: { not: id },
-        },
-      })
-      if (existing) {
-        throw new ConflictException(
-          `동일 분류 경로에 이미 ACTIVE 문서가 존재합니다 (${existing.fileName}). SSOT 위반입니다.`,
-        )
-      }
-    }
-
     const updated = await this.prisma.document.update({
       where: { id },
       data: {
         lifecycle,
         updatedBy: { connect: { id: userId } },
       },
-      include: { classifications: true },
     })
 
     await this.prisma.documentHistory.create({
@@ -502,39 +566,30 @@ export class DocumentsService {
   }
 
   async getStats(userRole: UserRole) {
-    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
-    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
-      .filter(([, level]) => level <= maxLevel)
-      .map(([name]) => name)
-
+    const allowedLevels = this.getAllowedLevels(userRole)
     const where = { isDeleted: false, securityLevel: { in: allowedLevels } }
 
-    const [total, active, draft, deprecated] = await Promise.all([
+    const [total, active, draft, deprecated, orphan] = await Promise.all([
       this.prisma.document.count({ where }),
       this.prisma.document.count({ where: { ...where, lifecycle: 'ACTIVE' } }),
       this.prisma.document.count({ where: { ...where, lifecycle: 'DRAFT' } }),
       this.prisma.document.count({ where: { ...where, lifecycle: 'DEPRECATED' } }),
+      this.prisma.document.count({ where: { ...where, placements: { none: {} } } }),
     ])
 
-    // 도메인별 통계
+    // 도메인별 통계: placement 기반
     const domains = await this.prisma.domainMaster.findMany({ where: { isActive: true } })
     const byDomain = await Promise.all(
       domains.map(async (d: { code: string; displayName: string }) => {
-        const dWhere = { ...where, domain: d.code }
-        const [dTotal, dActive, dDraft, dDeprecated] = await Promise.all([
-          this.prisma.document.count({ where: dWhere }),
-          this.prisma.document.count({ where: { ...dWhere, lifecycle: 'ACTIVE' } }),
-          this.prisma.document.count({ where: { ...dWhere, lifecycle: 'DRAFT' } }),
-          this.prisma.document.count({ where: { ...dWhere, lifecycle: 'DEPRECATED' } }),
-        ])
+        const dWhere = {
+          ...where,
+          placements: { some: { domainCode: d.code } },
+        }
+        const dTotal = await this.prisma.document.count({ where: dWhere })
         return {
           domain: d.code,
           displayName: d.displayName,
           total: dTotal,
-          active: dActive,
-          draft: dDraft,
-          deprecated: dDeprecated,
-          warning: 0, // 신선도 경고는 별도 계산 필요
         }
       }),
     )
@@ -544,22 +599,19 @@ export class DocumentsService {
       active,
       draft,
       deprecated,
-      freshnessWarning: 0,
+      orphan,
       byDomain,
     }
   }
 
   async getRecent(limit: number, userRole: UserRole) {
-    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
-    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
-      .filter(([, level]) => level <= maxLevel)
-      .map(([name]) => name)
+    const allowedLevels = this.getAllowedLevels(userRole)
 
     const histories = await this.prisma.documentHistory.findMany({
       take: Math.min(limit, 50),
       orderBy: { createdAt: 'desc' },
       include: {
-        document: { select: { fileName: true, domain: true, securityLevel: true, isDeleted: true } },
+        document: { select: { fileName: true, securityLevel: true, isDeleted: true } },
         user: { select: { name: true } },
       },
     })
@@ -570,13 +622,12 @@ export class DocumentsService {
       )
       .map((h: {
         id: string; documentId: string; action: string; changes: unknown;
-        createdAt: Date; document: { fileName: string | null; domain: string };
+        createdAt: Date; document: { fileName: string | null };
         user: { name: string } | null;
       }) => ({
         id: h.id,
         documentId: h.documentId,
         fileName: h.document.fileName,
-        domain: h.document.domain,
         action: h.action,
         changes: h.changes as Record<string, unknown> | null,
         userName: h.user?.name ?? null,
@@ -584,64 +635,27 @@ export class DocumentsService {
       }))
   }
 
-  async getCounts(domain: string, groupBy: string, userRole: UserRole) {
-    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
-    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
-      .filter(([, level]) => level <= maxLevel)
-      .map(([name]) => name)
-
-    const docs = await this.prisma.document.findMany({
-      where: {
-        domain,
-        isDeleted: false,
-        securityLevel: { in: allowedLevels },
-      },
-      include: { classifications: true },
-    })
-
-    const counts: Record<string, number> = {}
-    for (const doc of docs) {
-      const classification = doc.classifications.find((c: { facetType: string; facetValue: string }) => c.facetType === groupBy)
-      if (classification) {
-        counts[classification.facetValue] = (counts[classification.facetValue] ?? 0) + 1
-      }
-    }
-    return counts
-  }
-
   async search(
-    params: { q?: string; domain?: string; lifecycle?: string; classifications?: string; page: number; size: number },
+    params: { q?: string; domain?: string; lifecycle?: string; orphan?: boolean; page: number; size: number },
     userRole: UserRole,
   ) {
-    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
-    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
-      .filter(([, level]) => level <= maxLevel)
-      .map(([name]) => name)
+    const allowedLevels = this.getAllowedLevels(userRole)
+    const { q, domain, lifecycle, orphan, page = 1, size = 20 } = params
 
-    const { q, domain, lifecycle, classifications, page = 1, size = 20 } = params
-
-    // 분류 필터 파싱
-    let facetFilters: Array<{ classifications: { some: { facetType: string; facetValue: string } } }> = []
-    if (classifications) {
-      try {
-        const raw: unknown = JSON.parse(classifications)
-        if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
-          facetFilters = Object.entries(raw as Record<string, unknown>)
-            .filter(([, v]) => typeof v === 'string' && v !== '')
-            .map(([type, value]) => ({
-              classifications: { some: { facetType: type, facetValue: value as string } },
-            }))
-        }
-      } catch { /* 잘못된 JSON은 필터 없이 검색 */ }
+    // 도메인 필터: placement 기반
+    let domainFilter = {}
+    if (domain) {
+      domainFilter = {
+        placements: { some: { domainCode: domain } },
+      }
     }
 
-    // 도메인 필터: 하위 도메인 포함
-    let domainFilter: { domain?: string | { in: string[] } } = {}
-    if (domain) {
-      const descendantCodes = await this.taxonomy.getDescendantCodes(domain)
-      domainFilter = descendantCodes.length > 1
-        ? { domain: { in: descendantCodes } }
-        : { domain }
+    // 고아 필터
+    let orphanFilter = {}
+    if (orphan) {
+      orphanFilter = {
+        placements: { none: {} },
+      }
     }
 
     // 키워드: 파일명 또는 문서코드에서 검색
@@ -657,16 +671,18 @@ export class DocumentsService {
       securityLevel: { in: allowedLevels },
       ...keywordFilter,
       ...domainFilter,
+      ...orphanFilter,
       ...(lifecycle && { lifecycle }),
-      ...(facetFilters.length > 0 && { AND: facetFilters }),
     }
 
     const [data, total] = await Promise.all([
       this.prisma.document.findMany({
         where,
         include: {
-          classifications: true,
-          _count: { select: { sourceRelations: true, targetRelations: true } },
+          _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
+          placements: {
+            select: { domainCode: true, domain: { select: { displayName: true } } },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * size,
@@ -676,7 +692,13 @@ export class DocumentsService {
     ])
 
     return {
-      data: data.map((d: Parameters<DocumentsService['formatDocument']>[0]) => this.formatDocument(d)),
+      data: data.map((d) => ({
+        ...this.formatDocument(d),
+        domainTags: d.placements.map((p) => ({
+          code: p.domainCode,
+          name: p.domain.displayName,
+        })),
+      })),
       meta: { total, page, size, totalPages: Math.ceil(total / size) },
     }
   }
@@ -700,9 +722,8 @@ export class DocumentsService {
 
     // 관계 이력의 targetId를 문서명/코드로 해석
     const relationEntries = history.filter((h: { action: string; changes: unknown }) => {
-      const action = h.action
       const changes = h.changes as Record<string, unknown> | null
-      return (action === 'RELATION_ADD' || action === 'RELATION_REMOVE') && changes?.targetId
+      return (h.action === 'RELATION_ADD' || h.action === 'RELATION_REMOVE') && changes?.targetId
     })
 
     const targetIds = [...new Set(
@@ -745,18 +766,13 @@ export class DocumentsService {
     })
   }
 
-  async getIssueDocuments(
-    type: IssueType,
-    page: number,
-    size: number,
-    userRole: UserRole,
-  ) {
+  async getIssueDocuments(type: IssueType, page: number, size: number, userRole: UserRole) {
     const where = this.buildIssueWhere(type, this.getAllowedLevels(userRole))
 
     const [data, total] = await Promise.all([
       this.prisma.document.findMany({
         where,
-        include: { classifications: true },
+        include: { _count: { select: { placements: true } } },
         orderBy: { updatedAt: 'asc' },
         skip: (page - 1) * size,
         take: size,
@@ -765,7 +781,7 @@ export class DocumentsService {
     ])
 
     return {
-      data: data.map((d: Parameters<DocumentsService['formatDocument']>[0]) => this.formatDocument(d)),
+      data: data.map((d) => this.formatDocument(d)),
       meta: { total, page, size, totalPages: Math.ceil(total / size) },
     }
   }
@@ -781,77 +797,11 @@ export class DocumentsService {
     return { warning, expired, noFile, staleDraft }
   }
 
-  /** 동일 분류의 기존 ACTIVE 문서를 조회 (중복 체크용) */
-  async checkDuplicate(domain: string, classifications: Record<string, string>, userRole: UserRole) {
-    const allowedLevels = this.getAllowedLevels(userRole)
-    const facetFilters = Object.entries(classifications).map(([type, value]) => ({
-      classifications: { some: { facetType: type, facetValue: value } },
-    }))
-
-    if (facetFilters.length === 0) return null
-
-    const existing = await this.prisma.document.findFirst({
-      where: {
-        domain,
-        lifecycle: 'ACTIVE',
-        isDeleted: false,
-        securityLevel: { in: allowedLevels },
-        AND: facetFilters,
-      },
-      include: { classifications: true },
-    })
-
-    return existing ? this.formatDocument(existing) : null
-  }
-
-  /** 동일 분류의 기존 ACTIVE 문서를 자동 만료 처리 */
-  private async autoDeprecateExisting(
-    domain: string,
-    classifications: Record<string, string>,
-    userId: string,
-  ): Promise<string | null> {
-    const facetFilters = Object.entries(classifications).map(([type, value]) => ({
-      classifications: { some: { facetType: type, facetValue: value } },
-    }))
-
-    if (facetFilters.length === 0) return null
-
-    const existingDocs = await this.prisma.document.findMany({
-      where: {
-        domain,
-        lifecycle: 'ACTIVE',
-        isDeleted: false,
-        AND: facetFilters,
-      },
-    })
-
-    if (existingDocs.length === 0) return null
-
-    for (const existing of existingDocs) {
-      await this.prisma.document.update({
-        where: { id: existing.id },
-        data: { lifecycle: 'DEPRECATED', updatedById: userId },
-      })
-
-      await this.prisma.documentHistory.create({
-        data: {
-          documentId: existing.id,
-          action: 'LIFECYCLE_CHANGE',
-          changes: { from: 'ACTIVE', to: 'DEPRECATED', reason: 'auto_superseded' },
-          userId,
-        },
-      })
-    }
-
-    // 가장 최근 문서의 ID를 반환 (SUPERSEDES 관계용)
-    return existingDocs[0].id
-  }
-
-  /** 문서 코드 자동 생성: {도메인코드}-{YYMM}-{NNN} */
-  private async generateDocCode(domain: string): Promise<string> {
+  /** 문서 코드 자동 생성: DOC-{YYMM}-{NNN} */
+  private async generateDocCode(): Promise<string> {
     const now = new Date()
     const yymm = `${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}`
-    const prefix = `${domain}-${yymm}-`
+    const prefix = `DOC-${yymm}-`
     const last = await this.prisma.document.findFirst({
       where: { docCode: { startsWith: prefix } },
       orderBy: { docCode: 'desc' },
@@ -863,61 +813,55 @@ export class DocumentsService {
     return `${prefix}${String(seq).padStart(3, '0')}`
   }
 
-  /** API 응답 포맷 (filePath 미노출, downloadUrl 제공) */
+  /** API 응답 포맷 */
   private formatDocument(
     doc: {
       id: string
       docCode?: string | null
-      domain: string
       lifecycle: string
       securityLevel: string
       fileName: string | null
       fileType: string | null
       fileSize: bigint | null
       filePath?: string | null
+      fileHash?: string | null
       versionMajor: number
       versionMinor: number
-      classificationHash: string | null
       reviewedAt: Date | null
       validUntil: Date | null
       rowVersion: number
       createdById: string | null
       createdAt: Date
       updatedAt: Date
-      classifications: Array<{ facetType: string; facetValue: string }>
-      _count?: { sourceRelations?: number; targetRelations?: number }
+      _count?: { sourceRelations?: number; targetRelations?: number; placements?: number }
     },
   ) {
-    const classifications: Record<string, string> = {}
-    for (const c of doc.classifications) {
-      classifications[c.facetType] = c.facetValue
-    }
-
     const relationCount = doc._count
       ? (doc._count.sourceRelations ?? 0) + (doc._count.targetRelations ?? 0)
       : undefined
 
+    const placementCount = doc._count?.placements ?? 0
+
     return {
       id: doc.id,
       docCode: doc.docCode ?? null,
-      domain: doc.domain,
       lifecycle: doc.lifecycle,
       securityLevel: doc.securityLevel,
       fileName: doc.fileName,
       fileType: doc.fileType,
       fileSize: Number(doc.fileSize ?? 0),
+      fileHash: doc.fileHash ?? null,
       downloadUrl: doc.filePath ? `/api/documents/${doc.id}/file` : null,
       versionMajor: doc.versionMajor,
       versionMinor: doc.versionMinor,
-      classificationHash: doc.classificationHash,
       reviewedAt: doc.reviewedAt?.toISOString() ?? null,
       validUntil: doc.validUntil?.toISOString() ?? null,
       rowVersion: doc.rowVersion,
       createdBy: doc.createdById,
       createdAt: doc.createdAt.toISOString(),
       updatedAt: doc.updatedAt.toISOString(),
-      classifications,
       freshness: this.calcFreshness(doc),
+      placementCount,
       ...(relationCount !== undefined && { relationCount }),
     }
   }
@@ -930,7 +874,6 @@ export class DocumentsService {
   }): Freshness | null {
     if (doc.lifecycle !== 'ACTIVE') return null
 
-    // validUntil이 설정된 경우: 만료일까지 남은 일수 기준
     if (doc.validUntil) {
       const daysUntilExpiry = (doc.validUntil.getTime() - Date.now()) / 86400000
       if (daysUntilExpiry < 0) return 'EXPIRED'
@@ -938,7 +881,6 @@ export class DocumentsService {
       return 'FRESH'
     }
 
-    // validUntil 없으면: 기존 reviewedAt ?? updatedAt 기반 로직 유지
     const baseDate = doc.reviewedAt ?? doc.updatedAt
     const daysSince = Math.floor(
       (Date.now() - baseDate.getTime()) / (1000 * 60 * 60 * 24),

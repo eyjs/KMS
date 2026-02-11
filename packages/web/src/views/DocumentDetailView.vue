@@ -3,13 +3,12 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
-import { taxonomyApi } from '@/api/taxonomy'
+import { placementsApi } from '@/api/placements'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
 import { LIFECYCLE_TRANSITIONS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
 import { useRecentDocs } from '@/composables/useRecentDocs'
-import { useFacetTypes } from '@/composables/useFacetTypes'
-import type { DocumentEntity, Lifecycle, RelationEntity, RelationType, FacetMasterEntity } from '@kms/shared'
+import type { DocumentEntity, DocumentPlacementEntity, Lifecycle, RelationEntity, RelationType } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
 import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
@@ -26,9 +25,9 @@ const auth = useAuthStore()
 const domainStore = useDomainStore()
 
 const { addVisit } = useRecentDocs()
-const { loadFacetTypes, facetLabel } = useFacetTypes()
 const doc = ref<DocumentEntity | null>(null)
 const relations = ref<{ asSource: RelationEntity[]; asTarget: RelationEntity[] }>({ asSource: [], asTarget: [] })
+const placements = ref<DocumentPlacementEntity[]>([])
 const loading = ref(true)
 
 const RELATION_TYPES: Array<{ value: RelationType; label: string }> = [
@@ -51,7 +50,7 @@ const domainCode = computed(() => route.params.domainCode as string)
 
 function copyDocLink() {
   if (!doc.value) return
-  const url = `${window.location.origin}/d/${doc.value.domain}/doc/${doc.value.id}`
+  const url = `${window.location.origin}/d/${domainCode.value}/doc/${doc.value.id}`
   navigator.clipboard.writeText(doc.value.docCode ? `${doc.value.docCode} ${url}` : url)
     .then(() => ElMessage.success('문서 링크가 복사되었습니다'))
     .catch(() => ElMessage.error('복사에 실패했습니다'))
@@ -66,22 +65,24 @@ const backPath = computed(() => {
   return '/'
 })
 
-const breadcrumb = computed(() => {
-  if (!doc.value) return ''
-  return Object.values(doc.value.classifications).join(' > ')
-})
-
 onMounted(async () => {
   try {
     const [docRes, relRes] = await Promise.all([
       documentsApi.get(id.value),
       relationsApi.getByDocument(id.value),
       domainStore.loadDomains(),
-      loadFacetTypes(),
     ])
     doc.value = docRes.data
     relations.value = relRes.data
     addVisit(doc.value)
+
+    // 배치 정보 로드
+    try {
+      const placementRes = await placementsApi.getByDocument(id.value)
+      placements.value = placementRes.data
+    } catch {
+      placements.value = []
+    }
   } catch {
     ElMessage.error('문서를 불러올 수 없습니다')
     router.push(backPath.value)
@@ -171,7 +172,7 @@ interface RelationWithInclude extends RelationEntity {
 }
 
 const allRelations = computed(() => {
-  const result: Array<{ id: string; type: string; fileName: string; docId: string; direction: 'source' | 'target' }> = []
+  const result: Array<{ id: string; type: string; fileName: string; docId: string; direction: 'source' | 'target'; domainCode: string | null }> = []
   for (const r of relations.value.asSource as RelationWithInclude[]) {
     result.push({
       id: r.id,
@@ -179,6 +180,7 @@ const allRelations = computed(() => {
       fileName: r.target?.fileName ?? r.targetId,
       docId: r.targetId,
       direction: 'source',
+      domainCode: r.domainCode,
     })
   }
   for (const r of relations.value.asTarget as RelationWithInclude[]) {
@@ -188,12 +190,12 @@ const allRelations = computed(() => {
       fileName: r.source?.fileName ?? r.sourceId,
       docId: r.sourceId,
       direction: 'target',
+      domainCode: r.domainCode,
     })
   }
   return result
 })
 
-// 빠른추가 탐색기에 전달할 기존 관계 Map
 const existingRelationsMap = computed(() => {
   const map = new Map<string, string>()
   for (const rel of allRelations.value) {
@@ -240,10 +242,11 @@ async function handleRelationSubmit() {
   }
   relationLoading.value = true
   try {
-    await relationsApi.create(id.value, relationForm.value.targetId, relationForm.value.relationType)
+    // domainCode가 _ 이면 전역 관계, 아니면 도메인 스코프
+    const dc = domainCode.value !== '_' ? domainCode.value : undefined
+    await relationsApi.create(id.value, relationForm.value.targetId, relationForm.value.relationType, dc)
     ElMessage.success('관계가 추가되었습니다')
     relationDialogVisible.value = false
-    // 관계 새로고침
     const { data } = await relationsApi.getByDocument(id.value)
     relations.value = data
   } catch (err: unknown) {
@@ -267,64 +270,47 @@ async function handleRelationDelete(relationId: string) {
 }
 
 // ============================================================
-// 문서 분류/보안등급 수정
+// 문서 정보 수정 (보안등급, 유효기간)
 // ============================================================
 
 const editDialogVisible = ref(false)
 const editLoading = ref(false)
 const editForm = ref<{
-  classifications: Record<string, string>
   securityLevel: string
   validUntil: string
 }>({
-  classifications: {},
   securityLevel: 'INTERNAL',
   validUntil: '',
 })
-const facetOptions = ref<Record<string, FacetMasterEntity[]>>({})
 
 async function openEditDialog() {
   if (!doc.value) return
 
-  // 현재 값으로 폼 초기화
+  // 다중 도메인 참조 경고
+  if (doc.value.placementCount > 1) {
+    try {
+      await ElMessageBox.confirm(
+        `이 문서는 ${doc.value.placementCount}개 도메인에서 참조 중입니다. 수정하면 모든 곳에 반영됩니다.`,
+        '수정 확인',
+        { confirmButtonText: '계속', cancelButtonText: '취소', type: 'warning' },
+      )
+    } catch {
+      return
+    }
+  }
+
   editForm.value = {
-    classifications: { ...doc.value.classifications },
     securityLevel: doc.value.securityLevel,
     validUntil: doc.value.validUntil ? doc.value.validUntil.slice(0, 10) : '',
   }
-
-  // 도메인의 requiredFacets 가져와서 각 facet 옵션 로드
-  const domain = domainStore.domainsFlat.find((d) => d.code === doc.value!.domain)
-  if (domain) {
-    const requiredFacets = (domain.requiredFacets ?? []) as string[]
-    const loadPromises = requiredFacets
-      .map(async (ft) => {
-        const { data } = await taxonomyApi.getFacets(ft, domain.code)
-        facetOptions.value[`${domain.code}:${ft}`] = data
-      })
-    await Promise.all(loadPromises)
-  }
-
   editDialogVisible.value = true
 }
-
-function getEditFacetOptions(facetType: string): FacetMasterEntity[] {
-  if (!doc.value) return []
-  return (facetOptions.value[`${doc.value.domain}:${facetType}`] ?? []).filter((f) => f.isActive)
-}
-
-const editRequiredFacets = computed<string[]>(() => {
-  if (!doc.value) return []
-  const domain = domainStore.domainsFlat.find((d) => d.code === doc.value!.domain)
-  return (domain?.requiredFacets ?? []) as string[]
-})
 
 async function handleEditSubmit() {
   if (!doc.value) return
   editLoading.value = true
   try {
     const { data } = await documentsApi.update(id.value, {
-      classifications: editForm.value.classifications,
       securityLevel: editForm.value.securityLevel,
       validUntil: editForm.value.validUntil || null,
       rowVersion: doc.value.rowVersion,
@@ -339,6 +325,25 @@ async function handleEditSubmit() {
     editLoading.value = false
   }
 }
+
+// 배치 삭제
+async function handleRemovePlacement(placementId: string, domainName: string) {
+  try {
+    await ElMessageBox.confirm(
+      `"${domainName}" 도메인에서 배치를 해제하시겠습니까? 원본 문서는 유지됩니다.`,
+      '배치 해제',
+      { type: 'warning' },
+    )
+    await placementsApi.remove(placementId)
+    ElMessage.success('배치가 해제되었습니다')
+    const res = await placementsApi.getByDocument(id.value)
+    placements.value = res.data
+    // placementCount 갱신
+    if (doc.value) doc.value.placementCount = placements.value.length
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('배치 해제에 실패했습니다')
+  }
+}
 </script>
 
 <template>
@@ -347,9 +352,6 @@ async function handleEditSubmit() {
     <el-page-header @back="router.push(backPath)" style="flex-shrink: 0; margin-bottom: 12px">
       <template #content>
         <div style="display: flex; align-items: center; gap: 8px">
-          <span v-if="breadcrumb" style="color: #909399; font-size: 12px">
-            {{ doc?.domain }} > {{ breadcrumb }} >
-          </span>
           <span v-if="doc?.docCode" style="font-family: monospace; font-size: 13px; color: #409eff; margin-right: 2px">
             {{ doc.docCode }}
           </span>
@@ -363,6 +365,9 @@ async function handleEditSubmit() {
             복사
           </el-button>
           <span style="font-size: 15px">{{ doc?.fileName ?? doc?.id ?? '문서 상세' }}</span>
+          <el-tag v-if="doc && doc.placementCount > 1" type="warning" size="small">
+            {{ doc.placementCount }}개 도메인 참조
+          </el-tag>
         </div>
       </template>
     </el-page-header>
@@ -372,7 +377,18 @@ async function handleEditSubmit() {
       <div style="width: 260px; flex-shrink: 0; overflow-y: auto">
         <el-card shadow="never">
           <template #header>
-            <span style="font-weight: 600">문서 정보</span>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span style="font-weight: 600">문서 정보</span>
+              <el-button
+                v-if="auth.hasMinRole('EDITOR')"
+                text
+                size="small"
+                type="primary"
+                @click="openEditDialog"
+              >
+                수정
+              </el-button>
+            </div>
           </template>
 
           <!-- 상태 태그 -->
@@ -409,24 +425,36 @@ async function handleEditSubmit() {
             </p>
           </div>
 
-          <!-- 분류 -->
+          <!-- 배치 정보 -->
           <el-divider />
           <div style="font-size: 13px">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
-              <strong style="color: #303133">분류</strong>
-              <el-button
-                v-if="auth.hasMinRole('EDITOR')"
-                text
-                size="small"
-                type="primary"
-                @click="openEditDialog"
+            <strong style="color: #303133">배치된 도메인</strong>
+            <div v-if="placements.length > 0" style="margin-top: 8px">
+              <div
+                v-for="p in placements"
+                :key="p.id"
+                style="display: flex; align-items: center; gap: 6px; margin: 6px 0 6px 8px; color: #606266"
               >
-                수정
-              </el-button>
+                <span
+                  style="cursor: pointer; color: #409eff"
+                  @click="router.push(`/d/${p.domainCode}`)"
+                >
+                  {{ p.domainName ?? p.domainCode }}
+                </span>
+                <span v-if="p.categoryName" style="color: #909399; font-size: 12px">/ {{ p.categoryName }}</span>
+                <el-button
+                  v-if="auth.hasMinRole('EDITOR')"
+                  text
+                  size="small"
+                  type="danger"
+                  style="margin-left: auto; padding: 0"
+                  @click="handleRemovePlacement(p.id, p.domainName ?? p.domainCode)"
+                >
+                  해제
+                </el-button>
+              </div>
             </div>
-            <div v-for="(value, key) in doc.classifications" :key="key" style="margin: 6px 0 6px 8px; color: #606266">
-              <span style="color: #909399">{{ facetLabel(String(key)) }}:</span> {{ value }}
-            </div>
+            <div v-else style="margin: 8px 0 0 8px; color: #909399">미배치</div>
           </div>
 
           <!-- 액션 버튼 -->
@@ -516,9 +544,10 @@ async function handleEditSubmit() {
               style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f2f3f5"
             >
               <el-tag size="small" type="info">{{ RELATION_TYPE_LABELS[rel.type] ?? rel.type }}</el-tag>
+              <el-tag v-if="rel.domainCode" size="small" style="font-size: 11px">{{ rel.domainCode }}</el-tag>
               <span
                 style="font-size: 13px; color: #303133; flex: 1; cursor: pointer"
-                @click="router.push(`/d/${doc!.domain}/doc/${rel.docId}`)"
+                @click="router.push(`/d/${domainCode}/doc/${rel.docId}`)"
               >
                 {{ rel.fileName }}
               </span>
@@ -575,7 +604,7 @@ async function handleEditSubmit() {
               >
                 {{ LIFECYCLE_LABELS[selectedTargetDoc.lifecycle] ?? selectedTargetDoc.lifecycle }}
               </el-tag>
-              <el-tag size="small">{{ selectedTargetDoc.domain }}</el-tag>
+              <el-tag v-if="selectedTargetDoc.placementCount > 0" size="small">{{ selectedTargetDoc.placementCount }}곳 배치</el-tag>
             </div>
             <el-button
               text
@@ -619,25 +648,6 @@ async function handleEditSubmit() {
       :close-on-click-modal="false"
     >
       <el-form label-width="90px" label-position="left">
-        <el-form-item
-          v-for="facetType in editRequiredFacets"
-          :key="facetType"
-          :label="facetLabel(facetType)"
-          required
-        >
-          <el-select
-            v-model="editForm.classifications[facetType]"
-            placeholder="선택..."
-            style="width: 100%"
-          >
-            <el-option
-              v-for="opt in getEditFacetOptions(facetType)"
-              :key="opt.code"
-              :label="opt.displayName"
-              :value="opt.code"
-            />
-          </el-select>
-        </el-form-item>
         <el-form-item label="보안등급">
           <el-select
             v-model="editForm.securityLevel"

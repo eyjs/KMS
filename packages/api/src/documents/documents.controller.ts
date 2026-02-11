@@ -11,13 +11,14 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  UploadedFiles,
   Request,
   Res,
   StreamableFile,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common'
-import { FileInterceptor } from '@nestjs/platform-express'
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger'
 import { ConfigService } from '@nestjs/config'
 import { Response } from 'express'
@@ -29,13 +30,13 @@ import { RolesGuard } from '../auth/guards/roles.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
 import {
   DocumentListQueryDto,
-  CreateDocumentBodyDto,
+  UploadDocumentBodyDto,
   UpdateDocumentDto,
   TransitionLifecycleDto,
   BulkTransitionDto,
   IssueQueryDto,
 } from './dto/documents.dto'
-import type { UserRole } from '@kms/shared'
+import type { UserRole, SecurityLevel } from '@kms/shared'
 
 interface AuthRequest {
   user: { sub: string; email: string; role: UserRole }
@@ -58,43 +59,42 @@ export class DocumentsController {
   }
 
   @Post()
-  @ApiOperation({ summary: '문서 생성 (파일 업로드 또는 메타데이터만)' })
+  @ApiOperation({ summary: '문서 업로드 (파일 필수)' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async create(
     @UploadedFile() file: Express.Multer.File | undefined,
-    @Body() body: CreateDocumentBodyDto,
+    @Body() body: UploadDocumentBodyDto,
     @Request() req: AuthRequest,
   ) {
-    if (!file && !body.title) {
-      throw new BadRequestException('파일 또는 제목 중 하나는 필수입니다')
-    }
-
-    let classifications: Record<string, string>
-    try {
-      const parsed: unknown = JSON.parse(body.classifications)
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new Error()
-      }
-      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof key !== 'string' || typeof value !== 'string') {
-          throw new Error()
-        }
-      }
-      classifications = parsed as Record<string, string>
-    } catch {
-      throw new BadRequestException('classifications은 유효한 JSON 객체여야 합니다')
-    }
-
     return this.documentsService.create(
-      { domain: body.domain, classifications, securityLevel: body.securityLevel, title: body.title, validUntil: body.validUntil },
+      { securityLevel: body.securityLevel as SecurityLevel | undefined, validUntil: body.validUntil },
       file ?? null,
       req.user.sub,
     )
   }
 
+  @Post('bulk-upload')
+  @ApiOperation({ summary: '대량 업로드 (여러 파일 동시)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('files', 20))
+  async bulkCreate(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() body: UploadDocumentBodyDto,
+    @Request() req: AuthRequest,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('최소 1개 파일이 필요합니다')
+    }
+    return this.documentsService.bulkCreate(
+      files,
+      body.securityLevel as SecurityLevel | undefined,
+      req.user.sub,
+    )
+  }
+
   @Patch(':id/file')
-  @ApiOperation({ summary: '문서에 파일 첨부 (나중에 연결)' })
+  @ApiOperation({ summary: '문서에 파일 첨부' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async attachFile(
@@ -114,7 +114,6 @@ export class DocumentsController {
     return this.documentsService.findAll(query, req.user.role)
   }
 
-  // 정적 라우트는 :id 파라미터 라우트보다 먼저 선언해야 함
   @Get('stats')
   @ApiOperation({ summary: '전체 문서 통계 (대시보드용)' })
   async getStats(@Request() req: AuthRequest) {
@@ -133,14 +132,36 @@ export class DocumentsController {
     )
   }
 
-  @Get('counts')
-  @ApiOperation({ summary: '분류별 문서 수' })
-  async getCounts(
-    @Query('domain') domain: string,
-    @Query('groupBy') groupBy: string,
+  @Get('orphans')
+  @ApiOperation({ summary: '미배치 문서 목록' })
+  async getOrphans(
+    @Query('page') page?: string,
+    @Query('size') size?: string,
     @Request() req?: AuthRequest,
   ) {
-    return this.documentsService.getCounts(domain, groupBy, req?.user.role ?? 'VIEWER')
+    return this.documentsService.findOrphans(
+      req?.user.role ?? 'VIEWER',
+      parseInt(page ?? '1', 10),
+      parseInt(size ?? '20', 10),
+    )
+  }
+
+  @Get('my')
+  @ApiOperation({ summary: '내가 올린 문서 목록' })
+  async getMyDocuments(
+    @Query('page') page?: string,
+    @Query('size') size?: string,
+    @Query('orphan') orphan?: string,
+    @Request() req?: AuthRequest,
+  ) {
+    const orphanFilter = orphan === 'true' ? true : orphan === 'false' ? false : null
+    return this.documentsService.findMyDocuments(
+      req?.user.sub ?? '',
+      req?.user.role ?? 'VIEWER',
+      parseInt(page ?? '1', 10),
+      parseInt(size ?? '20', 10),
+      orphanFilter,
+    )
   }
 
   @Get('issues')
@@ -163,41 +184,26 @@ export class DocumentsController {
     return this.documentsService.getIssueCounts(req.user.role)
   }
 
-  @Get('check-duplicate')
-  @ApiOperation({ summary: '동일 분류의 ACTIVE 문서 존재 여부 확인' })
-  async checkDuplicate(
-    @Query('domain') domain: string,
-    @Query('classifications') classifications: string,
-    @Request() req: AuthRequest,
-  ) {
-    if (!domain) throw new BadRequestException('domain은 필수입니다')
-    let parsed: Record<string, string>
-    try {
-      const raw: unknown = JSON.parse(classifications)
-      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error()
-      for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof key !== 'string' || typeof value !== 'string') throw new Error()
-      }
-      parsed = raw as Record<string, string>
-    } catch {
-      throw new BadRequestException('classifications은 유효한 JSON 객체여야 합니다')
-    }
-    return this.documentsService.checkDuplicate(domain, parsed, req.user.role)
-  }
-
   @Get('search')
   @ApiOperation({ summary: '통합 검색' })
   async search(
     @Query('q') q?: string,
     @Query('domain') domain?: string,
     @Query('lifecycle') lifecycle?: string,
-    @Query('classifications') classifications?: string,
+    @Query('orphan') orphan?: string,
     @Query('page') page?: string,
     @Query('size') size?: string,
     @Request() req?: AuthRequest,
   ) {
     return this.documentsService.search(
-      { q, domain, lifecycle, classifications, page: parseInt(page ?? '1', 10), size: parseInt(size ?? '20', 10) },
+      {
+        q,
+        domain,
+        lifecycle,
+        orphan: orphan === 'true',
+        page: parseInt(page ?? '1', 10),
+        size: parseInt(size ?? '20', 10),
+      },
       req?.user.role ?? 'VIEWER',
     )
   }
@@ -239,7 +245,7 @@ export class DocumentsController {
 
   @Delete(':id')
   @Roles('REVIEWER')
-  @ApiOperation({ summary: '문서 논리 삭제 (팀장 이상)' })
+  @ApiOperation({ summary: '문서 논리 삭제 (검토자 이상)' })
   async remove(@Param('id') id: string, @Request() req: AuthRequest) {
     await this.documentsService.softDelete(id, req.user.sub, req.user.role)
     return { message: '삭제되었습니다' }

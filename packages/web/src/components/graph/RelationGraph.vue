@@ -4,7 +4,6 @@ import { Network } from 'vis-network/standalone'
 import { DataSet } from 'vis-data/standalone'
 import { LIFECYCLE_LABELS, SECURITY_LEVEL_LABELS } from '@kms/shared'
 import type { GraphNode, GraphEdge, RelationGraphResponse } from '@kms/shared'
-import { useFacetTypes } from '@/composables/useFacetTypes'
 
 const props = defineProps<{
   data: RelationGraphResponse | null
@@ -16,8 +15,6 @@ const emit = defineEmits<{
   (e: 'node-double-click', nodeId: string): void
   (e: 'edge-click', edgeId: string, relationType: string): void
 }>()
-
-const { facetLabel } = useFacetTypes()
 
 const containerRef = ref<HTMLDivElement>()
 let network: Network | null = null
@@ -51,12 +48,8 @@ function buildNodeTitle(node: GraphNode): string {
   const lines: string[] = []
   if (node.docCode) lines.push(`코드: ${node.docCode}`)
   if (node.fileName) lines.push(`파일: ${node.fileName}`)
-  lines.push(`도메인: ${node.domain}`)
   lines.push(`상태: ${LIFECYCLE_LABELS[node.lifecycle] ?? node.lifecycle}`)
   lines.push(`보안: ${SECURITY_LEVEL_LABELS[node.securityLevel] ?? node.securityLevel}`)
-  if (Object.keys(node.classifications).length > 0) {
-    lines.push(`분류: ${Object.entries(node.classifications).map(([k, v]) => `${facetLabel(k)}: ${v}`).join(', ')}`)
-  }
   return lines.join('\n')
 }
 

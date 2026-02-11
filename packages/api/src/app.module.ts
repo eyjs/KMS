@@ -5,6 +5,8 @@ import { AuthModule } from './auth/auth.module'
 import { DocumentsModule } from './documents/documents.module'
 import { RelationsModule } from './relations/relations.module'
 import { TaxonomyModule } from './taxonomy/taxonomy.module'
+import { CategoriesModule } from './categories/categories.module'
+import { PlacementsModule } from './placements/placements.module'
 import { FeedbackModule } from './feedback/feedback.module'
 
 @Module({
@@ -13,7 +15,9 @@ import { FeedbackModule } from './feedback/feedback.module'
     PrismaModule,
     AuthModule,
     TaxonomyModule,
+    CategoriesModule,
     DocumentsModule,
+    PlacementsModule,
     RelationsModule,
     FeedbackModule,
   ],

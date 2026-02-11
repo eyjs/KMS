@@ -3,13 +3,10 @@ import { ref, onMounted } from 'vue'
 import { documentsApi } from '@/api/documents'
 import type { DocumentHistoryEntry } from '@/api/documents'
 import { ACTION_LABELS, ACTION_TAG_TYPES, RELATION_TYPE_LABELS } from '@kms/shared'
-import { useFacetTypes } from '@/composables/useFacetTypes'
 
 const props = defineProps<{
   documentId: string
 }>()
-
-const { facetLabel } = useFacetTypes()
 
 const history = ref<DocumentHistoryEntry[]>([])
 const loading = ref(false)
@@ -29,7 +26,7 @@ onMounted(async () => {
 function formatChanges(action: string, changes: Record<string, unknown> | null): string {
   if (!changes) return ''
 
-  // 관계 추가/삭제: "참조 → COMM-2602-003 수수료체계.pdf"
+  // 관계 추가/삭제
   if (action === 'RELATION_ADD' || action === 'RELATION_REMOVE') {
     const relLabel = RELATION_TYPE_LABELS[changes.relationType as string] ?? changes.relationType
     const fileName = changes.targetFileName ? ` ${changes.targetFileName}` : ''
@@ -37,18 +34,15 @@ function formatChanges(action: string, changes: Record<string, unknown> | null):
     return `${relLabel} → ${display}`
   }
 
+  // 배치 추가/삭제
+  if (action === 'PLACEMENT_ADD' || action === 'PLACEMENT_REMOVE') {
+    return changes.domainName ? String(changes.domainName) : String(changes.domainCode ?? '')
+  }
+
   // 상태 변경
   if (changes.from && changes.to) {
     const reason = changes.reason === 'auto_superseded' ? ' (자동 만료)' : ''
     return `${changes.from} → ${changes.to}${reason}`
-  }
-
-  // 분류 변경
-  if (changes.classifications && typeof changes.classifications === 'object') {
-    const cls = changes.classifications as Record<string, string>
-    return Object.entries(cls)
-      .map(([k, v]) => `${facetLabel(k)}: ${v}`)
-      .join(', ')
   }
 
   // 파일 첨부

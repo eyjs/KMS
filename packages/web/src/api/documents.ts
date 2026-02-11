@@ -6,15 +6,11 @@ export interface DocumentStats {
   active: number
   draft: number
   deprecated: number
-  freshnessWarning: number
+  orphan: number
   byDomain: Array<{
     domain: string
     displayName: string
     total: number
-    active: number
-    draft: number
-    deprecated: number
-    warning: number
   }>
 }
 
@@ -22,7 +18,6 @@ export interface RecentActivity {
   id: string
   documentId: string
   fileName: string
-  domain: string
   action: string
   changes: Record<string, unknown> | null
   userName: string | null
@@ -35,10 +30,6 @@ export interface DocumentHistoryEntry {
   changes: Record<string, unknown> | null
   userName: string | null
   createdAt: string
-}
-
-export interface DocumentCounts {
-  [key: string]: number
 }
 
 export interface IssueCounts {
@@ -57,26 +48,34 @@ export const documentsApi = {
     return client.get<DocumentEntity>(`/documents/${id}`)
   },
 
-  upload(file: File, data: { domain: string; classifications: Record<string, string>; securityLevel?: string; validUntil?: string }) {
+  upload(file: File, data?: { securityLevel?: string; validUntil?: string }) {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('domain', data.domain)
-    formData.append('classifications', JSON.stringify(data.classifications))
-    if (data.securityLevel) formData.append('securityLevel', data.securityLevel)
-    if (data.validUntil) formData.append('validUntil', data.validUntil)
+    if (data?.securityLevel) formData.append('securityLevel', data.securityLevel)
+    if (data?.validUntil) formData.append('validUntil', data.validUntil)
     return client.post<DocumentEntity>('/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
 
-  createMetadata(data: { domain: string; classifications: Record<string, string>; securityLevel?: string; title: string; validUntil?: string }) {
+  bulkUpload(files: File[], securityLevel?: string) {
     const formData = new FormData()
-    formData.append('domain', data.domain)
-    formData.append('classifications', JSON.stringify(data.classifications))
-    formData.append('title', data.title)
-    if (data.securityLevel) formData.append('securityLevel', data.securityLevel)
-    if (data.validUntil) formData.append('validUntil', data.validUntil)
-    return client.post<DocumentEntity>('/documents', formData, {
+    for (const file of files) {
+      formData.append('files', file)
+    }
+    if (securityLevel) formData.append('securityLevel', securityLevel)
+    return client.post<{
+      succeeded: number
+      failed: number
+      results: Array<{
+        fileName: string
+        success: boolean
+        documentId?: string
+        docCode?: string | null
+        error?: string
+        existingDocumentId?: string
+      }>
+    }>('/documents/bulk-upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
@@ -89,7 +88,7 @@ export const documentsApi = {
     })
   },
 
-  update(id: string, data: { classifications?: Record<string, string>; securityLevel?: string; validUntil?: string | null; rowVersion: number }) {
+  update(id: string, data: { securityLevel?: string; validUntil?: string | null; fileName?: string; rowVersion: number }) {
     return client.put<DocumentEntity>(`/documents/${id}`, data)
   },
 
@@ -124,10 +123,6 @@ export const documentsApi = {
     return client.get<RecentActivity[]>('/documents/recent', { params: { limit } })
   },
 
-  getCounts(params: { domain: string; groupBy: string }) {
-    return client.get<DocumentCounts>('/documents/counts', { params })
-  },
-
   getHistory(id: string) {
     return client.get<DocumentHistoryEntry[]>(`/documents/${id}/history`)
   },
@@ -137,14 +132,19 @@ export const documentsApi = {
     return `${baseURL}/documents/${id}/preview`
   },
 
-  checkDuplicate(domain: string, classifications: Record<string, string>) {
-    return client.get<DocumentEntity | null>('/documents/check-duplicate', {
-      params: { domain, classifications: JSON.stringify(classifications) },
-    })
+  getOrphans(page = 1, size = 20) {
+    return client.get<PaginatedResponse<DocumentEntity>>('/documents/orphans', { params: { page, size } })
   },
 
-  search(params: { q?: string; domain?: string; lifecycle?: string; classifications?: string; page?: number; size?: number }) {
-    return client.get<PaginatedResponse<DocumentEntity>>('/documents/search', { params })
+  getMyDocuments(page = 1, size = 20, orphan?: boolean | null) {
+    const params: Record<string, unknown> = { page, size }
+    if (orphan === true) params.orphan = 'true'
+    else if (orphan === false) params.orphan = 'false'
+    return client.get<PaginatedResponse<DocumentEntity>>('/documents/my', { params })
+  },
+
+  search(params: { q?: string; domain?: string; lifecycle?: string; orphan?: boolean; page?: number; size?: number }) {
+    return client.get<PaginatedResponse<DocumentEntity & { domainTags?: Array<{ code: string; name: string }> }>>('/documents/search', { params })
   },
 
   getIssues(type: string, page = 1, size = 10) {

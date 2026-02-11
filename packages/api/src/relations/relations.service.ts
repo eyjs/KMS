@@ -5,7 +5,6 @@ import {
   ForbiddenException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
-import { TaxonomyService } from '../taxonomy/taxonomy.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
 import { RELATION_META, SECURITY_LEVEL_ORDER } from '@kms/shared'
 import type { RelationType, UserRole, SecurityLevel, GraphNode, GraphEdge } from '@kms/shared'
@@ -14,7 +13,6 @@ import type { RelationType, UserRole, SecurityLevel, GraphNode, GraphEdge } from
 export class RelationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly taxonomy: TaxonomyService,
   ) {}
 
   async findByDocument(documentId: string, userRole: UserRole) {
@@ -31,18 +29,53 @@ export class RelationsService {
       this.prisma.relation.findMany({
         where: { sourceId: documentId },
         include: {
-          target: { select: { id: true, fileName: true, domain: true, lifecycle: true, securityLevel: true } },
+          target: { select: { id: true, fileName: true, lifecycle: true, securityLevel: true } },
         },
       }),
       this.prisma.relation.findMany({
         where: { targetId: documentId },
         include: {
-          source: { select: { id: true, fileName: true, domain: true, lifecycle: true, securityLevel: true } },
+          source: { select: { id: true, fileName: true, lifecycle: true, securityLevel: true } },
         },
       }),
     ])
 
-    // 사용자 역할로 접근 가능한 관계 문서만 필터
+    const filteredSource = asSource.filter((r: { target: { securityLevel: string } }) =>
+      SecurityLevelGuard.canAccess(userRole, r.target.securityLevel as SecurityLevel),
+    )
+    const filteredTarget = asTarget.filter((r: { source: { securityLevel: string } }) =>
+      SecurityLevelGuard.canAccess(userRole, r.source.securityLevel as SecurityLevel),
+    )
+
+    return { asSource: filteredSource, asTarget: filteredTarget }
+  }
+
+  /** 도메인 내 특정 문서의 관계 */
+  async findByDocumentInDomain(documentId: string, domainCode: string, userRole: UserRole) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id: documentId, isDeleted: false },
+    })
+    if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
+
+    if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
+      throw new ForbiddenException('접근 권한이 없습니다')
+    }
+
+    const [asSource, asTarget] = await Promise.all([
+      this.prisma.relation.findMany({
+        where: { sourceId: documentId, domainCode },
+        include: {
+          target: { select: { id: true, fileName: true, lifecycle: true, securityLevel: true } },
+        },
+      }),
+      this.prisma.relation.findMany({
+        where: { targetId: documentId, domainCode },
+        include: {
+          source: { select: { id: true, fileName: true, lifecycle: true, securityLevel: true } },
+        },
+      }),
+    ])
+
     const filteredSource = asSource.filter((r: { target: { securityLevel: string } }) =>
       SecurityLevelGuard.canAccess(userRole, r.target.securityLevel as SecurityLevel),
     )
@@ -57,12 +90,22 @@ export class RelationsService {
     sourceId: string,
     targetId: string,
     relationType: RelationType,
+    domainCode: string | undefined,
     userId: string,
     userRole: UserRole,
   ) {
     if (sourceId === targetId) {
       throw new BadRequestException('자기 참조는 허용되지 않습니다')
     }
+
+    const meta = RELATION_META[relationType]
+
+    // domain_code 필수 체크
+    if (meta.domainRequired && !domainCode) {
+      throw new BadRequestException(`${relationType} 관계는 도메인 코드가 필수입니다`)
+    }
+
+    const effectiveDomainCode = meta.domainRequired ? domainCode! : (domainCode ?? null)
 
     // 두 문서 존재 확인
     const [source, target] = await Promise.all([
@@ -81,42 +124,51 @@ export class RelationsService {
       throw new ForbiddenException('대상 문서에 대한 접근 권한이 없습니다')
     }
 
-    // scope 검증
-    const meta = RELATION_META[relationType]
-    if (meta?.scope === 'same_domain' && source.domain !== target.domain) {
-      throw new BadRequestException(
-        `${relationType} 관계는 같은 도메인 내에서만 가능합니다`,
-      )
+    // domain-scoped: 두 문서 모두 해당 도메인에 배치 확인
+    if (effectiveDomainCode) {
+      const [sourcePlacement, targetPlacement] = await Promise.all([
+        this.prisma.documentPlacement.findUnique({
+          where: { documentId_domainCode: { documentId: sourceId, domainCode: effectiveDomainCode } },
+        }),
+        this.prisma.documentPlacement.findUnique({
+          where: { documentId_domainCode: { documentId: targetId, domainCode: effectiveDomainCode } },
+        }),
+      ])
+
+      if (!sourcePlacement) {
+        throw new BadRequestException('출발 문서가 해당 도메인에 배치되어 있지 않습니다')
+      }
+      if (!targetPlacement) {
+        throw new BadRequestException('대상 문서가 해당 도메인에 배치되어 있지 않습니다')
+      }
     }
 
-    // 관계 생성 (순환 참조는 DB 트리거에서 체크)
+    // 관계 생성
     const relation = await this.prisma.relation.create({
       data: {
         sourceId,
         targetId,
         relationType,
+        domainCode: effectiveDomainCode,
         createdById: userId,
       },
     })
 
     // 양방향 관계면 역방향도 생성
-    if (meta?.bidirectional && meta.inverse) {
-      await this.prisma.relation.upsert({
-        where: {
-          sourceId_targetId_relationType: {
+    if (meta.bidirectional && meta.inverse) {
+      try {
+        await this.prisma.relation.create({
+          data: {
             sourceId: targetId,
             targetId: sourceId,
             relationType: meta.inverse,
+            domainCode: effectiveDomainCode,
+            createdById: userId,
           },
-        },
-        update: {},
-        create: {
-          sourceId: targetId,
-          targetId: sourceId,
-          relationType: meta.inverse,
-          createdById: userId,
-        },
-      })
+        })
+      } catch {
+        // 이미 존재하면 무시
+      }
     }
 
     // 이력 기록
@@ -124,7 +176,7 @@ export class RelationsService {
       data: {
         documentId: sourceId,
         action: 'RELATION_ADD',
-        changes: { targetId, relationType },
+        changes: { targetId, relationType, domainCode: effectiveDomainCode },
         userId,
       },
     })
@@ -156,6 +208,7 @@ export class RelationsService {
           sourceId: relation.targetId,
           targetId: relation.sourceId,
           relationType: meta.inverse,
+          domainCode: relation.domainCode,
         },
       })
     }
@@ -166,7 +219,7 @@ export class RelationsService {
       data: {
         documentId: relation.sourceId,
         action: 'RELATION_REMOVE',
-        changes: { targetId: relation.targetId, relationType: relation.relationType },
+        changes: { targetId: relation.targetId, relationType: relation.relationType, domainCode: relation.domainCode },
         userId,
       },
     })
@@ -174,13 +227,12 @@ export class RelationsService {
     return { message: '관계가 삭제되었습니다' }
   }
 
-  /** BFS로 다중 홉 관계 그래프 반환 (vis-network용) */
-  async getRelationGraph(documentId: string, userRole: UserRole, depth: number = 1) {
+  /** BFS로 다중 홉 관계 그래프 반환 (도메인 스코프) */
+  async getRelationGraph(documentId: string, userRole: UserRole, depth: number = 1, domainCode?: string) {
     const maxDepth = Math.min(depth, 3)
 
     const doc = await this.prisma.document.findFirst({
       where: { id: documentId, isDeleted: false },
-      include: { classifications: true },
     })
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
 
@@ -196,18 +248,12 @@ export class RelationsService {
     const edgeSet = new Set<string>()
 
     // 시작 노드 등록
-    const classifications: Record<string, string> = {}
-    for (const c of doc.classifications) {
-      classifications[c.facetType] = c.facetValue
-    }
     nodeMap.set(documentId, {
       id: doc.id,
       docCode: doc.docCode,
       fileName: doc.fileName,
-      domain: doc.domain,
       lifecycle: doc.lifecycle as GraphNode['lifecycle'],
       securityLevel: doc.securityLevel as GraphNode['securityLevel'],
-      classifications,
       depth: 0,
     })
 
@@ -217,14 +263,15 @@ export class RelationsService {
 
       if (currentDepth >= maxDepth) continue
 
+      const domainFilter = domainCode ? { domainCode } : {}
       const [asSource, asTarget] = await Promise.all([
         this.prisma.relation.findMany({
-          where: { sourceId: currentId },
-          select: { id: true, sourceId: true, targetId: true, relationType: true },
+          where: { sourceId: currentId, ...domainFilter },
+          select: { id: true, sourceId: true, targetId: true, relationType: true, domainCode: true },
         }),
         this.prisma.relation.findMany({
-          where: { targetId: currentId },
-          select: { id: true, sourceId: true, targetId: true, relationType: true },
+          where: { targetId: currentId, ...domainFilter },
+          select: { id: true, sourceId: true, targetId: true, relationType: true, domainCode: true },
         }),
       ])
 
@@ -232,7 +279,7 @@ export class RelationsService {
       const relations = [...asSource, ...asTarget]
 
       for (const rel of relations) {
-        const edgeKey = `${rel.sourceId}-${rel.targetId}-${rel.relationType}`
+        const edgeKey = `${rel.sourceId}-${rel.targetId}-${rel.relationType}-${rel.domainCode ?? 'null'}`
         if (!edgeSet.has(edgeKey)) {
           edgeSet.add(edgeKey)
           edgeList.push({
@@ -240,6 +287,7 @@ export class RelationsService {
             sourceId: rel.sourceId,
             targetId: rel.targetId,
             relationType: rel.relationType as GraphEdge['relationType'],
+            domainCode: rel.domainCode,
           })
         }
 
@@ -250,32 +298,23 @@ export class RelationsService {
         }
       }
 
-      // 이웃 문서 일괄 조회 (N+1 방지)
+      // 이웃 문서 일괄 조회
       if (neighborIds.size > 0) {
         const neighbors = await this.prisma.document.findMany({
           where: { id: { in: [...neighborIds] }, isDeleted: false },
-          include: { classifications: true },
         })
 
         for (const neighbor of neighbors) {
-          // 보안 필터링: 접근 불가 문서는 그래프에서 제외
           if (!SecurityLevelGuard.canAccess(userRole, neighbor.securityLevel as SecurityLevel)) {
             continue
-          }
-
-          const neighborClassifications: Record<string, string> = {}
-          for (const c of neighbor.classifications) {
-            neighborClassifications[c.facetType] = c.facetValue
           }
 
           nodeMap.set(neighbor.id, {
             id: neighbor.id,
             docCode: neighbor.docCode,
             fileName: neighbor.fileName,
-            domain: neighbor.domain,
             lifecycle: neighbor.lifecycle as GraphNode['lifecycle'],
             securityLevel: neighbor.securityLevel as GraphNode['securityLevel'],
-            classifications: neighborClassifications,
             depth: currentDepth + 1,
           })
 
@@ -296,25 +335,21 @@ export class RelationsService {
     }
   }
 
-  /** 도메인 내 관계가 있는 문서들의 그래프 반환 */
+  /** 도메인 내 관계 그래프 */
   async getRelationGraphByDomain(domainCode: string, userRole: UserRole, maxNodes: number = 200) {
     const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
     const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
       .filter(([, level]) => level <= maxLevel)
       .map(([name]) => name)
 
-    // 도메인 + 하위 도메인 코드 수집
-    const domainCodes = await this.taxonomy.getDescendantCodes(domainCode)
-
-    // 관계가 있는 문서만 조회 (성능: 관계 테이블 기준)
+    // 해당 도메인의 관계만 조회
     const relations = await this.prisma.relation.findMany({
       where: {
-        OR: [
-          { source: { domain: { in: domainCodes }, isDeleted: false, securityLevel: { in: allowedLevels } } },
-          { target: { domain: { in: domainCodes }, isDeleted: false, securityLevel: { in: allowedLevels } } },
-        ],
+        domainCode,
+        source: { isDeleted: false, securityLevel: { in: allowedLevels } },
+        target: { isDeleted: false, securityLevel: { in: allowedLevels } },
       },
-      select: { id: true, sourceId: true, targetId: true, relationType: true },
+      select: { id: true, sourceId: true, targetId: true, relationType: true, domainCode: true },
     })
 
     // 관련 문서 ID 수집
@@ -324,7 +359,6 @@ export class RelationsService {
       docIds.add(r.targetId)
     }
 
-    // 노드 수 상한 초과 시 조기 반환
     if (docIds.size > maxNodes) {
       return { nodes: [], edges: [], centerId: '' }
     }
@@ -336,28 +370,20 @@ export class RelationsService {
         isDeleted: false,
         securityLevel: { in: allowedLevels },
       },
-      include: { classifications: true },
     })
 
     const nodeMap = new Map<string, GraphNode>()
     for (const doc of docs) {
-      const classifications: Record<string, string> = {}
-      for (const c of doc.classifications) {
-        classifications[c.facetType] = c.facetValue
-      }
       nodeMap.set(doc.id, {
         id: doc.id,
         docCode: doc.docCode,
         fileName: doc.fileName,
-        domain: doc.domain,
         lifecycle: doc.lifecycle as GraphNode['lifecycle'],
         securityLevel: doc.securityLevel as GraphNode['securityLevel'],
-        classifications,
         depth: 0,
       })
     }
 
-    // 양쪽 노드가 모두 있는 엣지만 반환
     const edges: GraphEdge[] = relations
       .filter((r) => nodeMap.has(r.sourceId) && nodeMap.has(r.targetId))
       .map((r) => ({
@@ -365,6 +391,7 @@ export class RelationsService {
         sourceId: r.sourceId,
         targetId: r.targetId,
         relationType: r.relationType as GraphEdge['relationType'],
+        domainCode: r.domainCode,
       }))
 
     return {

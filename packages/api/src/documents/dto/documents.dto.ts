@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsInt, IsISO8601, Min, Max, IsNotEmpty, ValidateIf, IsArray, ArrayMinSize, ArrayMaxSize, IsUUID } from 'class-validator'
+import { IsString, IsOptional, IsEnum, IsInt, IsISO8601, Min, Max, IsArray, ArrayMinSize, ArrayMaxSize, IsUUID, IsBoolean } from 'class-validator'
 import { Transform, Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
 
@@ -22,10 +22,10 @@ export class DocumentListQueryDto {
   @IsEnum(VALID_SECURITY_LEVELS)
   securityLevel?: (typeof VALID_SECURITY_LEVELS)[number]
 
-  @ApiProperty({ required: false, description: 'JSON string of facet filters, e.g. {"facetType":"facetValue"}' })
+  @ApiProperty({ required: false, description: '미배치 문서만 조회' })
   @IsOptional()
-  @IsString()
-  classifications?: string
+  @Transform(({ value }) => value === 'true' || value === true)
+  orphan?: boolean
 
   @ApiProperty({ required: false, default: 1 })
   @IsOptional()
@@ -53,26 +53,11 @@ export class DocumentListQueryDto {
   order?: 'asc' | 'desc'
 }
 
-export class CreateDocumentBodyDto {
-  @ApiProperty()
-  @IsNotEmpty()
-  @IsString()
-  domain!: string
-
-  @ApiProperty({ description: 'JSON string of classifications' })
-  @IsNotEmpty()
-  @IsString()
-  classifications!: string
-
+export class UploadDocumentBodyDto {
   @ApiProperty({ required: false, enum: VALID_SECURITY_LEVELS })
   @IsOptional()
   @IsEnum(VALID_SECURITY_LEVELS)
   securityLevel?: (typeof VALID_SECURITY_LEVELS)[number]
-
-  @ApiProperty({ required: false, description: '문서 제목 (파일 없이 생성 시 사용)' })
-  @IsOptional()
-  @IsString()
-  title?: string
 
   @ApiProperty({ required: false, description: '유효기간 (ISO 8601)' })
   @IsOptional()
@@ -81,10 +66,6 @@ export class CreateDocumentBodyDto {
 }
 
 export class UpdateDocumentDto {
-  @ApiProperty({ required: false })
-  @IsOptional()
-  classifications?: Record<string, string>
-
   @ApiProperty({ required: false, enum: VALID_SECURITY_LEVELS })
   @IsOptional()
   @IsEnum(VALID_SECURITY_LEVELS)
@@ -92,9 +73,12 @@ export class UpdateDocumentDto {
 
   @ApiProperty({ required: false, description: '유효기간 (ISO 8601, null로 제거)' })
   @IsOptional()
-  @ValidateIf((o) => o.validUntil !== null)
-  @IsISO8601({ strict: false }, { message: '올바른 날짜 형식이어야 합니다 (예: 2026-12-31)' })
   validUntil?: string | null
+
+  @ApiProperty({ required: false, description: '파일명 변경 (업로더 또는 ADMIN만 가능)' })
+  @IsOptional()
+  @IsString()
+  fileName?: string
 
   @ApiProperty()
   @IsInt()

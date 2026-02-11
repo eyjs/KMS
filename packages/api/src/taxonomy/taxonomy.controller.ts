@@ -5,19 +5,17 @@ import {
   Put,
   Delete,
   Param,
-  Query,
   Body,
   UseGuards,
   HttpCode,
   HttpStatus,
-  ParseIntPipe,
 } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger'
 import { TaxonomyService } from './taxonomy.service'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
-import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto, CreateFacetTypeDto, UpdateFacetTypeDto } from './dto/taxonomy.dto'
+import { CreateDomainDto, UpdateDomainDto } from './dto/taxonomy.dto'
 
 @ApiTags('taxonomy')
 @Controller()
@@ -25,44 +23,6 @@ import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto, Creat
 @ApiBearerAuth()
 export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomyService) {}
-
-  // ============================================================
-  // Facet Type CRUD
-  // ============================================================
-
-  @Get('facet-types')
-  @ApiOperation({ summary: '분류 유형 목록 조회 (domain 지정 시 공통+해당 도메인만)' })
-  async getFacetTypes(@Query('domain') domain?: string) {
-    return this.taxonomyService.getFacetTypes(domain)
-  }
-
-  @Post('facet-types')
-  @Roles('ADMIN')
-  @UseGuards(RolesGuard)
-  @ApiOperation({ summary: '분류 유형 생성 (ADMIN)' })
-  async createFacetType(@Body() dto: CreateFacetTypeDto) {
-    return this.taxonomyService.createFacetType(dto)
-  }
-
-  @Put('facet-types/:code')
-  @Roles('ADMIN')
-  @UseGuards(RolesGuard)
-  @ApiOperation({ summary: '분류 유형 수정 (ADMIN)' })
-  async updateFacetType(
-    @Param('code') code: string,
-    @Body() dto: UpdateFacetTypeDto,
-  ) {
-    return this.taxonomyService.updateFacetType(code, dto)
-  }
-
-  @Delete('facet-types/:code')
-  @Roles('ADMIN')
-  @UseGuards(RolesGuard)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: '분류 유형 삭제 (ADMIN, soft delete)' })
-  async deleteFacetType(@Param('code') code: string) {
-    await this.taxonomyService.deleteFacetType(code)
-  }
 
   // ============================================================
   // Domains
@@ -112,42 +72,5 @@ export class TaxonomyController {
   @ApiOperation({ summary: '도메인 삭제 (ADMIN, soft delete)' })
   async deleteDomain(@Param('code') code: string) {
     await this.taxonomyService.deleteDomain(code)
-  }
-
-  @Get('taxonomy/:facetType')
-  @ApiOperation({ summary: '분류 마스터 조회 (facetType별)' })
-  async getFacets(
-    @Param('facetType') facetType: string,
-    @Query('domain') domain?: string,
-  ) {
-    return this.taxonomyService.getFacets(facetType, domain)
-  }
-
-  @Post('taxonomy')
-  @Roles('ADMIN')
-  @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Facet 생성 (ADMIN)' })
-  async createFacet(@Body() dto: CreateFacetDto) {
-    return this.taxonomyService.createFacet(dto)
-  }
-
-  @Put('taxonomy/:id')
-  @Roles('ADMIN')
-  @UseGuards(RolesGuard)
-  @ApiOperation({ summary: 'Facet 수정 (ADMIN)' })
-  async updateFacet(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateFacetDto,
-  ) {
-    return this.taxonomyService.updateFacet(id, dto)
-  }
-
-  @Delete('taxonomy/:id')
-  @Roles('ADMIN')
-  @UseGuards(RolesGuard)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Facet 삭제 (ADMIN, soft delete)' })
-  async deleteFacet(@Param('id', ParseIntPipe) id: number) {
-    await this.taxonomyService.deleteFacet(id)
   }
 }

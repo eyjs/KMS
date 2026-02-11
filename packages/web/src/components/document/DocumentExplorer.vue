@@ -4,7 +4,6 @@ import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
 import { LIFECYCLE_LABELS } from '@kms/shared'
 import type { DocumentEntity, DomainMasterEntity } from '@kms/shared'
-import { useFacetTypes } from '@/composables/useFacetTypes'
 
 const props = defineProps<{
   sourceDocument: DocumentEntity
@@ -16,26 +15,26 @@ const emit = defineEmits<{
   (e: 'select', doc: DocumentEntity): void
 }>()
 
-const { facetLabel } = useFacetTypes()
-
 const domains = ref<DomainMasterEntity[]>([])
 const activeDomain = ref('')
 const searchQuery = ref('')
 const documents = ref<DocumentEntity[]>([])
-const siblings = ref<DocumentEntity[]>([])
 const loading = ref(false)
 const page = ref(1)
 const totalPages = ref(0)
 const PAGE_SIZE = 20
 
-// 탭: siblings(형제 문서) | all(전체) | search(검색)
-const activeTab = ref<'siblings' | 'all' | 'search'>('siblings')
+// 탭: all(전체) | search(검색)
+const activeTab = ref<'all' | 'search'>('all')
 
 onMounted(async () => {
   try {
     const { data } = await taxonomyApi.getDomainsFlat()
     domains.value = data
-    activeDomain.value = props.sourceDocument.domain
+    // 기본 도메인은 첫 번째
+    if (data.length > 0) {
+      activeDomain.value = data[0].code
+    }
   } catch {
     domains.value = []
   }
@@ -47,40 +46,12 @@ watch(activeDomain, () => {
   if (activeTab.value === 'all') {
     loadDocuments()
   }
-  if (activeTab.value === 'siblings') {
-    loadSiblings()
-  }
 })
 
 watch(activeTab, (tab) => {
   page.value = 1
-  if (tab === 'siblings') loadSiblings()
-  else if (tab === 'all') loadDocuments()
+  if (tab === 'all') loadDocuments()
 })
-
-// sourceDocument 변경 시 도메인 동기화 (activeDomain watch가 로드 처리)
-watch(() => props.sourceDocument, () => {
-  activeDomain.value = props.sourceDocument.domain
-}, { immediate: true })
-
-async function loadSiblings() {
-  loading.value = true
-  try {
-    const cls = props.sourceDocument.classifications
-    const classificationStr = Object.keys(cls).length > 0 ? JSON.stringify(cls) : undefined
-    const { data } = await documentsApi.list({
-      domain: activeDomain.value,
-      classifications: classificationStr,
-      page: 1,
-      size: 50,
-    })
-    siblings.value = data.data.filter((d: DocumentEntity) => d.id !== props.excludeId)
-  } catch {
-    siblings.value = []
-  } finally {
-    loading.value = false
-  }
-}
 
 async function loadDocuments() {
   loading.value = true
@@ -139,10 +110,7 @@ function selectDoc(doc: DocumentEntity) {
   emit('select', doc)
 }
 
-const displayList = computed(() => {
-  if (activeTab.value === 'siblings') return siblings.value
-  return documents.value
-})
+const displayList = computed(() => documents.value)
 
 function lifecycleType(lifecycle: string): string {
   if (lifecycle === 'ACTIVE') return 'success'
@@ -161,7 +129,7 @@ function lifecycleType(lifecycle: string): string {
         clearable
         size="small"
         @input="handleSearch"
-        @clear="activeTab = 'siblings'"
+        @clear="activeTab = 'all'; loadDocuments()"
       />
     </div>
 
@@ -178,20 +146,13 @@ function lifecycleType(lifecycle: string): string {
       </el-radio-group>
     </div>
 
-    <!-- 서브 탭: 형제 | 전체 -->
-    <div v-if="activeTab !== 'search'" style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0">
-      <el-radio-group v-model="activeTab" size="small">
-        <el-radio-button value="siblings">
-          형제 문서 (같은 분류)
-        </el-radio-button>
-        <el-radio-button value="all">
-          전체 문서
-        </el-radio-button>
-      </el-radio-group>
+    <!-- 서브 탭 -->
+    <div v-if="activeTab !== 'search'" style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0; font-size: 12px; color: #909399">
+      전체 문서
     </div>
     <div v-else style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0; font-size: 12px; color: #909399">
       검색 결과
-      <el-button text size="small" @click="activeTab = 'siblings'; searchQuery = ''">초기화</el-button>
+      <el-button text size="small" @click="activeTab = 'all'; searchQuery = ''; loadDocuments()">초기화</el-button>
     </div>
 
     <!-- 문서 목록 -->
@@ -223,22 +184,19 @@ function lifecycleType(lifecycle: string): string {
           </div>
           <div style="font-size: 11px; color: #909399; margin-top: 2px">
             <span v-if="doc.docCode" style="margin-right: 8px">{{ doc.docCode }}</span>
-            <span>{{ doc.domain }}</span>
-            <template v-for="(value, key) in doc.classifications" :key="key">
-              <span style="margin-left: 6px">{{ facetLabel(String(key)) }}: {{ value }}</span>
-            </template>
+            <span v-if="doc.placementCount > 0">{{ doc.placementCount }}곳 배치</span>
+            <span v-else>미배치</span>
           </div>
         </div>
       </template>
       <div v-else-if="!loading" style="padding: 40px; text-align: center; color: #909399; font-size: 13px">
-        <template v-if="activeTab === 'siblings'">같은 분류의 문서가 없습니다</template>
-        <template v-else-if="activeTab === 'search'">검색 결과가 없습니다</template>
+        <template v-if="activeTab === 'search'">검색 결과가 없습니다</template>
         <template v-else>문서가 없습니다</template>
       </div>
     </div>
 
-    <!-- 페이지네이션 (전체/검색 탭) -->
-    <div v-if="activeTab !== 'siblings' && totalPages > 1" style="padding: 8px 12px; border-top: 1px solid #ebeef5; flex-shrink: 0; text-align: center">
+    <!-- 페이지네이션 -->
+    <div v-if="totalPages > 1" style="padding: 8px 12px; border-top: 1px solid #ebeef5; flex-shrink: 0; text-align: center">
       <el-pagination
         :current-page="page"
         :page-count="totalPages"

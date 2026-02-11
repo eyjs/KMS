@@ -23,10 +23,6 @@ interface FlatDomainRow {
   domain: string
   displayName: string
   total: number
-  active: number
-  draft: number
-  deprecated: number
-  warning: number
   depth: number
 }
 
@@ -43,10 +39,6 @@ const byDomainFlat = computed<FlatDomainRow[]>(() => {
         domain: node.code,
         displayName: node.displayName,
         total: s?.total ?? 0,
-        active: s?.active ?? 0,
-        draft: s?.draft ?? 0,
-        deprecated: s?.deprecated ?? 0,
-        warning: s?.warning ?? 0,
         depth,
       })
       if (node.children?.length) {
@@ -58,9 +50,8 @@ const byDomainFlat = computed<FlatDomainRow[]>(() => {
   if (domainStore.domainTree.length) {
     walk(domainStore.domainTree, 0)
   } else {
-    // 트리 미로딩 시 flat fallback
     for (const s of stats.value.byDomain) {
-      result.push({ ...s, depth: 0 })
+      result.push({ domain: s.domain, displayName: s.displayName, total: s.total, depth: 0 })
     }
   }
   return result
@@ -128,7 +119,9 @@ async function handleIssuePageChange(page: number) {
 }
 
 function goToDocument(doc: DocumentEntity) {
-  router.push(`/d/${doc.domain}/doc/${doc.id}`)
+  // 배치 정보가 있으면 해당 도메인 경로, 없으면 범용 경로
+  const domainCode = doc.placements?.[0]?.domainCode ?? '_'
+  router.push(`/d/${domainCode}/doc/${doc.id}`)
 }
 
 // ============================================================
@@ -139,7 +132,7 @@ function handleReload() {
   globalThis.location.reload()
 }
 
-function handleStatClick(type: 'total' | 'active' | 'draft' | 'issues') {
+function handleStatClick(type: 'total' | 'active' | 'draft' | 'deprecated' | 'orphan' | 'issues') {
   if (type === 'issues') {
     const el = document.getElementById('issue-section')
     if (el) {
@@ -150,7 +143,27 @@ function handleStatClick(type: 'total' | 'active' | 'draft' | 'issues') {
   const query: Record<string, string> = {}
   if (type === 'active') query.lifecycle = 'ACTIVE'
   else if (type === 'draft') query.lifecycle = 'DRAFT'
+  else if (type === 'deprecated') query.lifecycle = 'DEPRECATED'
+  else if (type === 'orphan') query.orphan = 'true'
   router.push({ path: '/search', query })
+}
+
+// ============================================================
+// 빠른 작업
+// ============================================================
+
+function goToSearch() {
+  router.push('/search')
+}
+
+function goToUpload() {
+  // 첫 번째 도메인 워크스페이스로 이동 (업로드 다이얼로그는 워크스페이스에서 열림)
+  const firstDomain = domainStore.domainsFlat[0]
+  if (firstDomain) {
+    router.push(`/d/${firstDomain.code}`)
+  } else {
+    ElMessage.info('먼저 도메인을 생성해주세요')
+  }
 }
 
 onMounted(async () => {
@@ -172,7 +185,7 @@ onMounted(async () => {
       active: 0,
       draft: 0,
       deprecated: 0,
-      freshnessWarning: 0,
+      orphan: 0,
       byDomain: [],
     }
     ElMessage.error('대시보드를 불러오는 중 오류가 발생했습니다')
@@ -203,7 +216,13 @@ function formatTimeAgo(dateStr: string): string {
 
 <template>
   <div v-loading="loading" class="dashboard-view">
-    <h2 style="margin: 0 0 10px; font-size: 18px">KMS 문서관리 프레임워크</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
+      <h2 style="margin: 0; font-size: 18px">KMS 문서관리 프레임워크</h2>
+      <div style="display: flex; gap: 8px">
+        <el-button size="small" @click="goToSearch">검색</el-button>
+        <el-button type="primary" size="small" @click="goToUpload">문서 업로드</el-button>
+      </div>
+    </div>
 
     <!-- 에러 배너 -->
     <el-alert
@@ -221,7 +240,7 @@ function formatTimeAgo(dateStr: string): string {
 
     <!-- 통계 카드 -->
     <el-row :gutter="10" style="margin-bottom: 10px">
-      <el-col :span="6">
+      <el-col :span="5">
         <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('total')">
           <div style="font-size: 12px; color: #909399">전체 문서</div>
           <div style="font-size: 24px; font-weight: 700; color: #303133; margin-top: 2px">
@@ -229,7 +248,7 @@ function formatTimeAgo(dateStr: string): string {
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="5">
         <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('active')">
           <div style="font-size: 12px; color: #909399">사용중</div>
           <div style="font-size: 24px; font-weight: 700; color: #67c23a; margin-top: 2px">
@@ -237,7 +256,7 @@ function formatTimeAgo(dateStr: string): string {
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="5">
         <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('draft')">
           <div style="font-size: 12px; color: #909399">임시저장</div>
           <div style="font-size: 24px; font-weight: 700; color: #909399; margin-top: 2px">
@@ -245,11 +264,19 @@ function formatTimeAgo(dateStr: string): string {
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('issues')">
-          <div style="font-size: 12px; color: #909399">조치 필요</div>
+      <el-col :span="5">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('deprecated')">
+          <div style="font-size: 12px; color: #909399">만료</div>
           <div style="font-size: 24px; font-weight: 700; color: #f56c6c; margin-top: 2px">
-            {{ totalIssues }}
+            {{ stats?.deprecated ?? 0 }}
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="never" :body-style="{ padding: '12px 16px', cursor: 'pointer' }" @click="handleStatClick('orphan')">
+          <div style="font-size: 12px; color: #909399">미배치</div>
+          <div style="font-size: 24px; font-weight: 700; color: #e6a23c; margin-top: 2px">
+            {{ stats?.orphan ?? 0 }}
           </div>
         </el-card>
       </el-col>
@@ -258,7 +285,10 @@ function formatTimeAgo(dateStr: string): string {
     <!-- 조치 필요 문서 -->
     <el-card v-if="totalIssues > 0" id="issue-section" shadow="never" style="margin-bottom: 10px">
       <template #header>
-        <span style="font-weight: 600; font-size: 14px">조치 필요 문서</span>
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <span style="font-weight: 600; font-size: 14px">조치 필요 문서</span>
+          <el-tag type="danger" size="small">{{ totalIssues }}건</el-tag>
+        </div>
       </template>
       <el-tabs v-model="activeIssueTab" @tab-change="handleIssueTabChange">
         <el-tab-pane
@@ -289,7 +319,25 @@ function formatTimeAgo(dateStr: string): string {
               <span style="color: #303133">{{ row.fileName ?? row.id }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="domain" label="도메인" width="120" />
+          <el-table-column label="배치 도메인" width="140">
+            <template #default="{ row }">
+              <template v-if="row.placements?.length">
+                <el-tag
+                  v-for="p in row.placements.slice(0, 2)"
+                  :key="p.id"
+                  size="small"
+                  type="info"
+                  style="margin-right: 4px"
+                >
+                  {{ p.domainName ?? p.domainCode }}
+                </el-tag>
+                <span v-if="row.placements.length > 2" style="color: #909399; font-size: 11px">
+                  +{{ row.placements.length - 2 }}
+                </span>
+              </template>
+              <span v-else style="color: #e6a23c; font-size: 12px">미배치</span>
+            </template>
+          </el-table-column>
           <el-table-column label="상태" width="100" align="center">
             <template #default="{ row }">
               <StatusTag type="lifecycle" :value="row.lifecycle" />
@@ -342,35 +390,21 @@ function formatTimeAgo(dateStr: string): string {
         @row-click="handleDomainRowClick"
         :header-cell-style="{ background: '#fafafa' }"
       >
-        <el-table-column label="도메인" min-width="160">
+        <el-table-column label="도메인" min-width="200">
           <template #default="{ row }">
             <span :style="{ paddingLeft: row.depth * 20 + 'px' }">
               {{ row.displayName }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="total" label="전체" width="80" align="center" />
-        <el-table-column label="사용중" width="80" align="center">
+        <el-table-column label="코드" width="120">
           <template #default="{ row }">
-            <el-tag v-if="row.active > 0" type="success" size="small">{{ row.active }}</el-tag>
-            <span v-else style="color: #c0c4cc">0</span>
+            <span style="font-family: monospace; color: #909399; font-size: 12px">{{ row.domain }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="임시저장" width="80" align="center">
+        <el-table-column prop="total" label="문서 수" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.draft > 0" type="info" size="small">{{ row.draft }}</el-tag>
-            <span v-else style="color: #c0c4cc">0</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="만료" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.deprecated > 0" type="danger" size="small">{{ row.deprecated }}</el-tag>
-            <span v-else style="color: #c0c4cc">0</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="경고" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.warning > 0" type="warning" size="small">{{ row.warning }}</el-tag>
+            <el-tag v-if="row.total > 0" size="small">{{ row.total }}</el-tag>
             <span v-else style="color: #c0c4cc">0</span>
           </template>
         </el-table-column>
@@ -393,7 +427,7 @@ function formatTimeAgo(dateStr: string): string {
           v-for="entry in recentDocs.slice(0, 10)"
           :key="entry.id"
           style="display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f2f3f5; font-size: 13px; cursor: pointer"
-          @click="router.push(`/d/${entry.domain}/doc/${entry.id}`)"
+          @click="router.push(`/d/_/doc/${entry.id}`)"
         >
           <span v-if="entry.docCode" style="font-family: monospace; color: #409eff; width: 130px; flex-shrink: 0">
             {{ entry.docCode }}
@@ -429,7 +463,6 @@ function formatTimeAgo(dateStr: string): string {
             {{ activity.fileName }}
           </span>
           <el-tag size="small" :type="ACTION_TAG_TYPES[activity.action] ?? 'info'">{{ ACTION_LABELS[activity.action] ?? activity.action }}</el-tag>
-          <el-tag size="small" type="info">{{ activity.domain }}</el-tag>
         </div>
       </div>
       <el-empty v-else description="최근 활동이 없습니다" />

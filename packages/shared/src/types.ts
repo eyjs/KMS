@@ -25,13 +25,6 @@ export const Freshness = {
 } as const
 export type Freshness = (typeof Freshness)[keyof typeof Freshness]
 
-export const Tier = {
-  HOT: 'HOT',
-  WARM: 'WARM',
-  COLD: 'COLD',
-} as const
-export type Tier = (typeof Tier)[keyof typeof Tier]
-
 export const FileType = {
   PDF: 'pdf',
   MD: 'md',
@@ -82,25 +75,49 @@ export interface UserEntity {
 export interface DocumentEntity {
   id: string
   docCode: string | null
-  domain: string
   lifecycle: Lifecycle
   securityLevel: SecurityLevel
   fileName: string | null
   fileType: FileType | null
   fileSize: number
+  fileHash: string | null
   downloadUrl: string | null
   versionMajor: number
   versionMinor: number
-  classificationHash: string
   reviewedAt: string | null
   validUntil: string | null
   rowVersion: number
   createdBy: string | null
   createdAt: string
   updatedAt: string
-  classifications: Record<string, string>
   freshness: Freshness | null
+  placementCount: number
+  placements?: DocumentPlacementEntity[]
   relationCount?: number
+}
+
+export interface DomainCategoryEntity {
+  id: number
+  domainCode: string
+  parentId: number | null
+  name: string
+  sortOrder: number
+  children?: DomainCategoryEntity[]
+  createdAt: string
+}
+
+export interface DocumentPlacementEntity {
+  id: string
+  documentId: string
+  domainCode: string
+  domainName?: string
+  categoryId: number | null
+  categoryName: string | null
+  placedBy: string | null
+  placedByName: string | null
+  placedAt: string
+  alias: string | null
+  note: string | null
 }
 
 export interface RelationEntity {
@@ -108,6 +125,7 @@ export interface RelationEntity {
   sourceId: string
   targetId: string
   relationType: RelationType
+  domainCode: string | null
   createdAt: string
 }
 
@@ -116,36 +134,9 @@ export interface DomainMasterEntity {
   displayName: string
   parentCode: string | null
   description: string | null
-  requiredFacets: string[]
-  ssotKey: string[]
   isActive: boolean
   sortOrder: number
   children?: DomainMasterEntity[]
-}
-
-export interface FacetMasterEntity {
-  id: number
-  facetType: string
-  code: string
-  displayName: string
-  parentCode: string | null
-  domain: string | null
-  tier: Tier | null
-  maxAgeDays: number | null
-  sortOrder: number
-  isActive: boolean
-}
-
-export interface FacetTypeMasterEntity {
-  code: string
-  displayName: string
-  codePrefix: string
-  description: string | null
-  domain: string | null
-  sortOrder: number
-  isActive: boolean
-  isSystem: boolean
-  createdAt: string
 }
 
 export interface ApiKeyEntity {
@@ -177,19 +168,15 @@ export interface RefreshTokenDto {
   refreshToken: string
 }
 
-export interface CreateDocumentDto {
-  domain: string
-  classifications: Record<string, string>
+export interface UploadDocumentDto {
   securityLevel?: SecurityLevel
-  lifecycle?: Lifecycle
-  title?: string
   validUntil?: string
 }
 
 export interface UpdateDocumentDto {
-  classifications?: Record<string, string>
   securityLevel?: SecurityLevel
   validUntil?: string | null
+  fileName?: string
   rowVersion: number
 }
 
@@ -201,13 +188,14 @@ export interface CreateRelationDto {
   sourceId: string
   targetId: string
   relationType: RelationType
+  domainCode?: string
 }
 
 export interface DocumentListQuery {
   domain?: string
   lifecycle?: Lifecycle
   securityLevel?: SecurityLevel
-  classifications?: string
+  orphan?: boolean
   page?: number
   size?: number
   sort?: string
@@ -233,58 +221,45 @@ export interface CreateApiKeyDto {
   expiresAt?: string
 }
 
-export interface CreateFacetDto {
-  facetType: string
-  code?: string
-  displayName: string
-  parentCode?: string
-  domain?: string
-  tier?: Tier
-  maxAgeDays?: number
-  sortOrder?: number
-}
-
-export interface UpdateFacetDto {
-  displayName?: string
-  parentCode?: string
-  domain?: string
-  tier?: Tier
-  maxAgeDays?: number
-  sortOrder?: number
-}
-
 export interface CreateDomainDto {
   code?: string
   displayName: string
   parentCode?: string
   description?: string
-  requiredFacets?: string[]
-  ssotKey?: string[]
   sortOrder?: number
 }
 
 export interface UpdateDomainDto {
   displayName?: string
   description?: string
-  requiredFacets?: string[]
-  ssotKey?: string[]
   sortOrder?: number
 }
 
-export interface CreateFacetTypeDto {
-  code: string
-  displayName: string
-  codePrefix: string
-  description?: string
-  domain?: string
+export interface CreateCategoryDto {
+  domainCode: string
+  parentId?: number
+  name: string
   sortOrder?: number
 }
 
-export interface UpdateFacetTypeDto {
-  displayName?: string
-  codePrefix?: string
-  description?: string
+export interface UpdateCategoryDto {
+  name?: string
+  parentId?: number | null
   sortOrder?: number
+}
+
+export interface CreatePlacementDto {
+  documentId: string
+  domainCode: string
+  categoryId?: number
+  alias?: string
+  note?: string
+}
+
+export interface UpdatePlacementDto {
+  categoryId?: number | null
+  alias?: string | null
+  note?: string
 }
 
 // ============================================================
@@ -354,10 +329,8 @@ export interface GraphNode {
   id: string
   docCode: string | null
   fileName: string | null
-  domain: string
   lifecycle: Lifecycle
   securityLevel: SecurityLevel
-  classifications: Record<string, string>
   depth: number
 }
 
@@ -366,6 +339,7 @@ export interface GraphEdge {
   sourceId: string
   targetId: string
   relationType: RelationType
+  domainCode: string | null
 }
 
 export interface RelationGraphResponse {
@@ -373,4 +347,3 @@ export interface RelationGraphResponse {
   edges: GraphEdge[]
   centerId: string
 }
-

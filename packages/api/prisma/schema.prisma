@@ -21,11 +21,12 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
 
-  createdDocuments Document[]        @relation("CreatedBy")
-  updatedDocuments Document[]        @relation("UpdatedBy")
-  createdRelations Relation[]        @relation("RelationCreatedBy")
-  documentHistory  DocumentHistory[]
-  feedbacks        Feedback[]
+  createdDocuments   Document[]          @relation("CreatedBy")
+  updatedDocuments   Document[]          @relation("UpdatedBy")
+  createdRelations   Relation[]          @relation("RelationCreatedBy")
+  documentHistory    DocumentHistory[]
+  feedbacks          Feedback[]
+  placedDocuments    DocumentPlacement[] @relation("PlacedBy")
 
   @@map("users")
 }
@@ -39,66 +40,67 @@ model DomainMaster {
   displayName   String   @map("display_name") @db.VarChar(100)
   parentCode    String?  @map("parent_code") @db.VarChar(20)
   description   String?  @db.VarChar(500)
-  requiredFacets Json    @default("[]") @map("required_facets")
-  ssotKey       Json     @default("[]") @map("ssot_key")
   isActive      Boolean  @default(true) @map("is_active")
   sortOrder     Int      @default(0) @map("sort_order")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  parent          DomainMaster?    @relation("DomainTree", fields: [parentCode], references: [code])
-  children        DomainMaster[]   @relation("DomainTree")
-  documents       Document[]
-  facetMasters    FacetMaster[]
-  facetTypeMasters FacetTypeMaster[]
+  parent          DomainMaster?       @relation("DomainTree", fields: [parentCode], references: [code])
+  children        DomainMaster[]      @relation("DomainTree")
+  categories      DomainCategory[]
+  placements      DocumentPlacement[]
+  relations       Relation[]          @relation("RelationDomain")
 
   @@index([parentCode])
   @@map("domain_master")
 }
 
 // ============================================================
-// 분류 유형 마스터 (동적 facet type 관리)
+// 도메인 카테고리 (폴더 구조)
 // ============================================================
 
-model FacetTypeMaster {
-  code        String   @id @db.VarChar(50)
-  displayName String   @map("display_name") @db.VarChar(100)
-  codePrefix  String   @map("code_prefix") @db.VarChar(5)
-  description String?  @db.VarChar(500)
-  domain      String?  @db.VarChar(20)
-  sortOrder   Int      @default(0) @map("sort_order")
-  isActive    Boolean  @default(true) @map("is_active")
-  isSystem    Boolean  @default(false) @map("is_system")
-  createdAt   DateTime @default(now()) @map("created_at")
+model DomainCategory {
+  id         Int      @id @default(autoincrement())
+  domainCode String   @map("domain_code") @db.VarChar(20)
+  parentId   Int?     @map("parent_id")
+  name       String   @db.VarChar(100)
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  domainMaster DomainMaster? @relation(fields: [domain], references: [code])
+  domain     DomainMaster       @relation(fields: [domainCode], references: [code], onDelete: Cascade)
+  parent     DomainCategory?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children   DomainCategory[]   @relation("CategoryTree")
+  placements DocumentPlacement[]
 
-  @@index([domain])
-  @@map("facet_type_master")
+  @@unique([domainCode, parentId, name])
+  @@index([domainCode])
+  @@index([parentId])
+  @@map("domain_categories")
 }
 
 // ============================================================
-// 분류 마스터
+// 문서-도메인 배치 (바로가기, M:N)
 // ============================================================
 
-model FacetMaster {
-  id          Int      @id @default(autoincrement())
-  domain      String?  @db.VarChar(20)
-  facetType   String   @map("facet_type") @db.VarChar(50)
-  code        String   @db.VarChar(50)
-  displayName String   @map("display_name") @db.VarChar(100)
-  parentCode  String?  @map("parent_code") @db.VarChar(50)
-  tier        String?  @db.VarChar(10)
-  maxAgeDays  Int?     @map("max_age_days")
-  sortOrder   Int      @default(0) @map("sort_order")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
+model DocumentPlacement {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  domainCode String   @map("domain_code") @db.VarChar(20)
+  categoryId Int?     @map("category_id")
+  placedBy   String?  @map("placed_by") @db.Uuid
+  placedAt   DateTime @default(now()) @map("placed_at")
+  alias      String?  @db.VarChar(200)
+  note       String?  @db.VarChar(500)
 
-  domainMaster DomainMaster? @relation(fields: [domain], references: [code])
+  document Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  domain   DomainMaster    @relation(fields: [domainCode], references: [code], onDelete: Cascade)
+  category DomainCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  user     User?           @relation("PlacedBy", fields: [placedBy], references: [id], onDelete: SetNull)
 
-  @@unique([facetType, code])
-  @@index([facetType])
-  @@index([domain])
-  @@map("facet_master")
+  @@unique([documentId, domainCode])
+  @@index([documentId])
+  @@index([domainCode])
+  @@index([categoryId])
+  @@map("document_placements")
 }
 
 // ============================================================
@@ -108,18 +110,17 @@ model FacetMaster {
 model Document {
   id                 String   @id @default(uuid()) @db.Uuid
   docCode            String?  @unique @map("doc_code") @db.VarChar(30)
-  domain             String   @db.VarChar(20)
   lifecycle          String   @default("DRAFT") @db.VarChar(20)
   securityLevel      String   @default("INTERNAL") @map("security_level") @db.VarChar(20)
   filePath           String?  @map("file_path")
   fileName           String?  @map("file_name")
   fileType           String?  @map("file_type") @db.VarChar(10)
   fileSize           BigInt?  @map("file_size")
+  fileHash           String?  @unique @map("file_hash") @db.VarChar(64)
   versionMajor       Int      @default(1) @map("version_major")
   versionMinor       Int      @default(0) @map("version_minor")
   reviewedAt         DateTime? @map("reviewed_at")
   validUntil         DateTime? @map("valid_until")
-  classificationHash String?  @map("classification_hash") @db.VarChar(64)
   createdById        String?  @map("created_by") @db.Uuid
   updatedById        String?  @map("updated_by") @db.Uuid
   createdAt          DateTime @default(now()) @map("created_at")
@@ -127,39 +128,18 @@ model Document {
   isDeleted          Boolean  @default(false) @map("is_deleted")
   rowVersion         Int      @default(1) @map("row_version")
 
-  domainMaster    DomainMaster      @relation(fields: [domain], references: [code])
   createdBy       User?             @relation("CreatedBy", fields: [createdById], references: [id])
   updatedBy       User?             @relation("UpdatedBy", fields: [updatedById], references: [id])
-  classifications Classification[]
   sourceRelations Relation[]        @relation("SourceDoc")
   targetRelations Relation[]        @relation("TargetDoc")
   history         DocumentHistory[]
+  placements      DocumentPlacement[]
 
-  @@index([domain])
   @@index([lifecycle])
   @@index([securityLevel])
-  @@index([classificationHash])
   @@index([isDeleted])
+  @@index([fileHash])
   @@map("documents")
-}
-
-// ============================================================
-// 분류 (EAV)
-// ============================================================
-
-model Classification {
-  id         Int      @id @default(autoincrement())
-  documentId String   @map("document_id") @db.Uuid
-  facetType  String   @map("facet_type") @db.VarChar(50)
-  facetValue String   @map("facet_value") @db.VarChar(100)
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-
-  @@unique([documentId, facetType])
-  @@index([documentId])
-  @@index([facetType, facetValue])
-  @@map("classifications")
 }
 
 // ============================================================
@@ -171,16 +151,19 @@ model Relation {
   sourceId     String   @map("source_id") @db.Uuid
   targetId     String   @map("target_id") @db.Uuid
   relationType String   @map("relation_type") @db.VarChar(20)
+  domainCode   String?  @map("domain_code") @db.VarChar(20)
   createdById  String?  @map("created_by") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at")
 
-  source    Document @relation("SourceDoc", fields: [sourceId], references: [id], onDelete: Cascade)
-  target    Document @relation("TargetDoc", fields: [targetId], references: [id], onDelete: Cascade)
-  createdBy User?    @relation("RelationCreatedBy", fields: [createdById], references: [id])
+  source    Document      @relation("SourceDoc", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    Document      @relation("TargetDoc", fields: [targetId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation("RelationCreatedBy", fields: [createdById], references: [id])
+  domain    DomainMaster? @relation("RelationDomain", fields: [domainCode], references: [code], onDelete: Cascade)
 
-  @@unique([sourceId, targetId, relationType])
+  // 유니크 제약은 마이그레이션 SQL에서 partial index로 처리
   @@index([sourceId])
   @@index([targetId])
+  @@index([domainCode])
   @@map("relations")
 }
 

@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { documentsApi } from '@/api/documents'
-import { LIFECYCLE_LABELS, FRESHNESS_LABELS } from '@kms/shared'
-import type { DocumentEntity, DocumentListQuery } from '@kms/shared'
+import { placementsApi } from '@/api/placements'
+import { LIFECYCLE_LABELS } from '@kms/shared'
+import type { DocumentEntity } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Connection } from '@element-plus/icons-vue'
+import { documentsApi } from '@/api/documents'
 
 const router = useRouter()
 
 const props = defineProps<{
   domainCode: string
-  filters?: Record<string, string>
+  categoryId?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -51,7 +52,6 @@ const SECURITY_TAG: Record<string, { type: string; label: string }> = {
 const bulkActions = computed(() => {
   if (selectedRows.value.length === 0) return []
   const actions: Array<{ lifecycle: string; label: string; type: string }> = []
-  // 전체가 같은 상태여야 벌크 전환 가능
   const lifecycles = new Set(selectedRows.value.map((d) => d.lifecycle))
   if (lifecycles.size === 1) {
     const current = [...lifecycles][0]
@@ -67,18 +67,17 @@ const bulkActions = computed(() => {
 async function fetchDocuments() {
   loading.value = true
   try {
-    const query: DocumentListQuery = {
-      domain: props.domainCode,
-      lifecycle: lifecycleFilter.value as DocumentListQuery['lifecycle'],
-      classifications: props.filters && Object.keys(props.filters).length > 0
-        ? JSON.stringify(props.filters)
-        : undefined,
+    const params: Record<string, unknown> = {
       page: page.value,
       size: size.value,
+      lifecycle: lifecycleFilter.value,
       sort: sortField.value,
       order: sortOrder.value,
     }
-    const { data } = await documentsApi.list(query)
+    if (props.categoryId != null) {
+      params.categoryId = props.categoryId
+    }
+    const { data } = await placementsApi.getByDomain(props.domainCode, params)
     documents.value = data.data
     total.value = data.meta.total
     selectedRows.value = []
@@ -143,12 +142,11 @@ async function handleBulkTransition(lifecycle: string) {
 }
 
 watch(
-  () => [props.domainCode, props.filters],
+  () => [props.domainCode, props.categoryId],
   () => {
     page.value = 1
     fetchDocuments()
   },
-  { deep: true },
 )
 
 watch(lifecycleFilter, () => {
@@ -198,9 +196,6 @@ defineExpose({ refresh: fetchDocuments })
 
       <span style="font-size: 12px; color: #909399; margin-left: auto">
         {{ total }}건
-        <template v-if="Object.keys(props.filters ?? {}).length > 0">
-          (필터 적용)
-        </template>
       </span>
     </div>
 
@@ -223,7 +218,7 @@ defineExpose({ refresh: fetchDocuments })
           <span
             v-if="row.docCode"
             style="font-family: monospace; font-size: 12px; color: #409eff; cursor: pointer"
-            @click.stop="router.push(`/d/${row.domain}/doc/${row.id}`)"
+            @click.stop="router.push(`/d/${props.domainCode}/doc/${row.id}`)"
           >{{ row.docCode }}</span>
           <span v-else style="color: #c0c4cc">-</span>
         </template>
@@ -250,15 +245,9 @@ defineExpose({ refresh: fetchDocuments })
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="갱신상태" width="90">
+      <el-table-column label="배치" width="70" align="center">
         <template #default="{ row }">
-          <el-tag
-            v-if="row.freshness"
-            :type="row.freshness === 'FRESH' ? 'success' : row.freshness === 'WARNING' ? 'warning' : 'danger'"
-            size="small"
-          >
-            {{ FRESHNESS_LABELS[row.freshness] ?? row.freshness }}
-          </el-tag>
+          <span v-if="row.placementCount > 1" style="font-size: 12px; color: #409eff">{{ row.placementCount }}곳</span>
           <span v-else style="color: #c0c4cc">-</span>
         </template>
       </el-table-column>

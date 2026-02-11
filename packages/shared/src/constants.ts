@@ -27,13 +27,13 @@ export const FRESHNESS_THRESHOLDS = {
 export const RELATION_META: Record<RelationType, {
   inverse: RelationType | null
   bidirectional: boolean
-  scope: 'same_domain' | 'cross_domain' | 'any'
+  domainRequired: boolean
 }> = {
-  PARENT_OF: { inverse: 'CHILD_OF', bidirectional: true, scope: 'same_domain' },
-  CHILD_OF: { inverse: 'PARENT_OF', bidirectional: true, scope: 'same_domain' },
-  SIBLING: { inverse: 'SIBLING', bidirectional: true, scope: 'same_domain' },
-  REFERENCE: { inverse: null, bidirectional: false, scope: 'any' },
-  SUPERSEDES: { inverse: null, bidirectional: false, scope: 'same_domain' },
+  PARENT_OF: { inverse: 'CHILD_OF', bidirectional: true, domainRequired: true },
+  CHILD_OF: { inverse: 'PARENT_OF', bidirectional: true, domainRequired: true },
+  SIBLING: { inverse: 'SIBLING', bidirectional: true, domainRequired: true },
+  REFERENCE: { inverse: null, bidirectional: false, domainRequired: true },
+  SUPERSEDES: { inverse: null, bidirectional: false, domainRequired: false },
 }
 
 // ============================================================
@@ -115,11 +115,8 @@ export const ALLOWED_FILE_TYPES = ['pdf', 'md', 'csv'] as const
 export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 
 // ============================================================
-// 코드 자동 생성
+// 도메인 설정
 // ============================================================
-
-/** 기본 Facet 접두어 (DB에 없는 타입용 폴백) */
-export const FACET_DEFAULT_PREFIX = 'F'
 
 /** 도메인 최대 깊이 — 루트(0) + 3단계 업무 세분화 */
 export const DOMAIN_MAX_DEPTH = 4
@@ -127,7 +124,6 @@ export const DOMAIN_MAX_DEPTH = 4
 /**
  * 깊이별 업무 레벨 라벨
  * 도메인 = 불변하는 업무 단위 (조직이 아님!)
- * 조직(본부/부서/팀)은 바뀌지만 업무(영업/수수료/보상)는 불변
  */
 export const DOMAIN_LEVEL_LABELS: Record<number, string> = {
   0: '사업영역',
@@ -149,7 +145,8 @@ export const ACTION_LABELS: Record<string, string> = {
   RELATION_ADD: '관계 추가',
   RELATION_REMOVE: '관계 삭제',
   SECURITY_CHANGE: '보안등급 변경',
-  CLASSIFICATION_CHANGE: '분류 변경',
+  PLACEMENT_ADD: '도메인 배치',
+  PLACEMENT_REMOVE: '배치 해제',
 }
 
 export const ACTION_TAG_TYPES: Record<string, string> = {
@@ -161,7 +158,8 @@ export const ACTION_TAG_TYPES: Record<string, string> = {
   RELATION_ADD: 'success',
   RELATION_REMOVE: 'danger',
   SECURITY_CHANGE: 'warning',
-  CLASSIFICATION_CHANGE: 'primary',
+  PLACEMENT_ADD: 'success',
+  PLACEMENT_REMOVE: 'danger',
 }
 
 // ============================================================
@@ -201,6 +199,4 @@ export const DOMAIN_GUIDANCE = {
     correct: ['일반', '경영/관리', '기술', '영업', '연구개발', '정산'],
     wrong: ['영업본부', '법인영업부', '대기업팀', 'A회사', 'B상품'],
   },
-  facetGuide: '업체·상품·문서유형 등은 분류(Facet)에서 관리합니다.',
 }
-

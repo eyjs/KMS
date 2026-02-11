@@ -8,10 +8,16 @@ export const relationsApi = {
     )
   },
 
-  getGraph(documentId: string, depth: number = 1) {
+  getByDocumentInDomain(domainCode: string, documentId: string) {
+    return client.get<{ asSource: RelationEntity[]; asTarget: RelationEntity[] }>(
+      `/domains/${domainCode}/documents/${documentId}/relations`,
+    )
+  },
+
+  getGraph(documentId: string, depth: number = 1, domain?: string) {
     return client.get<RelationGraphResponse>(
       `/documents/${documentId}/relations/graph`,
-      { params: { depth } },
+      { params: { depth, domain } },
     )
   },
 
@@ -22,8 +28,8 @@ export const relationsApi = {
     )
   },
 
-  create(sourceId: string, targetId: string, relationType: RelationType) {
-    return client.post<RelationEntity>('/relations', { sourceId, targetId, relationType })
+  create(sourceId: string, targetId: string, relationType: RelationType, domainCode?: string) {
+    return client.post<RelationEntity>('/relations', { sourceId, targetId, relationType, domainCode })
   },
 
   delete(id: string) {

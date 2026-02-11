@@ -3,63 +3,62 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { documentsApi } from '@/api/documents'
-import { taxonomyApi } from '@/api/taxonomy'
-import type { DocumentEntity, DomainMasterEntity, FacetMasterEntity } from '@kms/shared'
+import { useDomainStore } from '@/stores/domain'
+import type { DocumentEntity } from '@kms/shared'
 import { useSearchHistory } from '@/composables/useSearchHistory'
-import { useFacetTypes } from '@/composables/useFacetTypes'
 import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 const route = useRoute()
+const domainStore = useDomainStore()
 const { searchHistory, addSearch, clearHistory } = useSearchHistory()
-const { loadFacetTypes, facetLabel, allFacetTypeCodes } = useFacetTypes()
 
 const keyword = ref('')
 const domainFilter = ref<string>()
 const lifecycleFilter = ref<string>()
-const domains = ref<DomainMasterEntity[]>([])
+const orphanFilter = ref(false)
 
-// 분류 필터
-const facetFilters = ref<Record<string, string>>({})
-const facetOptions = ref<Record<string, FacetMasterEntity[]>>({})
+type SearchResult = DocumentEntity & { domainTags?: Array<{ code: string; name: string }> }
 
-const results = ref<DocumentEntity[]>([])
+const results = ref<SearchResult[]>([])
 const total = ref(0)
 const page = ref(1)
+const pageSize = ref(20)
 const loading = ref(false)
 const searched = ref(false)
 const errorState = ref(false)
 const isRestoring = ref(false)
 
 // 정렬
-type SortOption = 'relevance' | 'latest' | 'name' | 'code'
-const VALID_SORTS: SortOption[] = ['relevance', 'latest', 'name', 'code']
-const sortBy = ref<SortOption>('relevance')
-const SORT_OPTIONS = [
-  { value: 'relevance', label: '관련도순' },
-  { value: 'latest', label: '최신순' },
-  { value: 'name', label: '이름순' },
-  { value: 'code', label: '코드순' },
-] as const
+type SortField = 'createdAt' | 'updatedAt' | 'fileName' | 'fileSize'
+type SortOrder = 'asc' | 'desc'
+const VALID_SORT_FIELDS: SortField[] = ['createdAt', 'updatedAt', 'fileName', 'fileSize']
+const sortField = ref<SortField>('updatedAt')
+const sortOrder = ref<SortOrder>('desc')
 
-const sortedResults = computed(() => {
-  const items = [...results.value]
-  switch (sortBy.value) {
-    case 'latest':
-      return items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    case 'name':
-      return items.sort((a, b) => (a.fileName ?? '').localeCompare(b.fileName ?? '', 'ko'))
-    case 'code':
-      return items.sort((a, b) => (a.docCode ?? '').localeCompare(b.docCode ?? ''))
-    default:
-      return items
+const SORT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'updatedAt:desc', label: '최근 수정순' },
+  { value: 'createdAt:desc', label: '최근 생성순' },
+  { value: 'fileName:asc', label: '파일명순' },
+  { value: 'fileSize:desc', label: '파일 크기순' },
+]
+
+const currentSortValue = computed(() => `${sortField.value}:${sortOrder.value}`)
+
+function handleSortChange(value: string) {
+  const [field, order] = value.split(':') as [SortField, SortOrder]
+  sortField.value = field
+  sortOrder.value = order
+  if (searched.value) {
+    page.value = 1
+    handleSearch()
   }
-})
+}
 
 // 검색 이력 자동완성
 const searchInputRef = ref<{ focus: () => void } | null>(null)
 
-function querySearch(queryString: string, cb: (results: { value: string }[]) => void) {
+function querySearch(queryString: string, cb: (results: Array<{ value: string }>) => void) {
   const suggestions = searchHistory.value
     .filter((e) => !queryString || e.query.includes(queryString))
     .slice(0, 5)
@@ -73,37 +72,32 @@ function handleSelectHistory(item: { value: string }) {
 }
 
 onMounted(async () => {
-  await loadFacetTypes()
-  const { data } = await taxonomyApi.getDomainsFlat()
-  domains.value = data
-  await loadFacets()
-  // URL에서 필터 복원
+  await domainStore.loadDomains()
   restoreFromQuery()
 })
 
-async function restoreFromQuery() {
+function restoreFromQuery() {
   const q = route.query
-  if (!q.q && !q.domain && !q.lifecycle && !allFacetTypeCodes.value.some((ft) => q[ft])) {
-    // query param 없으면 복원 불필요
+  if (!q.q && !q.domain && !q.lifecycle && !q.orphan && !q.sort) {
     nextTick(() => searchInputRef.value?.focus())
     return
   }
-  // 워처가 facet 필터를 초기화하지 않도록 가드
   isRestoring.value = true
   if (q.q) keyword.value = q.q as string
   if (q.domain) domainFilter.value = q.domain as string
   if (q.lifecycle) lifecycleFilter.value = q.lifecycle as string
+  if (q.orphan === 'true') orphanFilter.value = true
+
+  // 정렬 복원
   const sortParam = q.sort as string
-  if (sortParam && VALID_SORTS.includes(sortParam as SortOption)) {
-    sortBy.value = sortParam as SortOption
+  if (sortParam && sortParam.includes(':')) {
+    const [field, order] = sortParam.split(':') as [string, string]
+    if (VALID_SORT_FIELDS.includes(field as SortField)) {
+      sortField.value = field as SortField
+      sortOrder.value = (order === 'asc' ? 'asc' : 'desc') as SortOrder
+    }
   }
-  // 도메인이 변경되면 해당 도메인 facet을 로드한 뒤 필터 복원
-  if (q.domain) {
-    await loadFacets(q.domain as string)
-  }
-  for (const ft of allFacetTypeCodes.value) {
-    if (q[ft]) facetFilters.value[ft] = q[ft] as string
-  }
+
   isRestoring.value = false
   handleSearch()
   nextTick(() => searchInputRef.value?.focus())
@@ -114,38 +108,10 @@ function syncToQuery() {
   if (keyword.value) query.q = keyword.value
   if (domainFilter.value) query.domain = domainFilter.value
   if (lifecycleFilter.value) query.lifecycle = lifecycleFilter.value
-  if (sortBy.value !== 'relevance') query.sort = sortBy.value
-  for (const ft of allFacetTypeCodes.value) {
-    if (facetFilters.value[ft]) query[ft] = facetFilters.value[ft]
-  }
+  if (orphanFilter.value) query.orphan = 'true'
+  if (currentSortValue.value !== 'updatedAt:desc') query.sort = currentSortValue.value
   router.replace({ query })
 }
-
-async function loadFacets(domain?: string) {
-  const fetches = allFacetTypeCodes.value.map((ft) =>
-    taxonomyApi.getFacets(ft, domain).then(({ data }) => ({ ft, data })),
-  )
-  const res = await Promise.all(fetches)
-  const opts: Record<string, FacetMasterEntity[]> = {}
-  for (const { ft, data } of res) {
-    opts[ft] = data.filter((f) => f.isActive)
-  }
-  facetOptions.value = opts
-}
-
-// 정렬 변경 시 URL 동기화
-watch(sortBy, () => {
-  if (searched.value) syncToQuery()
-})
-
-// 도메인 변경 시 해당 도메인의 facet만 로드 (URL 복원 중에는 스킵)
-watch(domainFilter, async (domain) => {
-  if (isRestoring.value) return
-  for (const ft of allFacetTypeCodes.value) {
-    facetFilters.value[ft] = ''
-  }
-  await loadFacets(domain || undefined)
-})
 
 async function handleSearch() {
   if (loading.value) return
@@ -153,22 +119,13 @@ async function handleSearch() {
   searched.value = true
   errorState.value = false
   try {
-    // 분류 필터 구성
-    const classifications: Record<string, string> = {}
-    for (const [ft, val] of Object.entries(facetFilters.value)) {
-      if (val) classifications[ft] = val
-    }
-    const classificationsParam = Object.keys(classifications).length > 0
-      ? JSON.stringify(classifications)
-      : undefined
-
     const { data } = await documentsApi.search({
       q: keyword.value || undefined,
       domain: domainFilter.value || undefined,
       lifecycle: lifecycleFilter.value || undefined,
-      classifications: classificationsParam,
+      orphan: orphanFilter.value || undefined,
       page: page.value,
-      size: 20,
+      size: pageSize.value,
     })
     results.value = data.data
     total.value = data.meta.total
@@ -187,34 +144,27 @@ async function handleSearch() {
   }
 }
 
-function goToDocument(doc: DocumentEntity) {
-  router.push(`/d/${doc.domain}/doc/${doc.id}`)
+function handlePageChange(newPage: number) {
+  page.value = newPage
+  handleSearch()
 }
 
-function buildClassificationPath(doc: DocumentEntity): string {
-  const domainObj = domains.value.find((d) => d.code === doc.domain)
-  const domainName = domainObj?.displayName ?? doc.domain
-  const facetParts: string[] = []
-  for (const ft of allFacetTypeCodes.value) {
-    const code = doc.classifications[ft]
-    if (!code) continue
-    const opts = facetOptions.value[ft] ?? []
-    const match = opts.find((o) => o.code === code)
-    facetParts.push(match?.displayName ?? code)
-  }
-  return [domainName, ...facetParts].join(' > ')
+function goToDocument(doc: SearchResult) {
+  // domainTags 또는 placements에서 도메인 코드 추출
+  const domainCode = doc.domainTags?.[0]?.code ?? doc.placements?.[0]?.domainCode ?? '_'
+  router.push(`/d/${domainCode}/doc/${doc.id}`)
 }
 
 function clearFilters() {
   keyword.value = ''
   domainFilter.value = undefined
   lifecycleFilter.value = undefined
-  sortBy.value = 'relevance'
-  for (const ft of allFacetTypeCodes.value) {
-    facetFilters.value[ft] = ''
-  }
+  orphanFilter.value = false
+  sortField.value = 'updatedAt'
+  sortOrder.value = 'desc'
   results.value = []
   total.value = 0
+  page.value = 1
   searched.value = false
   errorState.value = false
   router.replace({ query: {} })
@@ -223,10 +173,17 @@ function clearFilters() {
 function handleRetry() {
   handleSearch()
 }
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '-'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 </script>
 
 <template>
-  <div style="height: 100%; overflow-y: auto">
+  <div class="search-view">
     <h2 style="margin: 0 0 12px; font-size: 20px">통합 검색</h2>
 
     <!-- 검색 바 -->
@@ -249,32 +206,21 @@ function handleRetry() {
       </div>
 
       <!-- 필터 영역 -->
-      <div style="margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap">
+      <div style="margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center">
         <el-select v-model="domainFilter" placeholder="도메인" clearable size="small" style="width: 160px">
-          <el-option v-for="d in domains" :key="d.code" :label="d.displayName" :value="d.code" />
+          <el-option
+            v-for="d in domainStore.domainsFlat"
+            :key="d.code"
+            :label="d.displayName"
+            :value="d.code"
+          />
         </el-select>
         <el-select v-model="lifecycleFilter" placeholder="상태" clearable size="small" style="width: 120px">
           <el-option label="임시저장" value="DRAFT" />
           <el-option label="사용중" value="ACTIVE" />
           <el-option label="만료" value="DEPRECATED" />
         </el-select>
-        <el-select
-          v-for="ft in allFacetTypeCodes"
-          :key="ft"
-          v-model="facetFilters[ft]"
-          :placeholder="facetLabel(ft)"
-          clearable
-          filterable
-          size="small"
-          style="width: 160px"
-        >
-          <el-option
-            v-for="opt in (facetOptions[ft] ?? [])"
-            :key="opt.code"
-            :label="opt.displayName"
-            :value="opt.code"
-          />
-        </el-select>
+        <el-checkbox v-model="orphanFilter" size="small" label="미배치 문서만" />
         <el-button size="small" text @click="clearFilters">초기화</el-button>
       </div>
     </el-card>
@@ -284,7 +230,12 @@ function handleRetry() {
       <!-- 결과 헤더: 건수 + 정렬 -->
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
         <span style="color: #909399; font-size: 13px">검색 결과 ({{ total }}건)</span>
-        <el-select v-model="sortBy" size="small" style="width: 120px">
+        <el-select
+          :model-value="currentSortValue"
+          size="small"
+          style="width: 140px"
+          @change="handleSortChange"
+        >
           <el-option
             v-for="opt in SORT_OPTIONS"
             :key="opt.value"
@@ -302,9 +253,9 @@ function handleRetry() {
           </el-empty>
         </div>
         <!-- 결과 있음 -->
-        <div v-else-if="sortedResults.length > 0">
+        <div v-else-if="results.length > 0">
           <el-card
-            v-for="doc in sortedResults"
+            v-for="doc in results"
             :key="doc.id"
             shadow="never"
             style="margin-bottom: 8px; cursor: pointer"
@@ -312,24 +263,38 @@ function handleRetry() {
             @click="goToDocument(doc)"
           >
             <div style="display: flex; justify-content: space-between; align-items: flex-start">
-              <div>
+              <div style="min-width: 0; flex: 1">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px">
                   <span v-if="doc.docCode" style="font-family: monospace; font-size: 12px; color: #909399">
                     {{ doc.docCode }}
                   </span>
-                  <span style="font-size: 14px; font-weight: 600; color: #303133">
+                  <span style="font-size: 14px; font-weight: 600; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
                     {{ doc.fileName ?? '(메타데이터만)' }}
                   </span>
                 </div>
-                <div style="font-size: 12px; color: #909399">
-                  {{ buildClassificationPath(doc) }}
+                <!-- 배치된 도메인 태그 -->
+                <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px">
+                  <template v-if="doc.domainTags?.length">
+                    <el-tag
+                      v-for="tag in doc.domainTags"
+                      :key="tag.code"
+                      size="small"
+                      type="info"
+                    >
+                      {{ tag.name }}
+                    </el-tag>
+                  </template>
+                  <el-tag v-else size="small" type="warning">미배치</el-tag>
+                  <span v-if="doc.fileSize" style="color: #c0c4cc; font-size: 11px; align-self: center; margin-left: 4px">
+                    {{ formatFileSize(doc.fileSize) }}
+                  </span>
                 </div>
               </div>
-              <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center">
+              <div style="display: flex; gap: 6px; flex-shrink: 0; align-items: center; margin-left: 12px">
                 <StatusTag type="lifecycle" :value="doc.lifecycle" />
                 <StatusTag type="security" :value="doc.securityLevel" />
                 <span style="color: #c0c4cc; font-size: 12px">
-                  {{ new Date(doc.createdAt).toLocaleDateString('ko-KR') }}
+                  {{ new Date(doc.updatedAt).toLocaleDateString('ko-KR') }}
                 </span>
               </div>
             </div>
@@ -345,13 +310,13 @@ function handleRetry() {
       </div>
 
       <!-- 페이지네이션 -->
-      <div v-if="total > 20" style="margin-top: 16px; display: flex; justify-content: center">
+      <div v-if="total > pageSize" style="margin-top: 16px; display: flex; justify-content: center">
         <el-pagination
-          v-model:current-page="page"
-          :page-size="20"
+          :current-page="page"
+          :page-size="pageSize"
           :total="total"
           layout="prev, pager, next"
-          @current-change="handleSearch"
+          @current-change="handlePageChange"
         />
       </div>
     </div>
@@ -375,7 +340,14 @@ function handleRetry() {
           </el-tag>
         </div>
       </div>
-      <el-empty description="검색어를 입력하거나 분류를 선택 후 검색하세요" />
+      <el-empty description="검색어를 입력하거나 필터를 선택 후 검색하세요" />
     </div>
   </div>
 </template>
+
+<style scoped>
+.search-view {
+  height: 100%;
+  overflow-y: auto;
+}
+</style>

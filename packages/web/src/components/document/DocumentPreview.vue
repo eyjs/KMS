@@ -5,13 +5,10 @@ import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
 import CsvViewer from '@/components/viewer/CsvViewer.vue'
 import { LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS } from '@kms/shared'
 import type { DocumentEntity } from '@kms/shared'
-import { useFacetTypes } from '@/composables/useFacetTypes'
 
 const props = defineProps<{
   document: DocumentEntity
 }>()
-
-const { facetLabel } = useFacetTypes()
 
 const LIFECYCLE_TAG: Record<string, string> = {
   DRAFT: 'info',
@@ -62,12 +59,9 @@ const fileUrl = computed(() => props.document.downloadUrl)
         <p v-if="document.validUntil" style="margin: 4px 0">
           유효기간: {{ new Date(document.validUntil).toLocaleDateString('ko-KR') }}
         </p>
-      </div>
-      <div v-if="Object.keys(document.classifications).length > 0" style="margin-top: 8px">
-        <div style="color: #909399; margin-bottom: 4px">분류:</div>
-        <div v-for="(value, key) in document.classifications" :key="key" style="color: #606266; margin-left: 8px">
-          {{ facetLabel(String(key)) }}: {{ value }}
-        </div>
+        <p style="margin: 4px 0">
+          배치: {{ document.placementCount > 0 ? `${document.placementCount}곳` : '미배치' }}
+        </p>
       </div>
     </div>
   </div>

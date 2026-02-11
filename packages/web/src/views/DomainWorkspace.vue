@@ -5,10 +5,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDomainStore } from '@/stores/domain'
 import { useAuthStore } from '@/stores/auth'
 import { taxonomyApi } from '@/api/taxonomy'
-import ClassificationTree from '@/components/domain/ClassificationTree.vue'
+import { placementsApi } from '@/api/placements'
+import CategoryTree from '@/components/domain/CategoryTree.vue'
 import DocumentTable from '@/components/document/DocumentTable.vue'
 import DocumentPreview from '@/components/document/DocumentPreview.vue'
 import UploadDialog from '@/components/domain/UploadDialog.vue'
+import PlacementDialog from '@/components/document/PlacementDialog.vue'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
 import { relationsApi } from '@/api/relations'
 import { DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
@@ -20,12 +22,15 @@ const domainStore = useDomainStore()
 const auth = useAuthStore()
 
 const domainCode = computed(() => route.params.domainCode as string)
-const filters = ref<Record<string, string>>({})
+const selectedCategoryId = ref<number | null>(null)
 const selectedDoc = ref<DocumentEntity | null>(null)
 const showPreview = ref(true)
 const showUpload = ref(false)
+const showPlacement = ref(false)
+const placementDocId = ref('')
 const activeTab = ref<'list' | 'graph'>('list')
 const docTableRef = ref<InstanceType<typeof DocumentTable>>()
+const categoryTreeRef = ref<InstanceType<typeof CategoryTree>>()
 
 // 그래프 데이터
 const graphData = ref<RelationGraphResponse | null>(null)
@@ -37,7 +42,7 @@ const childDomains = computed(() =>
 )
 const isAdmin = computed(() => auth.hasMinRole('ADMIN'))
 
-// 도메인 경로 (루트 → 현재까지의 체인)
+// 도메인 경로
 const domainBreadcrumb = computed(() => {
   const path: DomainMasterEntity[] = []
   let current = domainStore.domainsFlat.find((d) => d.code === domainCode.value)
@@ -53,7 +58,7 @@ const domainBreadcrumb = computed(() => {
 watch(domainCode, (code) => {
   if (code) {
     domainStore.setCurrentDomain(code)
-    filters.value = {}
+    selectedCategoryId.value = null
     selectedDoc.value = null
   }
 }, { immediate: true })
@@ -78,8 +83,8 @@ function handleGraphNodeClick(nodeId: string) {
   router.push(`/d/${domainCode.value}/doc/${nodeId}`)
 }
 
-function handleTreeSelect(treeFilters: Record<string, string>) {
-  filters.value = treeFilters
+function handleCategorySelect(categoryId: number | null) {
+  selectedCategoryId.value = categoryId
   selectedDoc.value = null
 }
 
@@ -109,11 +114,21 @@ function openUpload() {
   showUpload.value = true
 }
 
+function openPlacementSearch() {
+  // 기존 문서를 검색하여 이 도메인에 배치
+  placementDocId.value = ''
+  showPlacement.value = true
+}
+
+function onPlaced() {
+  showPlacement.value = false
+  docTableRef.value?.refresh()
+}
+
 function navigateToChild(child: DomainMasterEntity) {
   router.push(`/d/${child.code}`)
 }
 
-// 도메인 깊이 계산
 function getDomainDepth(code: string): number {
   let depth = 0
   let current = domainStore.domainsFlat.find((d) => d.code === code)
@@ -143,7 +158,7 @@ const editingChildCode = ref('')
 function openChildCreateDialog() {
   if (!canAddChildDomain.value) {
     const maxLabel = DOMAIN_LEVEL_LABELS[DOMAIN_MAX_DEPTH - 1] ?? '최하위'
-    ElMessage.warning(`도메인은 "${maxLabel}" 단계까지 가능합니다. ${DOMAIN_GUIDANCE.facetGuide}`)
+    ElMessage.warning(`도메인은 "${maxLabel}" 단계까지 가능합니다. ${DOMAIN_GUIDANCE.principle}`)
     return
   }
   childDialogMode.value = 'create'
@@ -154,7 +169,6 @@ function openChildCreateDialog() {
 function openChildEditDialog(child: DomainMasterEntity) {
   childDialogMode.value = 'edit'
   editingChildCode.value = child.code
-  // 수정 시 접두어 제거하여 suffix만 표시
   const prefix = `${domainCode.value}-`
   childFormData.value = {
     codeSuffix: child.code.startsWith(prefix) ? child.code.slice(prefix.length) : child.code,
@@ -179,7 +193,6 @@ async function handleChildSubmit() {
         description: childFormData.value.description || undefined,
         sortOrder: childFormData.value.sortOrder,
       }
-      // 별칭(코드)을 입력한 경우에만 전달
       if (childFormData.value.codeSuffix.trim()) {
         dto.code = `${domainCode.value}-${childFormData.value.codeSuffix.trim()}`
       }
@@ -201,6 +214,26 @@ async function handleChildSubmit() {
     ElMessage.error(msg)
   } finally {
     childDialogLoading.value = false
+  }
+}
+
+async function handleChildDelete(child: DomainMasterEntity) {
+  try {
+    await ElMessageBox.confirm(
+      `"${child.displayName}" 도메인을 삭제하시겠습니까?`,
+      '하위 도메인 삭제',
+      { confirmButtonText: '삭제', cancelButtonText: '취소', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await taxonomyApi.deleteDomain(child.code)
+    ElMessage.success('하위 도메인이 삭제되었습니다')
+    await domainStore.reloadDomains()
+  } catch (err: unknown) {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '삭제 중 오류가 발생했습니다'
+    ElMessage.error(msg)
   }
 }
 
@@ -246,26 +279,6 @@ onUnmounted(() => {
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
 })
-
-async function handleChildDelete(child: DomainMasterEntity) {
-  try {
-    await ElMessageBox.confirm(
-      `"${child.displayName}" 도메인을 삭제하시겠습니까?`,
-      '하위 도메인 삭제',
-      { confirmButtonText: '삭제', cancelButtonText: '취소', type: 'warning' },
-    )
-  } catch {
-    return
-  }
-  try {
-    await taxonomyApi.deleteDomain(child.code)
-    ElMessage.success('하위 도메인이 삭제되었습니다')
-    await domainStore.reloadDomains()
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '삭제 중 오류가 발생했습니다'
-    ElMessage.error(msg)
-  }
-}
 </script>
 
 <template>
@@ -273,7 +286,6 @@ async function handleChildDelete(child: DomainMasterEntity) {
     <!-- 상단 도구모음 -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-shrink: 0">
       <div style="display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden">
-        <!-- 도메인 경로 (인라인) -->
         <template v-if="domainBreadcrumb.length > 1">
           <template v-for="(ancestor, idx) in domainBreadcrumb.slice(0, -1)" :key="ancestor.code">
             <span v-if="idx > 0" style="color: #c0c4cc; font-size: 12px">/</span>
@@ -290,21 +302,11 @@ async function handleChildDelete(child: DomainMasterEntity) {
           {{ domainStore.currentDomain?.displayName ?? domainCode }}
         </h2>
         <el-tag size="small">{{ domainCode }}</el-tag>
-        <span
-          v-if="domainStore.currentDomain?.description"
-          style="font-size: 12px; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"
-        >
-          {{ domainStore.currentDomain.description }}
-        </span>
       </div>
       <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
-        <el-tooltip v-if="isAdmin && !canAddChildDomain" :content="`업무프로세스 단계까지 도달. ${DOMAIN_GUIDANCE.facetGuide}`" placement="top">
-          <el-button size="small" disabled>+ 추가</el-button>
-        </el-tooltip>
-        <el-button v-else-if="isAdmin" size="small" @click="openChildCreateDialog">+ 추가</el-button>
-        <el-button type="primary" size="small" @click="openUpload">
-          업로드
-        </el-button>
+        <el-button v-if="isAdmin && canAddChildDomain" size="small" @click="openChildCreateDialog">+ 하위 도메인</el-button>
+        <el-button size="small" @click="openPlacementSearch">문서 배치</el-button>
+        <el-button type="primary" size="small" @click="openUpload">업로드</el-button>
         <el-radio-group v-model="activeTab" size="small">
           <el-radio-button value="list">목록</el-radio-button>
           <el-radio-button value="graph">그래프</el-radio-button>
@@ -312,7 +314,7 @@ async function handleChildDelete(child: DomainMasterEntity) {
       </div>
     </div>
 
-    <!-- 하위 카테고리 섹션 (자식이 있을 때만 표시) -->
+    <!-- 하위 도메인 카드 -->
     <div v-if="childDomains.length > 0" style="margin-bottom: 6px; flex-shrink: 0">
       <div style="display: flex; gap: 8px; flex-wrap: wrap; max-height: 80px; overflow-y: auto">
         <div
@@ -321,22 +323,15 @@ async function handleChildDelete(child: DomainMasterEntity) {
           class="child-domain-card"
           @click="navigateToChild(child)"
         >
-          <div style="font-size: 13px; font-weight: 500; color: #303133">
-            {{ child.displayName }}
-          </div>
-          <div style="font-size: 11px; color: #909399; margin-top: 1px">
-            {{ child.code }}
-          </div>
-          <!-- ADMIN 드롭다운 -->
+          <div style="font-size: 13px; font-weight: 500; color: #303133">{{ child.displayName }}</div>
+          <div style="font-size: 11px; color: #909399; margin-top: 1px">{{ child.code }}</div>
           <el-dropdown
             v-if="isAdmin"
             trigger="click"
             style="position: absolute; top: 4px; right: 4px"
             @click.stop
           >
-            <el-button text size="small" style="padding: 2px" @click.stop>
-              ...
-            </el-button>
+            <el-button text size="small" style="padding: 2px" @click.stop>...</el-button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item @click="openChildEditDialog(child)">수정</el-dropdown-item>
@@ -350,19 +345,20 @@ async function handleChildDelete(child: DomainMasterEntity) {
 
     <!-- 3-패널 레이아웃 -->
     <div :class="{ 'is-resizing': isResizing }" style="flex: 1; display: flex; min-height: 0; overflow: hidden">
-      <!-- 왼쪽: 분류 트리 -->
+      <!-- 왼쪽: 카테고리 트리 -->
       <el-card
         shadow="never"
-        :body-style="{ padding: '0', height: '100%', overflow: 'hidden' }"
+        :body-style="{ padding: '0', height: '100%', overflow: 'auto' }"
         :style="{ width: treeWidth + 'px', flexShrink: 0 }"
       >
-        <ClassificationTree
+        <CategoryTree
+          ref="categoryTreeRef"
           :domain-code="domainCode"
-          @select="handleTreeSelect"
+          :editable="isAdmin"
+          @select="handleCategorySelect"
         />
       </el-card>
 
-      <!-- 리사이즈 핸들: 트리 ↔ 목록 -->
       <div class="resize-handle" @mousedown="startResize('tree', $event)" />
 
       <!-- 중앙: 문서 목록 or 그래프 -->
@@ -376,7 +372,7 @@ async function handleChildDelete(child: DomainMasterEntity) {
             <DocumentTable
               ref="docTableRef"
               :domain-code="domainCode"
-              :filters="filters"
+              :category-id="selectedCategoryId"
               @select="handleDocSelect"
               @dblclick="handleDocDblClick"
               @action="handleDocAction"
@@ -403,7 +399,7 @@ async function handleChildDelete(child: DomainMasterEntity) {
         </el-card>
       </div>
 
-      <!-- 리사이즈 핸들: 목록 ↔ 미리보기 -->
+      <!-- 리사이즈 핸들 -->
       <div v-if="showPreview && selectedDoc" class="resize-handle" @mousedown="startResize('preview', $event)" />
 
       <!-- 오른쪽: 미리보기 -->
@@ -424,17 +420,19 @@ async function handleChildDelete(child: DomainMasterEntity) {
     </div>
 
     <!-- 업로드 다이얼로그 -->
-    <UploadDialog
-      v-model:visible="showUpload"
-      :domain-code="domainCode"
-      :initial-filters="filters"
-      @success="handleUploadSuccess"
+    <UploadDialog v-model:visible="showUpload" @uploaded="handleUploadSuccess" />
+
+    <!-- 배치 다이얼로그 (기존 문서를 이 도메인에 배치) -->
+    <PlacementDialog
+      v-model:visible="showPlacement"
+      :document-id="placementDocId"
+      @placed="onPlaced"
     />
 
     <!-- 하위 도메인 생성/수정 다이얼로그 -->
     <el-dialog
       v-model="childDialogVisible"
-      :title="childDialogMode === 'create' ? '하위 카테고리 추가' : '하위 카테고리 수정'"
+      :title="childDialogMode === 'create' ? '하위 도메인 추가' : '하위 도메인 수정'"
       width="420px"
       :close-on-click-modal="false"
     >

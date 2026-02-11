@@ -5,7 +5,6 @@ import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
 import { LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
 import type { DocumentEntity, RelationType, RelationGraphResponse } from '@kms/shared'
-import { useFacetTypes } from '@/composables/useFacetTypes'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
 import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
@@ -36,10 +35,7 @@ const RELATION_OPTIONS: Array<{ value: RelationType; label: string; desc: string
   { value: 'SUPERSEDES', label: '대체', desc: '이 문서가 대상을 대체' },
 ]
 
-const { loadFacetTypes, facetLabel } = useFacetTypes()
-
 onMounted(async () => {
-  await loadFacetTypes()
   if (sourceId.value) {
     loading.value = true
     try {
@@ -142,7 +138,8 @@ async function handleSave() {
 
   saving.value = true
   try {
-    await relationsApi.create(sourceDoc.value.id, targetDoc.value.id, relationType.value)
+    const dc = domainCode.value !== '_' ? domainCode.value : undefined
+    await relationsApi.create(sourceDoc.value.id, targetDoc.value.id, relationType.value, dc)
     ElMessage.success('관계가 설정되었습니다')
     // 관계 저장 후 그래프 새로고침
     targetDoc.value = null
@@ -249,10 +246,8 @@ function goBack() {
               <el-tag size="small">{{ SECURITY_LEVEL_LABELS[targetDoc.securityLevel] ?? targetDoc.securityLevel }}</el-tag>
             </div>
             <div style="font-size: 11px; color: #606266; margin-top: 4px">
-              {{ targetDoc.domain }}
-              <template v-for="(value, key) in targetDoc.classifications" :key="key">
-                <span style="margin-left: 6px">{{ facetLabel(String(key)) }}: {{ value }}</span>
-              </template>
+              <span v-if="targetDoc.placementCount > 0">{{ targetDoc.placementCount }}곳 배치</span>
+              <span v-else>미배치</span>
             </div>
           </div>
           <div v-else style="background: #f5f7fa; border-radius: 6px; padding: 20px; text-align: center; color: #909399; font-size: 12px">

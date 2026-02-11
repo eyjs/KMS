@@ -258,7 +258,7 @@ Web  → vite alias         → src/ (TS 소스 직접)  ← Vite가 자체 컴�
 
 ---
 
-## ADR-011: 문서-도메인 관계 재설계 — 소속에서 바로가기로 (검토중, 2026-02-11)
+## ADR-011: 문서-도메인 관계 재설계 — 소속에서 바로가기로 (ADR-013으로 대체, 2026-02-11)
 
 > **시연 후 착수 예정** — 시스템 근간을 건드리는 수술이므로, 현재 버전 시연 완료 후 진행
 
@@ -518,6 +518,113 @@ GOOGLE_DOCAI_PROJECT=...       # Google용
 
 ---
 
+## ADR-013: 아키텍처 전면 재설계 — 솔루션에서 프레임워크로 (확정, 2026-02-11)
+
+> ADR-011의 "바로가기 모델"을 확장하여 시스템 전체를 재설계.
+> ADR-004(EAV), ADR-007(Facet Type), ADR-009(SSOT)의 설계를 폐기하고, 프레임워크 접근으로 전환.
+
+### 문제: "보험업 문서관리 솔루션"에 갇혀 있다
+
+현재 시스템의 구조적 문제:
+
+1. **업로드 시 도메인 + facet 입력 강제** — 파일 하나 올리려면 도메인 선택, 보험사 선택, 상품 선택, 문서유형 선택을 해야 함. "일단 올리고 나중에 정리"가 불가능
+2. **SSOT가 classification_hash 기반** — 동일 분류 조합에 ACTIVE 문서 1개 제한. 사실상 "분류를 알아야 업로드 가능"
+3. **facet이 글로벌 스코프** — 새 도메인을 만들면 기존 facet(보험사, 상품)이 상속되어 엉뚱한 분류가 나타남
+4. **facet 코드 충돌** — 도메인이 달라도 facet 코드가 같으면 생성 불가
+5. **1:1 소속 (document → domain FK)** — 같은 문서를 여러 도메인에서 참조 불가
+
+**근본 원인**: 특정 업종의 분류 체계를 시스템이 강제하는 **"솔루션"** 설계.
+프레임워크라면 사용자가 체계를 잡아가야 한다.
+
+### 새 설계: 프레임워크
+
+#### 핵심 원칙
+
+| # | 원칙 | 설명 |
+|---|------|------|
+| 1 | 업로드는 자유 | 파일만 올리면 됨. 도메인/분류 선택은 선택적 |
+| 2 | 문서는 독립 엔티티 | 어떤 도메인에도 소속되지 않음 |
+| 3 | 도메인 = 작업 공간 | 사용자가 만들고, 안에 카테고리 트리를 자유롭게 구성 |
+| 4 | 문서-도메인 = M:N 바로가기 | Windows 바로가기 개념. 1회 업로드, N개 도메인에서 참조 |
+| 5 | 파일 해시 중복 방지 | 동일 파일 업로드 시 SHA-256으로 차단 |
+| 6 | 카테고리 = 도메인 내부 | 사용자가 자유롭게 생성하는 폴더 구조 |
+
+#### 워크플로우 변경
+
+```
+현재:  업로드(도메인+분류 필수) → 끝
+새로:  업로드(파일만) → "내 문서" → 도메인에 배치(바로가기) → 카테고리 지정
+```
+
+#### DB 변경 계획
+
+**삭제할 테이블:**
+- `facet_type_master` — facet 유형 레지스트리
+- `facet_master` — 분류 값 마스터
+- `classifications` — 문서별 분류 EAV
+
+**삭제할 컬럼:**
+- `documents.domain` — 1:1 소속 FK
+- `documents.classification_hash` — SSOT용 해시
+- `domain_master.required_facets` — 필수 분류 유형
+- `domain_master.ssot_key` — SSOT 기준
+
+**추가할 테이블:**
+```sql
+domain_categories (도메인별 카테고리 트리)
+  id          SERIAL PK
+  domain_code FK → domain_master
+  parent_id   FK → self (트리 구조)
+  name        VARCHAR(100)
+  sort_order  INT
+  created_at  TIMESTAMP
+
+document_placements (문서-도메인 M:N 바로가기)
+  id          UUID PK
+  document_id FK → documents
+  domain_code FK → domain_master
+  category_id FK → domain_categories (nullable)
+  placed_by   FK → users
+  placed_at   TIMESTAMP
+  UNIQUE(document_id, domain_code)
+```
+
+**추가할 컬럼:**
+- `documents.file_hash` — SHA-256 (UNIQUE, 중복 방지)
+
+**삭제할 트리거:**
+- SSOT 트리거 (classification_hash 기반)
+- classification_hash 자동계산 트리거
+
+#### 폐기되는 ADR
+
+| ADR | 내용 | 이유 |
+|-----|------|------|
+| ADR-004 | EAV 분류 패턴 | facet/classification 체계 전체 폐기 |
+| ADR-007 | Facet Type 동적 관리 | facet 개념 자체가 폐기 |
+| ADR-009 | SSOT 이중 검증 | classification_hash 기반 SSOT 폐기 → file_hash 기반 중복 방지로 대체 |
+| ADR-011 | 문서-도메인 바로가기 | ADR-013에 통합 (바로가기 개념은 유지) |
+
+#### 구현 순서
+
+| Phase | 내용 | 설명 |
+|-------|------|------|
+| A | DB + 시드 정리 | 시드 → admin/admin만, ADR 문서 작성 |
+| B | 스키마 마이그레이션 | 새 테이블 추가, file_hash 추가, 기존은 아직 유지 |
+| C | API 재작성 | PlacementsModule, CategoriesModule, 업로드 단순화 |
+| D | 프론트엔드 재작성 | UploadDialog 단순화, CategoryTree, PlacementDialog |
+| E | 정리 | facet 테이블/코드 삭제, 트리거 정리 |
+
+**결정 이유:**
+- "업로드 = 분류"라는 전제가 잘못됨. 실제 업무에서는 "일단 올리고 나중에 정리"가 자연스러움
+- facet 체계가 도메인 확장을 방해함 (글로벌 스코프, 코드 충돌)
+- 1:1 소속이 문서 재활용을 원천 차단
+- Windows 탐색기 메타포(원본 + 바로가기)가 사용자에게 직관적
+
+**교훈**: 도메인 특화 솔루션을 먼저 만들어봐야 프레임워크의 경계가 보인다. ADR-004~009의 "솔루션" 설계가 있었기에 지금의 "프레임워크" 설계가 나올 수 있었다.
+
+---
+
 ## 변경 이력
 
 | 날짜 | ADR | 요약 |
@@ -527,5 +634,6 @@ GOOGLE_DOCAI_PROJECT=...       # Google용
 | 2026-02-09 | ADR-002, 003, 006, 008 | Vercel 전쟁, 트리 도메인, NestJS 전환, CJS/ESM |
 | 2026-02-10 | ADR-005 | 업무 역할 기반 권한 |
 | 2026-02-11 | ADR-007, 010 | Facet Type 동적화 + 피드백 채널 |
-| 2026-02-11 | ADR-011 | **검토중** — 문서-도메인 바로가기 모델 (시연 후 착수) |
+| 2026-02-11 | ADR-011 | **ADR-013으로 대체** — 문서-도메인 바로가기 모델 |
 | 2026-02-11 | ADR-012 | **검토중** — 문서 파싱 추상화 레이어 (업로드 고도화부터 시작) |
+| 2026-02-11 | ADR-013 | **확정** — 아키텍처 전면 재설계: 솔루션에서 프레임워크로 |

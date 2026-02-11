@@ -21,6 +21,11 @@ const router = createRouter({
       component: () => import('@/views/SearchView.vue'),
     },
     {
+      path: '/my-documents',
+      name: 'MyDocuments',
+      component: () => import('@/views/MyDocumentsView.vue'),
+    },
+    {
       path: '/d/:domainCode',
       name: 'DomainWorkspace',
       component: () => import('@/views/DomainWorkspace.vue'),
@@ -48,12 +53,6 @@ const router = createRouter({
       meta: { roles: ['ADMIN'] },
     },
     {
-      path: '/admin/settings',
-      name: 'AdminSettings',
-      component: () => import('@/views/AdminSettingsView.vue'),
-      meta: { roles: ['ADMIN'] },
-    },
-    {
       path: '/admin/feedback',
       name: 'AdminFeedback',
       component: () => import('@/views/AdminFeedbackView.vue'),
@@ -78,7 +77,11 @@ const router = createRouter({
     },
     {
       path: '/settings',
-      redirect: '/admin/settings',
+      redirect: '/admin/domains',
+    },
+    {
+      path: '/admin/settings',
+      redirect: '/admin/domains',
     },
   ],
 })

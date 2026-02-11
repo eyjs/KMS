@@ -154,6 +154,10 @@ async function submitFeedback() {
             </span>
           </template>
         </el-menu-item>
+        <el-menu-item index="/my-documents">
+          <el-icon><component is="Folder" /></el-icon>
+          <template #title><span>내 문서함</span></template>
+        </el-menu-item>
 
         <!-- DOMAINS -->
         <div v-if="!collapsed" style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
@@ -177,10 +181,6 @@ async function submitFeedback() {
           <el-menu-item index="/admin/users">
             <el-icon><component is="User" /></el-icon>
             <template #title><span>사용자 관리</span></template>
-          </el-menu-item>
-          <el-menu-item index="/admin/settings">
-            <el-icon><component is="Operation" /></el-icon>
-            <template #title><span>시스템 설정</span></template>
           </el-menu-item>
           <el-menu-item index="/admin/feedback">
             <el-icon><component is="ChatDotRound" /></el-icon>

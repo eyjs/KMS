@@ -2,7 +2,6 @@ import { ref } from 'vue'
 
 export interface RecentDocEntry {
   id: string
-  domain: string
   docCode: string | null
   fileName: string | null
   visitedAt: string
@@ -27,11 +26,10 @@ function save(entries: RecentDocEntry[]) {
 const recentDocs = ref<RecentDocEntry[]>(load())
 
 export function useRecentDocs() {
-  function addVisit(doc: { id: string; domain: string; docCode?: string | null; fileName?: string | null }) {
+  function addVisit(doc: { id: string; docCode?: string | null; fileName?: string | null }) {
     const entries = recentDocs.value.filter((e) => e.id !== doc.id)
     entries.unshift({
       id: doc.id,
-      domain: doc.domain,
       docCode: doc.docCode ?? null,
       fileName: doc.fileName ?? null,
       visitedAt: new Date().toISOString(),

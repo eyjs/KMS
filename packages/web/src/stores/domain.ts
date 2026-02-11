@@ -1,25 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { taxonomyApi } from '@/api/taxonomy'
-import type { DomainMasterEntity, FacetMasterEntity } from '@kms/shared'
-
-interface TreeNode {
-  label: string
-  code: string
-  facetType: string
-  children?: TreeNode[]
-  count?: number
-}
+import type { DomainMasterEntity } from '@kms/shared'
 
 export const useDomainStore = defineStore('domain', () => {
   const domainTree = ref<DomainMasterEntity[]>([])
   const domainsFlat = ref<DomainMasterEntity[]>([])
   const currentDomainCode = ref<string | null>(null)
-  const selectedTreeNode = ref<TreeNode | null>(null)
-  const treeFilters = ref<Record<string, string>>({})
   const domainsLoaded = ref(false)
 
-  // 하위 호환: flat 목록 (기존 코드에서 domains로 참조하는 곳 대응)
+  // 하위 호환
   const domains = domainsFlat
 
   const currentDomain = computed(() =>
@@ -43,29 +33,6 @@ export const useDomainStore = defineStore('domain', () => {
 
   function setCurrentDomain(code: string) {
     currentDomainCode.value = code
-    selectedTreeNode.value = null
-    treeFilters.value = {}
-  }
-
-  function selectTreeNode(node: TreeNode | null) {
-    selectedTreeNode.value = node
-    if (!node) {
-      treeFilters.value = {}
-      return
-    }
-
-    // 선택된 노드까지의 경로에서 필터 구성
-    treeFilters.value = {}
-    treeFilters.value[node.facetType] = node.code
-  }
-
-  function setTreeFilters(filters: Record<string, string>) {
-    treeFilters.value = filters
-  }
-
-  function clearSelection() {
-    selectedTreeNode.value = null
-    treeFilters.value = {}
   }
 
   async function reloadDomains() {
@@ -79,14 +46,9 @@ export const useDomainStore = defineStore('domain', () => {
     domainsFlat,
     currentDomainCode,
     currentDomain,
-    selectedTreeNode,
-    treeFilters,
     domainsLoaded,
     loadDomains,
     reloadDomains,
     setCurrentDomain,
-    selectTreeNode,
-    setTreeFilters,
-    clearSelection,
   }
 })

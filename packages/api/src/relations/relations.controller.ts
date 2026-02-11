@@ -44,16 +44,27 @@ export class RelationsController {
   async getRelationGraph(
     @Param('id') id: string,
     @Query('depth') depth: string | undefined,
+    @Query('domain') domainCode: string | undefined,
     @Request() req: AuthRequest,
   ) {
     const d = depth ? Math.min(parseInt(depth, 10) || 1, 3) : 1
-    return this.relationsService.getRelationGraph(id, req.user.role, d)
+    return this.relationsService.getRelationGraph(id, req.user.role, d, domainCode)
   }
 
   @Get('documents/:id/relations')
-  @ApiOperation({ summary: '문서 관계 조회' })
+  @ApiOperation({ summary: '문서 관계 조회 (전 도메인)' })
   async findByDocument(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.relationsService.findByDocument(id, req.user.role)
+  }
+
+  @Get('domains/:code/documents/:id/relations')
+  @ApiOperation({ summary: '도메인 내 문서 관계 조회' })
+  async findByDocumentInDomain(
+    @Param('code') code: string,
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+  ) {
+    return this.relationsService.findByDocumentInDomain(id, code, req.user.role)
   }
 
   @Post('relations')
@@ -64,6 +75,7 @@ export class RelationsController {
       dto.sourceId,
       dto.targetId,
       dto.relationType,
+      dto.domainCode,
       req.user.sub,
       req.user.role,
     )
