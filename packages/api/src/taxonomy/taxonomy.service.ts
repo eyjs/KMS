@@ -22,9 +22,13 @@ export class TaxonomyService {
   // Facet Type CRUD
   // ============================================================
 
-  async getFacetTypes() {
+  async getFacetTypes(domain?: string) {
     return this.prisma.facetTypeMaster.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        // domain 지정 시: 공통(null) + 해당 도메인 전용만 반환
+        ...(domain ? { OR: [{ domain: null }, { domain }] } : {}),
+      },
       orderBy: { sortOrder: 'asc' },
     })
   }
@@ -48,6 +52,7 @@ export class TaxonomyService {
         displayName: dto.displayName,
         codePrefix: dto.codePrefix,
         description: dto.description ?? null,
+        domain: dto.domain ?? null,
         sortOrder: dto.sortOrder ?? 0,
         isSystem: false,
       },

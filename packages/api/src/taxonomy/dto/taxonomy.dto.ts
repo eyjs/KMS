@@ -149,6 +149,11 @@ export class CreateFacetTypeDto {
   description?: string
 
   @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  domain?: string
+
+  @IsOptional()
   @IsInt()
   sortOrder?: number
 }

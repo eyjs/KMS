@@ -141,6 +141,7 @@ export interface FacetTypeMasterEntity {
   displayName: string
   codePrefix: string
   description: string | null
+  domain: string | null
   sortOrder: number
   isActive: boolean
   isSystem: boolean
@@ -275,6 +276,7 @@ export interface CreateFacetTypeDto {
   displayName: string
   codePrefix: string
   description?: string
+  domain?: string
   sortOrder?: number
 }
 

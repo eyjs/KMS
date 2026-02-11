@@ -31,9 +31,9 @@ export class TaxonomyController {
   // ============================================================
 
   @Get('facet-types')
-  @ApiOperation({ summary: '분류 유형 목록 조회' })
-  async getFacetTypes() {
-    return this.taxonomyService.getFacetTypes()
+  @ApiOperation({ summary: '분류 유형 목록 조회 (domain 지정 시 공통+해당 도메인만)' })
+  async getFacetTypes(@Query('domain') domain?: string) {
+    return this.taxonomyService.getFacetTypes(domain)
   }
 
   @Post('facet-types')

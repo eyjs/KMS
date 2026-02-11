@@ -45,10 +45,11 @@ model DomainMaster {
   sortOrder     Int      @default(0) @map("sort_order")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  parent       DomainMaster?  @relation("DomainTree", fields: [parentCode], references: [code])
-  children     DomainMaster[] @relation("DomainTree")
-  documents    Document[]
-  facetMasters FacetMaster[]
+  parent          DomainMaster?    @relation("DomainTree", fields: [parentCode], references: [code])
+  children        DomainMaster[]   @relation("DomainTree")
+  documents       Document[]
+  facetMasters    FacetMaster[]
+  facetTypeMasters FacetTypeMaster[]
 
   @@index([parentCode])
   @@map("domain_master")
@@ -63,11 +64,15 @@ model FacetTypeMaster {
   displayName String   @map("display_name") @db.VarChar(100)
   codePrefix  String   @map("code_prefix") @db.VarChar(5)
   description String?  @db.VarChar(500)
+  domain      String?  @db.VarChar(20)
   sortOrder   Int      @default(0) @map("sort_order")
   isActive    Boolean  @default(true) @map("is_active")
   isSystem    Boolean  @default(false) @map("is_system")
   createdAt   DateTime @default(now()) @map("created_at")
 
+  domainMaster DomainMaster? @relation(fields: [domain], references: [code])
+
+  @@index([domain])
   @@map("facet_type_master")
 }
 

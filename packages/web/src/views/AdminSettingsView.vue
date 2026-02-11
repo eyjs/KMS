@@ -3,14 +3,29 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useFacetTypes } from '@/composables/useFacetTypes'
-import type { FacetTypeMasterEntity, CreateFacetTypeDto, UpdateFacetTypeDto } from '@kms/shared'
+import type { FacetTypeMasterEntity, DomainMasterEntity, CreateFacetTypeDto, UpdateFacetTypeDto } from '@kms/shared'
 
 const { loadFacetTypes: refreshGlobalCache } = useFacetTypes()
+
+const domainsFlat = ref<DomainMasterEntity[]>([])
+async function loadDomains() {
+  try {
+    const { data } = await taxonomyApi.getDomainsFlat()
+    domainsFlat.value = data
+  } catch { /* ignore */ }
+}
+const domainLabel = (code: string | null) => {
+  if (!code) return '공통'
+  return domainsFlat.value.find(d => d.code === code)?.displayName ?? code
+}
 
 const facetTypes = ref<FacetTypeMasterEntity[]>([])
 const loading = ref(false)
 
-onMounted(() => loadFacetTypes())
+onMounted(() => {
+  loadFacetTypes()
+  loadDomains()
+})
 
 async function loadFacetTypes() {
   loading.value = true
@@ -37,13 +52,14 @@ const form = ref({
   displayName: '',
   codePrefix: '',
   description: '',
+  domain: '' as string,
   sortOrder: 0,
 })
 
 function openCreateDialog() {
   dialogMode.value = 'create'
   editingIsSystem.value = false
-  form.value = { code: '', displayName: '', codePrefix: '', description: '', sortOrder: 0 }
+  form.value = { code: '', displayName: '', codePrefix: '', description: '', domain: '', sortOrder: 0 }
   dialogVisible.value = true
 }
 
@@ -55,6 +71,7 @@ function openEditDialog(ft: FacetTypeMasterEntity) {
     displayName: ft.displayName,
     codePrefix: ft.codePrefix,
     description: ft.description ?? '',
+    domain: ft.domain ?? '',
     sortOrder: ft.sortOrder,
   }
   dialogVisible.value = true
@@ -74,6 +91,7 @@ async function handleSubmit() {
         displayName: form.value.displayName.trim(),
         codePrefix: form.value.codePrefix.trim(),
         description: form.value.description.trim() || undefined,
+        domain: form.value.domain || undefined,
         sortOrder: form.value.sortOrder,
       }
       await taxonomyApi.createFacetType(dto)
@@ -143,6 +161,12 @@ async function handleDelete(ft: FacetTypeMasterEntity) {
         </el-table-column>
         <el-table-column prop="displayName" label="이름" width="140" />
         <el-table-column prop="codePrefix" label="코드 접두어" width="100" align="center" />
+        <el-table-column label="적용 범위" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="!row.domain" size="small">공통</el-tag>
+            <el-tag v-else size="small" type="warning">{{ domainLabel(row.domain) }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="description" label="설명" min-width="200">
           <template #default="{ row }">
             <span style="color: #606266">{{ row.description ?? '-' }}</span>
@@ -191,6 +215,26 @@ async function handleDelete(ft: FacetTypeMasterEntity) {
           <div style="font-size: 11px; color: #909399; margin-top: 2px">
             분류 값의 자동 생성 코드 접두어 (예: C → C001, C002)
             <template v-if="editingIsSystem"> — 시스템 유형은 변경 불가</template>
+          </div>
+        </el-form-item>
+        <el-form-item label="적용 범위">
+          <el-select
+            v-model="form.domain"
+            :disabled="editingIsSystem"
+            placeholder="공통 (전체 도메인)"
+            clearable
+            style="width: 100%"
+          >
+            <el-option label="공통 (전체 도메인)" value="" />
+            <el-option
+              v-for="d in domainsFlat"
+              :key="d.code"
+              :label="d.displayName"
+              :value="d.code"
+            />
+          </el-select>
+          <div style="font-size: 11px; color: #909399; margin-top: 2px">
+            공통: 모든 도메인에서 사용. 도메인 선택 시 해당 도메인에서만 사용.
           </div>
         </el-form-item>
         <el-form-item label="설명">

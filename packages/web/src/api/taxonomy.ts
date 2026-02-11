@@ -13,8 +13,10 @@ import type {
 
 export const taxonomyApi = {
   // Facet Types
-  getFacetTypes() {
-    return client.get<FacetTypeMasterEntity[]>('/facet-types')
+  getFacetTypes(domain?: string) {
+    return client.get<FacetTypeMasterEntity[]>('/facet-types', {
+      params: domain ? { domain } : undefined,
+    })
   },
 
   createFacetType(data: CreateFacetTypeDto) {

@@ -33,6 +33,7 @@ CREATE TABLE "facet_type_master" (
     "display_name" VARCHAR(100) NOT NULL,
     "code_prefix" VARCHAR(5) NOT NULL,
     "description" VARCHAR(500),
+    "domain" VARCHAR(20),
     "sort_order" INTEGER NOT NULL DEFAULT 0,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "is_system" BOOLEAN NOT NULL DEFAULT false,
@@ -141,6 +142,9 @@ CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 CREATE INDEX "domain_master_parent_code_idx" ON "domain_master"("parent_code");
 
 -- CreateIndex
+CREATE INDEX "facet_type_master_domain_idx" ON "facet_type_master"("domain");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "facet_master_facet_type_code_key" ON "facet_master"("facet_type", "code");
 CREATE INDEX "facet_master_facet_type_idx" ON "facet_master"("facet_type");
 CREATE INDEX "facet_master_domain_idx" ON "facet_master"("domain");
@@ -197,6 +201,9 @@ ALTER TABLE "feedback" ADD CONSTRAINT "feedback_user_id_fkey" FOREIGN KEY ("user
 
 -- AddForeignKey
 ALTER TABLE "domain_master" ADD CONSTRAINT "domain_master_parent_code_fkey" FOREIGN KEY ("parent_code") REFERENCES "domain_master"("code") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "facet_type_master" ADD CONSTRAINT "facet_type_master_domain_fkey" FOREIGN KEY ("domain") REFERENCES "domain_master"("code") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "facet_master" ADD CONSTRAINT "facet_master_domain_fkey" FOREIGN KEY ("domain") REFERENCES "domain_master"("code") ON DELETE SET NULL ON UPDATE CASCADE;
