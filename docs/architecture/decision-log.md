@@ -337,6 +337,157 @@ document_placements (
 
 ---
 
+## ADR-012: 문서 파싱 인프라 — 추상화 레이어 + 교체 가능 백엔드 (검토중, 2026-02-11)
+
+**발상**: 문서 파싱(PDF → 텍스트/Markdown 변환)을 외주 대신 **직접 시도**해보되,
+실패하면 솔루션이나 Google Document AI로 바꿀 수 있게 **인프라 레벨에서 추상화**.
+
+### 핵심 원칙: KMS는 "어떻게 파싱하는지" 모른다
+
+```
+┌──────────────────────────────────────────────────────┐
+│  KMS (NestJS)                                        │
+│                                                      │
+│  DocumentsModule                                     │
+│    └─ upload() → ParsingClient.parse(file) ──────┐   │
+│                                                  │   │
+│  ParsingClient (추상 인터페이스)                    │   │
+│    - parse(file): Promise<ParseResult>           │   │
+│    - getStatus(jobId): Promise<JobStatus>         │   │
+└──────────────────────────────────────────┬───────────┘
+                                           │
+               ┌───────────────────────────┼──────────────────────┐
+               │                           │                      │
+     ┌─────────▼─────────┐   ┌────────────▼────────┐  ┌─────────▼──────────┐
+     │ LocalPythonParser  │   │ GoogleDocAIParser   │  │ ExternalAPIParser  │
+     │ (subprocess/HTTP)  │   │ (Document AI API)   │  │ (외주 솔루션)      │
+     │                    │   │                     │  │                    │
+     │ PyMuPDF + 직접구현 │   │ Google Cloud 호출   │  │ 벤더 API 호출     │
+     └────────────────────┘   └─────────────────────┘  └────────────────────┘
+```
+
+### 인터페이스 계약 (구현체가 뭐든 이것만 지키면 됨)
+
+```typescript
+// packages/shared 또는 api 내부
+interface ParseRequest {
+  fileBuffer: Buffer
+  fileType: 'pdf' | 'md' | 'csv'
+  fileName: string
+  options?: {
+    extractImages?: boolean   // 이미지 추출 여부
+    ocrLanguage?: string      // OCR 언어 힌트 ('ko', 'en')
+  }
+}
+
+interface ParseResult {
+  success: boolean
+  markdown: string            // ★ 핵심: 모든 결과는 Markdown으로 통일
+  metadata: {
+    pageCount?: number
+    wordCount?: number
+    language?: string
+    extractedImages?: string[] // 이미지 경로
+  }
+  rawText?: string            // 순수 텍스트 (검색 인덱싱용)
+  confidence?: number         // 파싱 품질 점수 (0~1)
+  processingTimeMs: number
+}
+```
+
+**★ 모든 출력을 Markdown으로 통일하는 이유:**
+- PDF → Markdown 변환이 핵심. 원본은 PDF로 보관, **파싱 결과는 Markdown으로 저장**
+- Markdown이면 기존 MarkdownViewer로 바로 렌더링 가능
+- 검색 인덱싱 시 rawText 사용
+- CSV는 이미 텍스트이므로 Markdown 테이블로 변환하면 끝
+- 나중에 벡터 임베딩(Phase 3)도 rawText에서 바로 추출
+
+### 파싱 플로우
+
+```
+사용자 업로드
+    │
+    ▼
+┌─ KMS API ──────────────────────────────────┐
+│  1. 원본 파일 저장 (storage/originals/)     │
+│  2. ParsingClient.parse(file) 호출          │
+│  3. 결과 Markdown 저장 (storage/parsed/)    │
+│  4. DB에 parsed_path, raw_text 기록        │
+└────────────────────────────────────────────┘
+    │
+    ▼
+┌─ Viewer 우선순위 ──────────────────────────┐
+│  PDF  → parsed Markdown 있으면 → MD 뷰어   │
+│         없으면 → pdf.js 뷰어 (기존)         │
+│  MD   → 그대로 MD 뷰어                      │
+│  CSV  → 테이블 뷰어 (기존)                  │
+└────────────────────────────────────────────┘
+```
+
+### Python 스크립트 구현 계획 (1차: LocalPythonParser)
+
+```
+scripts/parser/
+├── main.py              # FastAPI 또는 stdin/stdout CLI
+├── parsers/
+│   ├── __init__.py
+│   ├── pdf_parser.py    # PyMuPDF (fitz) — 텍스트 추출 + 레이아웃 보존
+│   ├── md_parser.py     # 패스스루 (이미 Markdown)
+│   └── csv_parser.py    # CSV → Markdown 테이블 변환
+├── converters/
+│   └── to_markdown.py   # 추출 결과 → Markdown 정규화
+└── requirements.txt     # pymupdf, fastapi (선택), uvicorn (선택)
+```
+
+**연결 방식 선택지:**
+| 방식 | 장점 | 단점 |
+|------|------|------|
+| A. subprocess (CLI) | 가장 단순, 배포 쉬움 | 매 요청마다 프로세스 생성 오버헤드 |
+| B. HTTP (FastAPI sidecar) | 상시 구동, 빠름, 독립 배포 | Docker 컨테이너 하나 더 |
+| C. Message Queue (Redis) | 비동기, 대용량 적합 | 인프라 복잡, 현 단계에서 과설계 |
+
+→ **B안 추천**: FastAPI sidecar로 시작. Docker Compose에 `parser` 서비스 추가하면 끝.
+
+### 교체 시나리오
+
+```
+1차: LocalPythonParser (PyMuPDF)
+     → PDF 텍스트 추출 시도
+     → 한글 깨짐, 스캔 PDF 실패 시...
+
+2차: GoogleDocAIParser (Google Document AI)
+     → API 키만 설정하면 교체 완료
+     → OCR 포함, 한글 지원
+     → 비용: 페이지당 약 $0.01~0.065
+
+3차: 외주 솔루션 (벤더 API)
+     → 같은 인터페이스로 래핑
+```
+
+NestJS 쪽에서는 **환경변수 하나로 교체**:
+```
+PARSER_BACKEND=local    # 또는 google-docai, external
+PARSER_URL=http://parser:8000  # local/sidecar용
+GOOGLE_DOCAI_PROJECT=...       # Google용
+```
+
+### 풀어야 할 질문
+- [ ] 파싱 실패 시 정책: 원본만 저장하고 "파싱 실패" 표시? 재시도?
+- [ ] 파싱 결과 저장 위치: DB TEXT 컬럼? 파일 시스템? 둘 다?
+- [ ] 비동기 처리: 대용량 PDF는 업로드 즉시 응답 + 백그라운드 파싱?
+- [ ] 스캔 PDF (이미지만 있는 PDF): OCR 필수 → LocalParser로는 한계
+- [ ] 파싱 결과 버전: 원본 재업로드 없이 파서만 업그레이드하면 재파싱 필요?
+
+### 구현 순서 (단계적)
+1. 인터페이스 정의 (`ParseRequest`, `ParseResult`)
+2. Python CLI 스크립트 (`scripts/parser/`) — PyMuPDF로 PDF→MD
+3. NestJS에 `ParsingClient` 추상 클래스 + `LocalPythonParser` 구현
+4. 업로드 시 자동 파싱 → `storage/parsed/` 저장
+5. 뷰어에서 파싱 결과 우선 표시
+6. (실패 시) Google Document AI 백엔드 추가
+
+---
+
 ## 미결 과제 / 향후 고민거리
 
 ### 도메인별 역할 (RBAC 확장)
@@ -377,3 +528,4 @@ document_placements (
 | 2026-02-10 | ADR-005 | 업무 역할 기반 권한 |
 | 2026-02-11 | ADR-007, 010 | Facet Type 동적화 + 피드백 채널 |
 | 2026-02-11 | ADR-011 | **검토중** — 문서-도메인 바로가기 모델 (시연 후 착수) |
+| 2026-02-11 | ADR-012 | **검토중** — 문서 파싱 추상화 레이어 (업로드 고도화부터 시작) |
