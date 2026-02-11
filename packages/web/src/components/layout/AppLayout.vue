@@ -5,6 +5,10 @@ import { useDomainStore } from '@/stores/domain'
 import { useRoute, useRouter } from 'vue-router'
 import DomainMenuItem from './DomainMenuItem.vue'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
+import { feedbackApi } from '@/api/feedback'
+import { FEEDBACK_CATEGORY_LABELS } from '@kms/shared'
+import { ElMessage } from 'element-plus'
+import type { FeedbackCategory } from '@kms/shared'
 
 useKeyboardShortcuts()
 
@@ -41,6 +45,42 @@ onMounted(() => {
 
 function handleLogout() {
   auth.logout()
+}
+
+// ── 피드백 ──
+const feedbackVisible = ref(false)
+const feedbackLoading = ref(false)
+const feedbackForm = ref({
+  category: 'BUG' as FeedbackCategory,
+  title: '',
+  content: '',
+})
+
+function openFeedback() {
+  feedbackForm.value = { category: 'BUG', title: '', content: '' }
+  feedbackVisible.value = true
+}
+
+async function submitFeedback() {
+  if (!feedbackForm.value.title.trim() || !feedbackForm.value.content.trim()) {
+    ElMessage.warning('제목과 내용을 입력해 주세요')
+    return
+  }
+  feedbackLoading.value = true
+  try {
+    await feedbackApi.create({
+      category: feedbackForm.value.category,
+      title: feedbackForm.value.title,
+      content: feedbackForm.value.content,
+      pageUrl: route.fullPath,
+    })
+    ElMessage.success('피드백이 접수되었습니다. 감사합니다!')
+    feedbackVisible.value = false
+  } catch {
+    ElMessage.error('전송에 실패했습니다')
+  } finally {
+    feedbackLoading.value = false
+  }
 }
 </script>
 
@@ -142,6 +182,10 @@ function handleLogout() {
             <el-icon><component is="Operation" /></el-icon>
             <template #title><span>시스템 설정</span></template>
           </el-menu-item>
+          <el-menu-item index="/admin/feedback">
+            <el-icon><component is="ChatDotRound" /></el-icon>
+            <template #title><span>피드백 관리</span></template>
+          </el-menu-item>
         </template>
       </el-menu>
 
@@ -152,6 +196,45 @@ function handleLogout() {
         <router-view />
       </el-main>
     </el-container>
+
+    <!-- 피드백 플로팅 버튼 -->
+    <el-button
+      type="primary"
+      circle
+      size="large"
+      style="position: fixed; bottom: 24px; right: 24px; width: 48px; height: 48px; z-index: 1000; box-shadow: 0 4px 12px rgba(64,158,255,0.4)"
+      @click="openFeedback"
+    >
+      <el-icon :size="22"><component is="ChatDotRound" /></el-icon>
+    </el-button>
+
+    <!-- 피드백 다이얼로그 -->
+    <el-dialog v-model="feedbackVisible" title="피드백 보내기" width="480px" :close-on-click-modal="false">
+      <el-form label-position="top">
+        <el-form-item label="유형">
+          <el-radio-group v-model="feedbackForm.category">
+            <el-radio-button v-for="(label, key) in FEEDBACK_CATEGORY_LABELS" :key="key" :value="key">
+              {{ label }}
+            </el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="제목" required>
+          <el-input v-model="feedbackForm.title" placeholder="간단히 요약해 주세요" maxlength="200" show-word-limit />
+        </el-form-item>
+        <el-form-item label="내용" required>
+          <el-input
+            v-model="feedbackForm.content"
+            type="textarea"
+            :rows="5"
+            placeholder="자세히 설명해 주세요. 어떤 페이지에서 어떤 문제가 있었는지 포함하면 도움이 됩니다."
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="feedbackVisible = false">취소</el-button>
+        <el-button type="primary" :loading="feedbackLoading" @click="submitFeedback">전송</el-button>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 

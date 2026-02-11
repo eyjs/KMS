@@ -171,6 +171,30 @@ CREATE INDEX "document_history_created_at_idx" ON "document_history"("created_at
 CREATE UNIQUE INDEX "api_keys_key_hash_key" ON "api_keys"("key_hash");
 CREATE INDEX "api_keys_key_hash_idx" ON "api_keys"("key_hash");
 
+-- CreateTable: feedback
+CREATE TABLE "feedback" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "user_id" UUID NOT NULL,
+    "category" VARCHAR(20) NOT NULL,
+    "title" VARCHAR(200) NOT NULL,
+    "content" TEXT NOT NULL,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    "admin_note" TEXT,
+    "page_url" VARCHAR(500),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "feedback_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "feedback_user_id_idx" ON "feedback"("user_id");
+CREATE INDEX "feedback_status_idx" ON "feedback"("status");
+CREATE INDEX "feedback_created_at_idx" ON "feedback"("created_at");
+
+-- AddForeignKey
+ALTER TABLE "feedback" ADD CONSTRAINT "feedback_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
 -- AddForeignKey
 ALTER TABLE "domain_master" ADD CONSTRAINT "domain_master_parent_code_fkey" FOREIGN KEY ("parent_code") REFERENCES "domain_master"("code") ON DELETE SET NULL ON UPDATE CASCADE;
 

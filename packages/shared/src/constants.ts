@@ -164,6 +164,36 @@ export const ACTION_TAG_TYPES: Record<string, string> = {
   CLASSIFICATION_CHANGE: 'primary',
 }
 
+// ============================================================
+// 피드백 라벨 + 태그 타입
+// ============================================================
+
+export const FEEDBACK_CATEGORY_LABELS: Record<string, string> = {
+  BUG: '버그 신고',
+  IMPROVEMENT: '개선 제안',
+  QUESTION: '질문',
+}
+
+export const FEEDBACK_STATUS_LABELS: Record<string, string> = {
+  OPEN: '접수',
+  IN_PROGRESS: '처리중',
+  RESOLVED: '해결됨',
+  CLOSED: '닫힘',
+}
+
+export const FEEDBACK_STATUS_TAG_TYPES: Record<string, string> = {
+  OPEN: 'info',
+  IN_PROGRESS: 'warning',
+  RESOLVED: 'success',
+  CLOSED: '',
+}
+
+export const FEEDBACK_CATEGORY_TAG_TYPES: Record<string, string> = {
+  BUG: 'danger',
+  IMPROVEMENT: 'primary',
+  QUESTION: 'info',
+}
+
 /** 도메인 생성 안내 — 조직이 아닌 업무 기준임을 강제 */
 export const DOMAIN_GUIDANCE = {
   principle: '도메인은 불변하는 업무 단위입니다. 조직(본부/부서/팀)이 아닌 업무를 기준으로 설정하세요.',

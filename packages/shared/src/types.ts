@@ -300,6 +300,51 @@ export interface PaginatedResponse<T> {
 }
 
 // ============================================================
+// 피드백
+// ============================================================
+
+export const FeedbackCategory = {
+  BUG: 'BUG',
+  IMPROVEMENT: 'IMPROVEMENT',
+  QUESTION: 'QUESTION',
+} as const
+export type FeedbackCategory = (typeof FeedbackCategory)[keyof typeof FeedbackCategory]
+
+export const FeedbackStatus = {
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  RESOLVED: 'RESOLVED',
+  CLOSED: 'CLOSED',
+} as const
+export type FeedbackStatus = (typeof FeedbackStatus)[keyof typeof FeedbackStatus]
+
+export interface FeedbackEntity {
+  id: string
+  userId: string
+  category: FeedbackCategory
+  title: string
+  content: string
+  status: FeedbackStatus
+  adminNote: string | null
+  pageUrl: string | null
+  createdAt: string
+  updatedAt: string
+  user?: Pick<UserEntity, 'id' | 'name' | 'email'>
+}
+
+export interface CreateFeedbackDto {
+  category: FeedbackCategory
+  title: string
+  content: string
+  pageUrl?: string
+}
+
+export interface UpdateFeedbackDto {
+  status?: FeedbackStatus
+  adminNote?: string
+}
+
+// ============================================================
 // 관계 그래프 (vis-network용)
 // ============================================================
 
