@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { client } from '@/api/client'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UserRole } from '@kms/shared'
 
 interface UserItem {
@@ -72,6 +72,16 @@ async function handleRoleChange(user: UserItem, newRole: string) {
 }
 
 async function toggleActive(user: UserItem) {
+  const action = user.isActive ? '비활성화' : '활성화'
+  try {
+    await ElMessageBox.confirm(
+      `"${user.name}" 계정을 ${action}하시겠습니까?`,
+      `계정 ${action}`,
+      { confirmButtonText: action, cancelButtonText: '취소', type: 'warning' },
+    )
+  } catch {
+    return
+  }
   try {
     const { data } = await client.patch<UserItem>(`/auth/users/${user.id}/toggle-active`)
     user.isActive = data.isActive
@@ -118,32 +128,33 @@ onMounted(loadUsers)
         size="small"
         :header-cell-style="{ background: '#fafafa' }"
       >
-        <el-table-column prop="name" label="이름" width="120" />
-        <el-table-column prop="email" label="이메일" min-width="200" />
-        <el-table-column label="역할" width="140">
+        <el-table-column prop="name" label="이름" width="100" />
+        <el-table-column prop="email" label="이메일" min-width="160" />
+        <el-table-column label="역할" width="120">
           <template #default="{ row }">
             <el-select
               :model-value="row.role"
               size="small"
-              style="width: 110px"
+              style="width: 100px"
               @change="(val: string) => handleRoleChange(row, val)"
             >
               <el-option v-for="r in ROLE_OPTIONS" :key="r.value" :label="r.label" :value="r.value" />
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="상태" width="90" align="center">
+        <el-table-column label="상태" width="80" align="center">
           <template #default="{ row }">
-            <el-switch
-              :model-value="row.isActive"
+            <el-tag
+              :type="row.isActive ? 'success' : 'danger'"
               size="small"
-              active-text="활성"
-              inactive-text="비활성"
-              @change="() => toggleActive(row)"
-            />
+              style="cursor: pointer"
+              @click="toggleActive(row)"
+            >
+              {{ row.isActive ? '활성' : '비활성' }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="가입일" width="110" align="center">
+        <el-table-column label="가입일" width="100" align="center">
           <template #default="{ row }">
             {{ new Date(row.createdAt).toLocaleDateString('ko-KR') }}
           </template>

@@ -20,25 +20,6 @@ const facets = ref<Record<string, FacetMasterEntity[]>>({})
 const loading = ref(false)
 const selectedDomain = ref<string | null>(null)
 
-interface FlatDomainRow extends DomainMasterEntity {
-  depth: number
-}
-
-// 스토어의 트리를 flat으로 변환 (들여쓰기용)
-const domainsWithDepth = computed<FlatDomainRow[]>(() => {
-  const result: FlatDomainRow[] = []
-  function walk(nodes: DomainMasterEntity[], depth: number) {
-    for (const node of nodes) {
-      result.push({ ...node, depth })
-      if (node.children?.length) {
-        walk(node.children, depth + 1)
-      }
-    }
-  }
-  walk(domainStore.domainTree, 0)
-  return result
-})
-
 onMounted(async () => {
   loading.value = true
   try {
@@ -48,7 +29,7 @@ onMounted(async () => {
   }
 })
 
-async function handleDomainClick(domain: FlatDomainRow) {
+async function handleDomainClick(domain: DomainMasterEntity) {
   selectedDomain.value = domain.code
   try {
     await loadFacetsForDomain(domain)
@@ -69,9 +50,9 @@ async function loadFacetsForDomain(domain: DomainMasterEntity) {
   }
 }
 
-function getSelectedDomain(): DomainMasterEntity | undefined {
-  return domainStore.domainsFlat.find((d) => d.code === selectedDomain.value)
-}
+const selectedDomainEntity = computed(() =>
+  domainStore.domainsFlat.find((d) => d.code === selectedDomain.value),
+)
 
 function getFacetData(facetType: string): FacetMasterEntity[] {
   return facets.value[`${selectedDomain.value}:${facetType}`] ?? []
@@ -88,7 +69,7 @@ function getDomainDepth(code: string): number {
   return depth
 }
 
-function canAddChild(domain: FlatDomainRow): boolean {
+function canAddChild(domain: DomainMasterEntity): boolean {
   return getDomainDepth(domain.code) + 1 < DOMAIN_MAX_DEPTH
 }
 
@@ -134,7 +115,7 @@ function openCreateDialog() {
   dialogVisible.value = true
 }
 
-function openCreateChildDialog(parent: FlatDomainRow) {
+function openCreateChildDialog(parent: DomainMasterEntity) {
   if (!canAddChild(parent)) {
     const maxLabel = DOMAIN_LEVEL_LABELS[DOMAIN_MAX_DEPTH - 1] ?? '최하위'
     ElMessage.warning(`도메인은 "${maxLabel}" 단계까지 가능합니다. ${DOMAIN_GUIDANCE.facetGuide}`)
@@ -154,7 +135,7 @@ function openCreateChildDialog(parent: FlatDomainRow) {
   dialogVisible.value = true
 }
 
-function openEditDialog(domain: FlatDomainRow) {
+function openEditDialog(domain: DomainMasterEntity) {
   dialogMode.value = 'edit'
   // 수정 시 code는 전체 코드 그대로 표시 (disabled이므로)
   formData.value = {
@@ -208,7 +189,7 @@ async function handleDialogSubmit() {
   }
 }
 
-async function handleDelete(domain: FlatDomainRow) {
+async function handleDelete(domain: DomainMasterEntity) {
   try {
     await ElMessageBox.confirm(
       `"${domain.displayName}" 도메인을 삭제하시겠습니까?`,
@@ -306,7 +287,7 @@ async function handleFacetSubmit() {
     }
     facetDialogVisible.value = false
     // 해당 도메인의 facet 새로고침
-    const domain = getSelectedDomain()
+    const domain = selectedDomainEntity.value
     if (domain) await loadFacetsForDomain(domain)
   } catch (err: unknown) {
     const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '오류가 발생했습니다'
@@ -329,7 +310,7 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
   try {
     await taxonomyApi.deleteFacet(facet.id)
     ElMessage.success('분류가 삭제되었습니다')
-    const domain = getSelectedDomain()
+    const domain = selectedDomainEntity.value
     if (domain) await loadFacetsForDomain(domain)
   } catch (err: unknown) {
     const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '삭제 중 오류가 발생했습니다'
@@ -343,148 +324,157 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
     <h2 style="margin: 0 0 8px; font-size: 20px">도메인 / 분류 관리</h2>
     <div style="margin-bottom: 12px; padding: 10px 14px; background: #f4f4f5; border-radius: 6px; font-size: 13px; color: #606266; line-height: 1.6">
       <strong>도메인</strong> = 업무 영역 (영업, 수수료, 계약 등) &nbsp;|&nbsp;
-      <strong>분류(Facet)</strong> = 보험사, 상품, 문서유형 → 오른쪽 패널에서 관리
+      <strong>분류(Facet)</strong> = 보험사, 상품, 문서유형 → 도메인 선택 후 아래에서 관리
     </div>
 
-    <div style="display: flex; gap: 16px">
-      <!-- 도메인 목록 -->
-      <el-card shadow="never" style="width: 560px">
-        <template #header>
-          <div style="display: flex; justify-content: space-between; align-items: center">
-            <span style="font-weight: 600">도메인 목록</span>
-            <el-button type="primary" size="small" @click="openCreateDialog">
-              루트 도메인 추가
-            </el-button>
-          </div>
-        </template>
-        <el-table
-          :data="domainsWithDepth"
-          size="small"
-          highlight-current-row
-          @row-click="handleDomainClick"
-          :header-cell-style="{ background: '#fafafa' }"
-          style="cursor: pointer"
-        >
-          <el-table-column label="코드" width="140">
-            <template #default="{ row }">
-              <span :style="{ paddingLeft: row.depth * 16 + 'px' }">
-                {{ row.code }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="displayName" label="이름" min-width="120" />
-          <el-table-column prop="sortOrder" label="순서" width="60" align="center" />
-          <el-table-column label="상태" width="70" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.isActive ? 'success' : 'danger'" size="small">
-                {{ row.isActive ? '활성' : '비활성' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="" width="160" align="center">
-            <template #default="{ row }">
-              <el-tooltip
-                v-if="!canAddChild(row)"
-                :content="`업무프로세스 단계까지 도달. ${DOMAIN_GUIDANCE.facetGuide}`"
-                placement="top"
-              >
-                <el-button text size="small" type="info" disabled @click.stop>
-                  하위 추가
-                </el-button>
-              </el-tooltip>
-              <el-button v-else text size="small" type="success" @click.stop="openCreateChildDialog(row)">
+    <!-- 도메인 목록 (트리 테이블) -->
+    <el-card shadow="never" style="margin-bottom: 16px">
+      <template #header>
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <span style="font-weight: 600">도메인 목록</span>
+          <el-button type="primary" size="small" @click="openCreateDialog">
+            루트 도메인 추가
+          </el-button>
+        </div>
+      </template>
+      <el-table
+        :data="domainStore.domainTree"
+        size="small"
+        row-key="code"
+        :tree-props="{ children: 'children' }"
+        :default-expand-all="false"
+        highlight-current-row
+        @row-click="handleDomainClick"
+        :header-cell-style="{ background: '#fafafa' }"
+        style="cursor: pointer"
+      >
+        <el-table-column prop="code" label="코드" width="160" />
+        <el-table-column prop="displayName" label="이름" min-width="140" />
+        <el-table-column label="필수 분류" min-width="160">
+          <template #default="{ row }">
+            <el-tag
+              v-for="f in (row.requiredFacets ?? [])"
+              :key="f"
+              size="small"
+              style="margin-right: 4px"
+            >
+              {{ facetLabel(f) }}
+            </el-tag>
+            <span v-if="!(row.requiredFacets ?? []).length" style="color: #c0c4cc">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="상태" width="70" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.isActive ? 'success' : 'danger'" size="small">
+              {{ row.isActive ? '활성' : '비활성' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="" width="160" align="center">
+          <template #default="{ row }">
+            <el-tooltip
+              v-if="!canAddChild(row)"
+              :content="`업무프로세스 단계까지 도달. ${DOMAIN_GUIDANCE.facetGuide}`"
+              placement="top"
+            >
+              <el-button text size="small" type="info" disabled @click.stop>
                 하위 추가
               </el-button>
-              <el-button text size="small" type="primary" @click.stop="openEditDialog(row)">
+            </el-tooltip>
+            <el-button v-else text size="small" type="success" @click.stop="openCreateChildDialog(row)">
+              하위 추가
+            </el-button>
+            <el-button text size="small" type="primary" @click.stop="openEditDialog(row)">
+              수정
+            </el-button>
+            <el-button text size="small" type="danger" @click.stop="handleDelete(row)">
+              삭제
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 분류 상세 (선택된 도메인) -->
+    <el-card v-if="selectedDomain" shadow="never">
+      <template #header>
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <span style="font-weight: 600">{{ selectedDomainEntity?.displayName }} 분류 구조</span>
+          <el-tag size="small">{{ selectedDomain }}</el-tag>
+        </div>
+      </template>
+
+      <div style="margin-bottom: 12px">
+        <span style="font-size: 13px; color: #606266">문서 등록 시 필수 분류:</span>
+        <el-tag
+          v-for="f in (selectedDomainEntity?.requiredFacets ?? [])"
+          :key="f"
+          size="small"
+          style="margin-left: 6px"
+        >
+          {{ facetLabel(f as string) }}
+        </el-tag>
+        <span v-if="!(selectedDomainEntity?.requiredFacets ?? []).length" style="font-size: 13px; color: #c0c4cc; margin-left: 6px">미설정</span>
+      </div>
+
+      <div style="margin-bottom: 12px">
+        <span style="font-size: 13px; color: #606266">중복 방지 기준:</span>
+        <el-tag
+          v-for="k in (selectedDomainEntity?.ssotKey ?? [])"
+          :key="k"
+          size="small"
+          type="warning"
+          style="margin-left: 6px"
+        >
+          {{ facetLabel(k as string) }}
+        </el-tag>
+        <span v-if="(selectedDomainEntity?.ssotKey ?? []).length" style="font-size: 11px; color: #909399; margin-left: 8px">
+          같은 조합에 활성 문서 1개만 허용
+        </span>
+        <span v-else style="font-size: 13px; color: #c0c4cc; margin-left: 6px">미설정</span>
+      </div>
+
+      <!-- 분류 항목 -->
+      <div v-for="facetType in (selectedDomainEntity?.requiredFacets ?? [])" :key="facetType" style="margin-bottom: 16px">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+          <h4 style="margin: 0; font-size: 14px">{{ facetLabel(facetType as string) }}</h4>
+          <el-button type="primary" size="small" @click="openFacetCreateDialog(facetType as string)">
+            추가
+          </el-button>
+        </div>
+        <el-table
+          :data="getFacetData(facetType as string).filter((f: FacetMasterEntity) => f.isActive)"
+          size="small"
+          :header-cell-style="{ background: '#fafafa' }"
+        >
+          <el-table-column prop="code" label="코드" width="160" />
+          <el-table-column prop="displayName" label="이름" min-width="150" />
+          <el-table-column prop="sortOrder" label="순서" width="60" align="center" />
+          <el-table-column label="갱신주기" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.tier" size="small" type="info">{{ TIER_LABELS[row.tier] ?? row.tier }}</el-tag>
+              <span v-else style="color: #c0c4cc">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="" width="100" align="center">
+            <template #default="{ row }">
+              <el-button text size="small" type="primary" @click="openFacetEditDialog(row)">
                 수정
               </el-button>
-              <el-button text size="small" type="danger" @click.stop="handleDelete(row)">
+              <el-button text size="small" type="danger" @click="handleFacetDelete(row)">
                 삭제
               </el-button>
             </template>
           </el-table-column>
         </el-table>
-      </el-card>
-
-      <!-- 분류 상세 -->
-      <div style="flex: 1" v-if="selectedDomain">
-        <el-card shadow="never">
-          <template #header>
-            <div style="display: flex; justify-content: space-between; align-items: center">
-              <span style="font-weight: 600">{{ getSelectedDomain()?.displayName }} 분류 구조</span>
-              <el-tag size="small">{{ selectedDomain }}</el-tag>
-            </div>
-          </template>
-
-          <div style="margin-bottom: 12px">
-            <span style="font-size: 13px; color: #606266">문서 등록 시 필수 분류:</span>
-            <el-tag
-              v-for="f in (getSelectedDomain()?.requiredFacets ?? [])"
-              :key="f"
-              size="small"
-              style="margin-left: 6px"
-            >
-              {{ facetLabel(f as string) }}
-            </el-tag>
-          </div>
-
-          <div style="margin-bottom: 12px">
-            <span style="font-size: 13px; color: #606266">중복 방지 기준:</span>
-            <el-tag
-              v-for="k in (getSelectedDomain()?.ssotKey ?? [])"
-              :key="k"
-              size="small"
-              type="warning"
-              style="margin-left: 6px"
-            >
-              {{ facetLabel(k as string) }}
-            </el-tag>
-            <span style="font-size: 11px; color: #909399; margin-left: 8px">
-              같은 조합에 활성 문서 1개만 허용
-            </span>
-          </div>
-
-          <!-- 분류 항목 -->
-          <div v-for="facetType in (getSelectedDomain()?.requiredFacets ?? [])" :key="facetType" style="margin-bottom: 16px">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
-              <h4 style="margin: 0; font-size: 14px">{{ facetLabel(facetType as string) }}</h4>
-              <el-button type="primary" size="small" @click="openFacetCreateDialog(facetType as string)">
-                추가
-              </el-button>
-            </div>
-            <el-table
-              :data="getFacetData(facetType as string).filter((f: FacetMasterEntity) => f.isActive)"
-              size="small"
-              :header-cell-style="{ background: '#fafafa' }"
-            >
-              <el-table-column prop="code" label="코드" width="160" />
-              <el-table-column prop="displayName" label="이름" min-width="150" />
-              <el-table-column prop="sortOrder" label="순서" width="60" align="center" />
-              <el-table-column label="갱신주기" width="90" align="center">
-                <template #default="{ row }">
-                  <el-tag v-if="row.tier" size="small" type="info">{{ TIER_LABELS[row.tier] ?? row.tier }}</el-tag>
-                  <span v-else style="color: #c0c4cc">-</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="" width="100" align="center">
-                <template #default="{ row }">
-                  <el-button text size="small" type="primary" @click="openFacetEditDialog(row)">
-                    수정
-                  </el-button>
-                  <el-button text size="small" type="danger" @click="handleFacetDelete(row)">
-                    삭제
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-card>
       </div>
 
-      <el-card v-else shadow="never" style="flex: 1">
-        <el-empty description="도메인을 선택하세요" />
-      </el-card>
-    </div>
+      <el-empty
+        v-if="!(selectedDomainEntity?.requiredFacets ?? []).length"
+        description="필수 분류가 설정되지 않았습니다. 도메인 수정에서 분류 유형을 추가하세요."
+        :image-size="60"
+      />
+    </el-card>
 
     <!-- 도메인 생성/수정 다이얼로그 -->
     <el-dialog
