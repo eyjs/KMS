@@ -47,6 +47,12 @@ const router = createRouter({
       component: () => import('@/views/AdminUsersView.vue'),
       meta: { roles: ['ADMIN'] },
     },
+    {
+      path: '/admin/settings',
+      name: 'AdminSettings',
+      component: () => import('@/views/AdminSettingsView.vue'),
+      meta: { roles: ['ADMIN'] },
+    },
     // 기존 라우트 리다이렉트
     {
       path: '/documents',
@@ -66,7 +72,7 @@ const router = createRouter({
     },
     {
       path: '/settings',
-      redirect: '/admin/users',
+      redirect: '/admin/settings',
     },
   ],
 })

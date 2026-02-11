@@ -61,6 +61,33 @@ function handleLogout() {
         </el-button>
       </div>
 
+      <!-- 접속정보 -->
+      <div style="flex-shrink: 0; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); background: #1d1e2c">
+        <div v-if="!collapsed" style="display: flex; align-items: center; justify-content: space-between">
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+            <el-avatar :size="28" style="background: #409eff; flex-shrink: 0">
+              {{ auth.user?.name?.charAt(0) ?? '' }}
+            </el-avatar>
+            <div style="min-width: 0">
+              <div style="color: #e0e0e0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+                {{ auth.user?.name }}
+              </div>
+              <div style="color: #6b6e7e; font-size: 11px">
+                {{ ROLE_LABELS[auth.user?.role ?? ''] ?? auth.user?.role }}
+              </div>
+            </div>
+          </div>
+          <el-button text size="small" style="color: #6b6e7e" @click="handleLogout">
+            로그아웃
+          </el-button>
+        </div>
+        <div v-else style="text-align: center">
+          <el-avatar :size="28" style="background: #409eff">
+            {{ auth.user?.name?.charAt(0) ?? '' }}
+          </el-avatar>
+        </div>
+      </div>
+
       <el-menu
         :default-active="activeMenu"
         :router="true"
@@ -111,35 +138,13 @@ function handleLogout() {
             <el-icon><component is="User" /></el-icon>
             <template #title><span>사용자 관리</span></template>
           </el-menu-item>
+          <el-menu-item index="/admin/settings">
+            <el-icon><component is="Operation" /></el-icon>
+            <template #title><span>시스템 설정</span></template>
+          </el-menu-item>
         </template>
       </el-menu>
 
-      <!-- 하단 사용자 정보 -->
-      <div style="flex-shrink: 0; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.06); background: #1d1e2c">
-        <div v-if="!collapsed" style="display: flex; align-items: center; justify-content: space-between">
-          <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
-            <el-avatar :size="28" style="background: #409eff; flex-shrink: 0">
-              {{ auth.user?.name?.charAt(0) ?? '' }}
-            </el-avatar>
-            <div style="min-width: 0">
-              <div style="color: #e0e0e0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
-                {{ auth.user?.name }}
-              </div>
-              <div style="color: #6b6e7e; font-size: 11px">
-                {{ ROLE_LABELS[auth.user?.role ?? ''] ?? auth.user?.role }}
-              </div>
-            </div>
-          </div>
-          <el-button text size="small" style="color: #6b6e7e" @click="handleLogout">
-            로그아웃
-          </el-button>
-        </div>
-        <div v-else style="text-align: center">
-          <el-avatar :size="28" style="background: #409eff">
-            {{ auth.user?.name?.charAt(0) ?? '' }}
-          </el-avatar>
-        </div>
-      </div>
     </el-aside>
 
     <el-container>

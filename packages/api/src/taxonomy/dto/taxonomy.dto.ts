@@ -124,6 +124,56 @@ export class UpdateFacetDto {
   sortOrder?: number
 }
 
+export class CreateFacetTypeDto {
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(50)
+  @Matches(/^[a-zA-Z][a-zA-Z0-9]*$/, {
+    message: '코드는 영문자로 시작하고 영문자/숫자만 허용됩니다',
+  })
+  code!: string
+
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(100)
+  displayName!: string
+
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(5)
+  codePrefix!: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number
+}
+
+export class UpdateFacetTypeDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  displayName?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  codePrefix?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number
+}
+
 export class UpdateDomainDto {
   @IsOptional()
   @IsString()

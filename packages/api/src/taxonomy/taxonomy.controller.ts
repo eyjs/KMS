@@ -17,7 +17,7 @@ import { TaxonomyService } from './taxonomy.service'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
-import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from './dto/taxonomy.dto'
+import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto, CreateFacetTypeDto, UpdateFacetTypeDto } from './dto/taxonomy.dto'
 
 @ApiTags('taxonomy')
 @Controller()
@@ -25,6 +25,48 @@ import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from
 @ApiBearerAuth()
 export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomyService) {}
+
+  // ============================================================
+  // Facet Type CRUD
+  // ============================================================
+
+  @Get('facet-types')
+  @ApiOperation({ summary: '분류 유형 목록 조회' })
+  async getFacetTypes() {
+    return this.taxonomyService.getFacetTypes()
+  }
+
+  @Post('facet-types')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: '분류 유형 생성 (ADMIN)' })
+  async createFacetType(@Body() dto: CreateFacetTypeDto) {
+    return this.taxonomyService.createFacetType(dto)
+  }
+
+  @Put('facet-types/:code')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: '분류 유형 수정 (ADMIN)' })
+  async updateFacetType(
+    @Param('code') code: string,
+    @Body() dto: UpdateFacetTypeDto,
+  ) {
+    return this.taxonomyService.updateFacetType(code, dto)
+  }
+
+  @Delete('facet-types/:code')
+  @Roles('ADMIN')
+  @UseGuards(RolesGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: '분류 유형 삭제 (ADMIN, soft delete)' })
+  async deleteFacetType(@Param('code') code: string) {
+    await this.taxonomyService.deleteFacetType(code)
+  }
+
+  // ============================================================
+  // Domains
+  // ============================================================
 
   @Get('domains')
   @ApiOperation({ summary: '도메인 목록 조회 (트리 구조)' })

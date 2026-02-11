@@ -136,6 +136,16 @@ export interface FacetMasterEntity {
   isActive: boolean
 }
 
+export interface FacetTypeMasterEntity {
+  code: string
+  displayName: string
+  codePrefix: string
+  description: string | null
+  sortOrder: number
+  isActive: boolean
+  createdAt: string
+}
+
 export interface ApiKeyEntity {
   id: string
   name: string
@@ -256,6 +266,21 @@ export interface UpdateDomainDto {
   description?: string
   requiredFacets?: string[]
   ssotKey?: string[]
+  sortOrder?: number
+}
+
+export interface CreateFacetTypeDto {
+  code: string
+  displayName: string
+  codePrefix: string
+  description?: string
+  sortOrder?: number
+}
+
+export interface UpdateFacetTypeDto {
+  displayName?: string
+  codePrefix?: string
+  description?: string
   sortOrder?: number
 }
 

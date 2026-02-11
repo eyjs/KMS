@@ -4,14 +4,15 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
-import { FACET_TYPE_LABELS } from '@kms/shared'
 import type { DocumentEntity, DomainMasterEntity, FacetMasterEntity } from '@kms/shared'
 import { useSearchHistory } from '@/composables/useSearchHistory'
+import { useFacetTypes } from '@/composables/useFacetTypes'
 import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 const route = useRoute()
 const { searchHistory, addSearch, clearHistory } = useSearchHistory()
+const { loadFacetTypes, facetLabel, allFacetTypeCodes } = useFacetTypes()
 
 const keyword = ref('')
 const domainFilter = ref<string>()
@@ -21,7 +22,6 @@ const domains = ref<DomainMasterEntity[]>([])
 // 분류 필터
 const facetFilters = ref<Record<string, string>>({})
 const facetOptions = ref<Record<string, FacetMasterEntity[]>>({})
-const facetTypes = ['carrier', 'product', 'docType']
 
 const results = ref<DocumentEntity[]>([])
 const total = ref(0)
@@ -73,6 +73,7 @@ function handleSelectHistory(item: { value: string }) {
 }
 
 onMounted(async () => {
+  await loadFacetTypes()
   const { data } = await taxonomyApi.getDomainsFlat()
   domains.value = data
   await loadFacets()
@@ -82,7 +83,7 @@ onMounted(async () => {
 
 async function restoreFromQuery() {
   const q = route.query
-  if (!q.q && !q.domain && !q.lifecycle && !facetTypes.some((ft) => q[ft])) {
+  if (!q.q && !q.domain && !q.lifecycle && !allFacetTypeCodes.value.some((ft) => q[ft])) {
     // query param 없으면 복원 불필요
     nextTick(() => searchInputRef.value?.focus())
     return
@@ -100,7 +101,7 @@ async function restoreFromQuery() {
   if (q.domain) {
     await loadFacets(q.domain as string)
   }
-  for (const ft of facetTypes) {
+  for (const ft of allFacetTypeCodes.value) {
     if (q[ft]) facetFilters.value[ft] = q[ft] as string
   }
   isRestoring.value = false
@@ -114,14 +115,14 @@ function syncToQuery() {
   if (domainFilter.value) query.domain = domainFilter.value
   if (lifecycleFilter.value) query.lifecycle = lifecycleFilter.value
   if (sortBy.value !== 'relevance') query.sort = sortBy.value
-  for (const ft of facetTypes) {
+  for (const ft of allFacetTypeCodes.value) {
     if (facetFilters.value[ft]) query[ft] = facetFilters.value[ft]
   }
   router.replace({ query })
 }
 
 async function loadFacets(domain?: string) {
-  const fetches = facetTypes.map((ft) =>
+  const fetches = allFacetTypeCodes.value.map((ft) =>
     taxonomyApi.getFacets(ft, domain).then(({ data }) => ({ ft, data })),
   )
   const res = await Promise.all(fetches)
@@ -140,7 +141,7 @@ watch(sortBy, () => {
 // 도메인 변경 시 해당 도메인의 facet만 로드 (URL 복원 중에는 스킵)
 watch(domainFilter, async (domain) => {
   if (isRestoring.value) return
-  for (const ft of facetTypes) {
+  for (const ft of allFacetTypeCodes.value) {
     facetFilters.value[ft] = ''
   }
   await loadFacets(domain || undefined)
@@ -194,7 +195,7 @@ function buildClassificationPath(doc: DocumentEntity): string {
   const domainObj = domains.value.find((d) => d.code === doc.domain)
   const domainName = domainObj?.displayName ?? doc.domain
   const facetParts: string[] = []
-  for (const ft of facetTypes) {
+  for (const ft of allFacetTypeCodes.value) {
     const code = doc.classifications[ft]
     if (!code) continue
     const opts = facetOptions.value[ft] ?? []
@@ -209,7 +210,7 @@ function clearFilters() {
   domainFilter.value = undefined
   lifecycleFilter.value = undefined
   sortBy.value = 'relevance'
-  for (const ft of facetTypes) {
+  for (const ft of allFacetTypeCodes.value) {
     facetFilters.value[ft] = ''
   }
   results.value = []
@@ -258,10 +259,10 @@ function handleRetry() {
           <el-option label="만료" value="DEPRECATED" />
         </el-select>
         <el-select
-          v-for="ft in facetTypes"
+          v-for="ft in allFacetTypeCodes"
           :key="ft"
           v-model="facetFilters[ft]"
-          :placeholder="FACET_TYPE_LABELS[ft] ?? ft"
+          :placeholder="facetLabel(ft)"
           clearable
           filterable
           size="small"

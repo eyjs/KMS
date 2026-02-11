@@ -2,8 +2,9 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
-import { FACET_TYPE_LABELS, LIFECYCLE_LABELS } from '@kms/shared'
+import { LIFECYCLE_LABELS } from '@kms/shared'
 import type { DocumentEntity, DomainMasterEntity } from '@kms/shared'
+import { useFacetTypes } from '@/composables/useFacetTypes'
 
 const props = defineProps<{
   sourceDocument: DocumentEntity
@@ -14,6 +15,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select', doc: DocumentEntity): void
 }>()
+
+const { facetLabel } = useFacetTypes()
 
 const domains = ref<DomainMasterEntity[]>([])
 const activeDomain = ref('')
@@ -222,7 +225,7 @@ function lifecycleType(lifecycle: string): string {
             <span v-if="doc.docCode" style="margin-right: 8px">{{ doc.docCode }}</span>
             <span>{{ doc.domain }}</span>
             <template v-for="(value, key) in doc.classifications" :key="key">
-              <span style="margin-left: 6px">{{ FACET_TYPE_LABELS[String(key)] ?? key }}: {{ value }}</span>
+              <span style="margin-left: 6px">{{ facetLabel(String(key)) }}: {{ value }}</span>
             </template>
           </div>
         </div>

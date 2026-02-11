@@ -6,18 +6,138 @@ import {
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import {
-  FACET_TYPE_CODE_PREFIX,
   FACET_DEFAULT_PREFIX,
   DOMAIN_MAX_DEPTH,
   DOMAIN_LEVEL_LABELS,
   DOMAIN_GUIDANCE,
 } from '@kms/shared'
 import type { DomainMasterEntity } from '@kms/shared'
-import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from './dto/taxonomy.dto'
+import { CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto, CreateFacetTypeDto, UpdateFacetTypeDto } from './dto/taxonomy.dto'
 
 @Injectable()
 export class TaxonomyService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ============================================================
+  // Facet Type CRUD
+  // ============================================================
+
+  async getFacetTypes() {
+    return this.prisma.facetTypeMaster.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    })
+  }
+
+  async getAllFacetTypes() {
+    return this.prisma.facetTypeMaster.findMany({
+      orderBy: { sortOrder: 'asc' },
+    })
+  }
+
+  async createFacetType(dto: CreateFacetTypeDto) {
+    const existing = await this.prisma.facetTypeMaster.findUnique({
+      where: { code: dto.code },
+    })
+    if (existing) {
+      throw new ConflictException(`이미 존재하는 분류 유형 코드입니다: ${dto.code}`)
+    }
+    return this.prisma.facetTypeMaster.create({
+      data: {
+        code: dto.code,
+        displayName: dto.displayName,
+        codePrefix: dto.codePrefix,
+        description: dto.description ?? null,
+        sortOrder: dto.sortOrder ?? 0,
+      },
+    })
+  }
+
+  async updateFacetType(code: string, dto: UpdateFacetTypeDto) {
+    const facetType = await this.prisma.facetTypeMaster.findUnique({
+      where: { code },
+    })
+    if (!facetType) {
+      throw new NotFoundException(`분류 유형을 찾을 수 없습니다: ${code}`)
+    }
+    return this.prisma.facetTypeMaster.update({
+      where: { code },
+      data: {
+        ...(dto.displayName !== undefined && { displayName: dto.displayName }),
+        ...(dto.codePrefix !== undefined && { codePrefix: dto.codePrefix }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+      },
+    })
+  }
+
+  async deleteFacetType(code: string): Promise<void> {
+    const facetType = await this.prisma.facetTypeMaster.findUnique({
+      where: { code },
+    })
+    if (!facetType) {
+      throw new NotFoundException(`분류 유형을 찾을 수 없습니다: ${code}`)
+    }
+
+    // 1) 분류 값이 있으면 거부
+    const facetCount = await this.prisma.facetMaster.count({
+      where: { facetType: code, isActive: true },
+    })
+    if (facetCount > 0) {
+      throw new BadRequestException(
+        `이 분류 유형에 ${facetCount}개의 분류 값이 등록되어 있습니다. 먼저 분류 값을 삭제하세요.`,
+      )
+    }
+
+    // 2) 도메인 requiredFacets/ssotKey에서 참조 중이면 거부
+    const domains = await this.prisma.domainMaster.findMany({
+      where: { isActive: true },
+      select: { code: true, displayName: true, requiredFacets: true, ssotKey: true },
+    })
+    const referencingDomains = domains.filter((d) => {
+      const rf = (d.requiredFacets as string[]) ?? []
+      const sk = (d.ssotKey as string[]) ?? []
+      return rf.includes(code) || sk.includes(code)
+    })
+    if (referencingDomains.length > 0) {
+      const names = referencingDomains.map((d) => d.displayName).join(', ')
+      throw new BadRequestException(
+        `다음 도메인에서 사용 중입니다: ${names}. 도메인 설정에서 먼저 제거하세요.`,
+      )
+    }
+
+    // 3) 문서 분류에서 사용 중이면 거부
+    const classCount = await this.prisma.classification.count({
+      where: { facetType: code },
+    })
+    if (classCount > 0) {
+      throw new BadRequestException(
+        `${classCount}건의 문서가 이 분류 유형을 사용하고 있습니다. 삭제할 수 없습니다.`,
+      )
+    }
+
+    await this.prisma.facetTypeMaster.update({
+      where: { code },
+      data: { isActive: false },
+    })
+  }
+
+  /** requiredFacets / ssotKey에 유효한 facet type 코드인지 검증 */
+  private async validateFacetTypeCodes(codes: string[]): Promise<void> {
+    const validTypes = await this.prisma.facetTypeMaster.findMany({
+      where: { isActive: true },
+      select: { code: true },
+    })
+    const validSet = new Set(validTypes.map((t) => t.code))
+    const invalid = codes.filter((c) => !validSet.has(c))
+    if (invalid.length > 0) {
+      throw new BadRequestException(`유효하지 않은 분류 유형입니다: ${invalid.join(', ')}`)
+    }
+  }
+
+  // ============================================================
+  // Domains
+  // ============================================================
 
   async getDomains(): Promise<DomainMasterEntity[]> {
     const all = await this.prisma.domainMaster.findMany({
@@ -184,6 +304,14 @@ export class TaxonomyService {
     // 코드 자동 생성 (별칭 미제공 시)
     const code = dto.code || await this.generateDomainCode(dto.parentCode)
 
+    // requiredFacets 유효성 검증
+    if (dto.requiredFacets && dto.requiredFacets.length > 0) {
+      await this.validateFacetTypeCodes(dto.requiredFacets)
+    }
+    if (dto.ssotKey && dto.ssotKey.length > 0) {
+      await this.validateFacetTypeCodes(dto.ssotKey)
+    }
+
     // 부모가 있고 requiredFacets/ssotKey가 미제공이면 부모에서 상속
     let requiredFacets = dto.requiredFacets ?? []
     let ssotKey = dto.ssotKey ?? []
@@ -223,6 +351,13 @@ export class TaxonomyService {
     })
     if (!domain) {
       throw new NotFoundException(`도메인을 찾을 수 없습니다: ${code}`)
+    }
+
+    if (dto.requiredFacets && dto.requiredFacets.length > 0) {
+      await this.validateFacetTypeCodes(dto.requiredFacets)
+    }
+    if (dto.ssotKey && dto.ssotKey.length > 0) {
+      await this.validateFacetTypeCodes(dto.ssotKey)
     }
 
     return this.prisma.domainMaster.update({
@@ -265,9 +400,13 @@ export class TaxonomyService {
     })
   }
 
-  /** Facet 코드 자동 생성 */
+  /** Facet 코드 자동 생성 — DB에서 codePrefix 조회 */
   async generateFacetCode(facetType: string): Promise<string> {
-    const prefix = FACET_TYPE_CODE_PREFIX[facetType] ?? FACET_DEFAULT_PREFIX
+    const ft = await this.prisma.facetTypeMaster.findUnique({
+      where: { code: facetType },
+      select: { codePrefix: true },
+    })
+    const prefix = ft?.codePrefix ?? FACET_DEFAULT_PREFIX
     const last = await this.prisma.facetMaster.findFirst({
       where: { facetType, code: { startsWith: prefix } },
       orderBy: { code: 'desc' },

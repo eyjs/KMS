@@ -2,8 +2,8 @@
 import { ref, reactive, watch, computed } from 'vue'
 import { documentsApi } from '@/api/documents'
 import { taxonomyApi } from '@/api/taxonomy'
-import { FACET_TYPE_LABELS } from '@kms/shared'
 import type { FacetMasterEntity, SecurityLevel, DomainMasterEntity, DocumentEntity } from '@kms/shared'
+import { useFacetTypes } from '@/composables/useFacetTypes'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
@@ -35,9 +35,7 @@ const duplicateDoc = ref<DocumentEntity | null>(null)
 const duplicateChecking = ref(false)
 let duplicateTimer: ReturnType<typeof setTimeout> | null = null
 
-function facetLabel(facetType: string): string {
-  return FACET_TYPE_LABELS[facetType] ?? facetType
-}
+const { facetLabel } = useFacetTypes()
 
 const SECURITY_OPTIONS = [
   { value: 'PUBLIC', label: '공개 - 외부업체 포함' },

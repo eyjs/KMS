@@ -3,8 +3,9 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
-import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
+import { LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
 import type { DocumentEntity, RelationType, RelationGraphResponse } from '@kms/shared'
+import { useFacetTypes } from '@/composables/useFacetTypes'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
 import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
@@ -35,11 +36,10 @@ const RELATION_OPTIONS: Array<{ value: RelationType; label: string; desc: string
   { value: 'SUPERSEDES', label: '대체', desc: '이 문서가 대상을 대체' },
 ]
 
-function facetLabel(key: string): string {
-  return FACET_TYPE_LABELS[key] ?? key
-}
+const { loadFacetTypes, facetLabel } = useFacetTypes()
 
 onMounted(async () => {
+  await loadFacetTypes()
   if (sourceId.value) {
     loading.value = true
     try {

@@ -2,11 +2,14 @@
 import { ref, onMounted } from 'vue'
 import { documentsApi } from '@/api/documents'
 import type { DocumentHistoryEntry } from '@/api/documents'
-import { FACET_TYPE_LABELS, ACTION_LABELS, ACTION_TAG_TYPES, RELATION_TYPE_LABELS } from '@kms/shared'
+import { ACTION_LABELS, ACTION_TAG_TYPES, RELATION_TYPE_LABELS } from '@kms/shared'
+import { useFacetTypes } from '@/composables/useFacetTypes'
 
 const props = defineProps<{
   documentId: string
 }>()
+
+const { facetLabel } = useFacetTypes()
 
 const history = ref<DocumentHistoryEntry[]>([])
 const loading = ref(false)
@@ -44,7 +47,7 @@ function formatChanges(action: string, changes: Record<string, unknown> | null):
   if (changes.classifications && typeof changes.classifications === 'object') {
     const cls = changes.classifications as Record<string, string>
     return Object.entries(cls)
-      .map(([k, v]) => `${FACET_TYPE_LABELS[k] ?? k}: ${v}`)
+      .map(([k, v]) => `${facetLabel(k)}: ${v}`)
       .join(', ')
   }
 

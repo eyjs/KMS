@@ -107,16 +107,6 @@ export const FRESHNESS_LABELS: Record<string, string> = {
 }
 
 // ============================================================
-// Facet 타입 한국어 라벨
-// ============================================================
-
-export const FACET_TYPE_LABELS: Record<string, string> = {
-  carrier: '보험사',
-  product: '상품',
-  docType: '문서유형',
-}
-
-// ============================================================
 // 허용 파일 형식
 // ============================================================
 
@@ -128,14 +118,7 @@ export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 // 코드 자동 생성
 // ============================================================
 
-/** Facet 타입별 코드 접두어 */
-export const FACET_TYPE_CODE_PREFIX: Record<string, string> = {
-  carrier: 'C',
-  product: 'P',
-  docType: 'T',
-}
-
-/** 기본 Facet 접두어 (매핑에 없는 타입용) */
+/** 기본 Facet 접두어 (DB에 없는 타입용 폴백) */
 export const FACET_DEFAULT_PREFIX = 'F'
 
 /** 도메인 최대 깊이 — 루트(0) + 3단계 업무 세분화 */

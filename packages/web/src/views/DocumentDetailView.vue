@@ -6,8 +6,9 @@ import { relationsApi } from '@/api/relations'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
-import { LIFECYCLE_TRANSITIONS, FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
+import { LIFECYCLE_TRANSITIONS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
 import { useRecentDocs } from '@/composables/useRecentDocs'
+import { useFacetTypes } from '@/composables/useFacetTypes'
 import type { DocumentEntity, Lifecycle, RelationEntity, RelationType, FacetMasterEntity } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
@@ -25,6 +26,7 @@ const auth = useAuthStore()
 const domainStore = useDomainStore()
 
 const { addVisit } = useRecentDocs()
+const { loadFacetTypes, facetLabel } = useFacetTypes()
 const doc = ref<DocumentEntity | null>(null)
 const relations = ref<{ asSource: RelationEntity[]; asTarget: RelationEntity[] }>({ asSource: [], asTarget: [] })
 const loading = ref(true)
@@ -46,10 +48,6 @@ const SECURITY_OPTIONS = [
 
 const id = computed(() => route.params.id as string)
 const domainCode = computed(() => route.params.domainCode as string)
-
-function facetLabel(facetType: string): string {
-  return FACET_TYPE_LABELS[facetType] ?? facetType
-}
 
 function copyDocLink() {
   if (!doc.value) return
@@ -79,6 +77,7 @@ onMounted(async () => {
       documentsApi.get(id.value),
       relationsApi.getByDocument(id.value),
       domainStore.loadDomains(),
+      loadFacetTypes(),
     ])
     doc.value = docRes.data
     relations.value = relRes.data

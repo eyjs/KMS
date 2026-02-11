@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useDomainStore } from '@/stores/domain'
-import { FACET_TYPE_LABELS, DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
+import { DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
 import type { DomainMasterEntity, FacetMasterEntity, CreateDomainDto, UpdateDomainDto, CreateFacetDto, UpdateFacetDto } from '@kms/shared'
+import { useFacetTypes } from '@/composables/useFacetTypes'
 
 const TIER_LABELS: Record<string, string> = {
   HOT: '수시 갱신',
@@ -12,9 +13,7 @@ const TIER_LABELS: Record<string, string> = {
   COLD: '장기 보관',
 }
 
-function facetLabel(key: string): string {
-  return FACET_TYPE_LABELS[key] ?? key
-}
+const { loadFacetTypes, facetLabel, allFacetTypeCodes } = useFacetTypes()
 
 const domainStore = useDomainStore()
 const facets = ref<Record<string, FacetMasterEntity[]>>({})
@@ -43,7 +42,7 @@ const domainsWithDepth = computed<FlatDomainRow[]>(() => {
 onMounted(async () => {
   loading.value = true
   try {
-    await domainStore.loadDomains()
+    await Promise.all([domainStore.loadDomains(), loadFacetTypes()])
   } finally {
     loading.value = false
   }
@@ -109,10 +108,15 @@ const formData = ref({
   code: '',
   displayName: '',
   description: '',
-  requiredFacets: '',
-  ssotKey: '',
+  requiredFacets: [] as string[],
+  ssotKey: [] as string[],
   sortOrder: 0,
   parentCode: null as string | null,
+})
+
+// requiredFacets에서 제거된 항목을 ssotKey에서도 자동 제거
+watch(() => formData.value.requiredFacets, (newFacets) => {
+  formData.value.ssotKey = formData.value.ssotKey.filter((k) => newFacets.includes(k))
 })
 
 function openCreateDialog() {
@@ -122,8 +126,8 @@ function openCreateDialog() {
     code: '',
     displayName: '',
     description: '',
-    requiredFacets: '',
-    ssotKey: '',
+    requiredFacets: [],
+    ssotKey: [],
     sortOrder: 0,
     parentCode: null,
   }
@@ -142,8 +146,8 @@ function openCreateChildDialog(parent: FlatDomainRow) {
     code: '',
     displayName: '',
     description: '',
-    requiredFacets: '',
-    ssotKey: '',
+    requiredFacets: [],
+    ssotKey: [],
     sortOrder: 0,
     parentCode: parent.code,
   }
@@ -157,16 +161,12 @@ function openEditDialog(domain: FlatDomainRow) {
     code: domain.code,
     displayName: domain.displayName,
     description: domain.description ?? '',
-    requiredFacets: (domain.requiredFacets ?? []).join(', '),
-    ssotKey: (domain.ssotKey ?? []).join(', '),
+    requiredFacets: [...(domain.requiredFacets ?? [])],
+    ssotKey: [...(domain.ssotKey ?? [])],
     sortOrder: domain.sortOrder,
     parentCode: domain.parentCode ?? null,
   }
   dialogVisible.value = true
-}
-
-function parseCommaSeparated(value: string): string[] {
-  return value.split(',').map((s) => s.trim()).filter(Boolean)
 }
 
 async function handleDialogSubmit() {
@@ -177,8 +177,8 @@ async function handleDialogSubmit() {
         displayName: formData.value.displayName,
         parentCode: formData.value.parentCode ?? undefined,
         description: formData.value.description || undefined,
-        requiredFacets: parseCommaSeparated(formData.value.requiredFacets),
-        ssotKey: parseCommaSeparated(formData.value.ssotKey),
+        requiredFacets: formData.value.requiredFacets,
+        ssotKey: formData.value.ssotKey,
         sortOrder: formData.value.sortOrder,
       }
       // 고급 옵션에서 별칭을 입력한 경우에만 코드 전달
@@ -191,8 +191,8 @@ async function handleDialogSubmit() {
       const dto: UpdateDomainDto = {
         displayName: formData.value.displayName,
         description: formData.value.description || undefined,
-        requiredFacets: parseCommaSeparated(formData.value.requiredFacets),
-        ssotKey: parseCommaSeparated(formData.value.ssotKey),
+        requiredFacets: formData.value.requiredFacets,
+        ssotKey: formData.value.ssotKey,
         sortOrder: formData.value.sortOrder,
       }
       await taxonomyApi.updateDomain(formData.value.code, dto)
@@ -541,11 +541,15 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
               </div>
             </el-form-item>
             <el-form-item label="필수 분류">
-              <el-input v-model="formData.requiredFacets" placeholder="예: carrier, product, docType" />
-              <div style="font-size: 11px; color: #909399; margin-top: 2px">문서 등록 시 반드시 선택해야 하는 분류 (carrier=보험사, product=상품, docType=문서유형)</div>
+              <el-select v-model="formData.requiredFacets" multiple placeholder="분류 유형 선택" style="width: 100%">
+                <el-option v-for="ft in allFacetTypeCodes" :key="ft" :label="facetLabel(ft)" :value="ft" />
+              </el-select>
+              <div style="font-size: 11px; color: #909399; margin-top: 2px">문서 등록 시 반드시 선택해야 하는 분류 유형</div>
             </el-form-item>
             <el-form-item label="중복 방지 기준">
-              <el-input v-model="formData.ssotKey" placeholder="예: carrier, product, docType" />
+              <el-select v-model="formData.ssotKey" multiple placeholder="분류 유형 선택" style="width: 100%">
+                <el-option v-for="ft in formData.requiredFacets" :key="ft" :label="facetLabel(ft)" :value="ft" />
+              </el-select>
               <div style="font-size: 11px; color: #909399; margin-top: 2px">같은 분류 조합에 활성 문서를 1개만 허용</div>
             </el-form-item>
             <el-form-item label="정렬 순서">
@@ -555,11 +559,15 @@ async function handleFacetDelete(facet: FacetMasterEntity) {
         </template>
         <template v-else>
           <el-form-item label="필수 분류">
-            <el-input v-model="formData.requiredFacets" placeholder="예: carrier, product, docType" />
-            <div style="font-size: 11px; color: #909399; margin-top: 2px">문서 등록 시 반드시 선택해야 하는 분류 (carrier=보험사, product=상품, docType=문서유형)</div>
+            <el-select v-model="formData.requiredFacets" multiple placeholder="분류 유형 선택" style="width: 100%">
+              <el-option v-for="ft in allFacetTypeCodes" :key="ft" :label="facetLabel(ft)" :value="ft" />
+            </el-select>
+            <div style="font-size: 11px; color: #909399; margin-top: 2px">문서 등록 시 반드시 선택해야 하는 분류 유형</div>
           </el-form-item>
           <el-form-item label="중복 방지 기준">
-            <el-input v-model="formData.ssotKey" placeholder="예: carrier, product, docType" />
+            <el-select v-model="formData.ssotKey" multiple placeholder="분류 유형 선택" style="width: 100%">
+              <el-option v-for="ft in formData.requiredFacets" :key="ft" :label="facetLabel(ft)" :value="ft" />
+            </el-select>
             <div style="font-size: 11px; color: #909399; margin-top: 2px">같은 분류 조합에 활성 문서를 1개만 허용</div>
           </el-form-item>
           <el-form-item label="정렬 순서">

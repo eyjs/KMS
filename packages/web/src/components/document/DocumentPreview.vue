@@ -3,12 +3,15 @@ import { computed } from 'vue'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
 import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
 import CsvViewer from '@/components/viewer/CsvViewer.vue'
-import { FACET_TYPE_LABELS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS } from '@kms/shared'
+import { LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS } from '@kms/shared'
 import type { DocumentEntity } from '@kms/shared'
+import { useFacetTypes } from '@/composables/useFacetTypes'
 
 const props = defineProps<{
   document: DocumentEntity
 }>()
+
+const { facetLabel } = useFacetTypes()
 
 const LIFECYCLE_TAG: Record<string, string> = {
   DRAFT: 'info',
@@ -63,7 +66,7 @@ const fileUrl = computed(() => props.document.downloadUrl)
       <div v-if="Object.keys(document.classifications).length > 0" style="margin-top: 8px">
         <div style="color: #909399; margin-bottom: 4px">분류:</div>
         <div v-for="(value, key) in document.classifications" :key="key" style="color: #606266; margin-left: 8px">
-          {{ FACET_TYPE_LABELS[String(key)] ?? key }}: {{ value }}
+          {{ facetLabel(String(key)) }}: {{ value }}
         </div>
       </div>
     </div>

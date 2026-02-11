@@ -2,13 +2,34 @@ import { client } from './client'
 import type {
   DomainMasterEntity,
   FacetMasterEntity,
+  FacetTypeMasterEntity,
   CreateDomainDto,
   UpdateDomainDto,
   CreateFacetDto,
   UpdateFacetDto,
+  CreateFacetTypeDto,
+  UpdateFacetTypeDto,
 } from '@kms/shared'
 
 export const taxonomyApi = {
+  // Facet Types
+  getFacetTypes() {
+    return client.get<FacetTypeMasterEntity[]>('/facet-types')
+  },
+
+  createFacetType(data: CreateFacetTypeDto) {
+    return client.post<FacetTypeMasterEntity>('/facet-types', data)
+  },
+
+  updateFacetType(code: string, data: UpdateFacetTypeDto) {
+    return client.put<FacetTypeMasterEntity>(`/facet-types/${code}`, data)
+  },
+
+  deleteFacetType(code: string) {
+    return client.delete(`/facet-types/${code}`)
+  },
+
+  // Domains
   getDomains() {
     return client.get<DomainMasterEntity[]>('/domains')
   },

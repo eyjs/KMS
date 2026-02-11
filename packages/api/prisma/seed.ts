@@ -100,7 +100,30 @@ async function main() {
   console.log('  ✓ Domains (GA + 5 children)')
 
   // ============================================================
-  // 3. Facet 마스터 — 대표 샘플 데이터
+  // 3. Facet 유형 마스터 — 분류 유형 정의
+  // ============================================================
+  const facetTypes = [
+    { code: 'carrier',  displayName: '보험사',   codePrefix: 'C', description: '보험사/보험회사 분류', sortOrder: 1 },
+    { code: 'product',  displayName: '상품',     codePrefix: 'P', description: '보험 상품 분류',      sortOrder: 2 },
+    { code: 'docType',  displayName: '문서유형', codePrefix: 'T', description: '문서 종류 분류',      sortOrder: 3 },
+  ]
+
+  for (const ft of facetTypes) {
+    await prisma.facetTypeMaster.upsert({
+      where: { code: ft.code },
+      update: {
+        displayName: ft.displayName,
+        codePrefix: ft.codePrefix,
+        description: ft.description,
+        sortOrder: ft.sortOrder,
+      },
+      create: ft,
+    })
+  }
+  console.log('  ✓ Facet types (carrier, product, docType)')
+
+  // ============================================================
+  // 4. Facet 마스터 — 대표 샘플 데이터
   // ============================================================
   const facets = [
     // ── 보험사 (carrier) ──

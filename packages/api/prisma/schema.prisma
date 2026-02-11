@@ -54,6 +54,22 @@ model DomainMaster {
 }
 
 // ============================================================
+// 분류 유형 마스터 (동적 facet type 관리)
+// ============================================================
+
+model FacetTypeMaster {
+  code        String   @id @db.VarChar(50)
+  displayName String   @map("display_name") @db.VarChar(100)
+  codePrefix  String   @map("code_prefix") @db.VarChar(5)
+  description String?  @db.VarChar(500)
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("facet_type_master")
+}
+
+// ============================================================
 // 분류 마스터
 // ============================================================
 
