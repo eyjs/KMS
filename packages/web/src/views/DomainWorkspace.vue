@@ -9,8 +9,7 @@ import { placementsApi } from '@/api/placements'
 import CategoryTree from '@/components/domain/CategoryTree.vue'
 import DocumentTable from '@/components/document/DocumentTable.vue'
 import DocumentPreview from '@/components/document/DocumentPreview.vue'
-import UploadDialog from '@/components/domain/UploadDialog.vue'
-import PlacementDialog from '@/components/document/PlacementDialog.vue'
+import AddDocumentDialog from '@/components/domain/AddDocumentDialog.vue'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
 import { relationsApi } from '@/api/relations'
 import { DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
@@ -25,9 +24,7 @@ const domainCode = computed(() => route.params.domainCode as string)
 const selectedCategoryId = ref<number | null>(null)
 const selectedDoc = ref<DocumentEntity | null>(null)
 const showPreview = ref(true)
-const showUpload = ref(false)
-const showPlacement = ref(false)
-const placementDocId = ref('')
+const showAddDocument = ref(false)
 const activeTab = ref<'list' | 'graph'>('list')
 const docTableRef = ref<InstanceType<typeof DocumentTable>>()
 const categoryTreeRef = ref<InstanceType<typeof CategoryTree>>()
@@ -105,24 +102,13 @@ function handleDocAction(command: string, doc: DocumentEntity) {
   }
 }
 
-function handleUploadSuccess() {
-  showUpload.value = false
+function handleAddDocumentSuccess() {
+  showAddDocument.value = false
   docTableRef.value?.refresh()
 }
 
-function openUpload() {
-  showUpload.value = true
-}
-
-function openPlacementSearch() {
-  // 기존 문서를 검색하여 이 도메인에 배치
-  placementDocId.value = ''
-  showPlacement.value = true
-}
-
-function onPlaced() {
-  showPlacement.value = false
-  docTableRef.value?.refresh()
+function openAddDocument() {
+  showAddDocument.value = true
 }
 
 function navigateToChild(child: DomainMasterEntity) {
@@ -305,8 +291,7 @@ onUnmounted(() => {
       </div>
       <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
         <el-button v-if="isAdmin && canAddChildDomain" size="small" @click="openChildCreateDialog">+ 하위 도메인</el-button>
-        <el-button size="small" @click="openPlacementSearch">문서 배치</el-button>
-        <el-button type="primary" size="small" @click="openUpload">업로드</el-button>
+        <el-button type="primary" size="small" @click="openAddDocument">+ 문서 추가</el-button>
         <el-radio-group v-model="activeTab" size="small">
           <el-radio-button value="list">목록</el-radio-button>
           <el-radio-button value="graph">그래프</el-radio-button>
@@ -419,14 +404,12 @@ onUnmounted(() => {
       </el-card>
     </div>
 
-    <!-- 업로드 다이얼로그 -->
-    <UploadDialog v-model:visible="showUpload" @uploaded="handleUploadSuccess" />
-
-    <!-- 배치 다이얼로그 (기존 문서를 이 도메인에 배치) -->
-    <PlacementDialog
-      v-model:visible="showPlacement"
-      :document-id="placementDocId"
-      @placed="onPlaced"
+    <!-- 문서 추가 다이얼로그 (업로드 + 기존 문서 배치 통합) -->
+    <AddDocumentDialog
+      v-model:visible="showAddDocument"
+      :domain-code="domainCode"
+      :domain-name="domainStore.currentDomain?.displayName ?? domainCode"
+      @success="handleAddDocumentSuccess"
     />
 
     <!-- 하위 도메인 생성/수정 다이얼로그 -->

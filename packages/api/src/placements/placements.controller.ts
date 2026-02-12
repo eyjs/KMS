@@ -15,7 +15,7 @@ import { PlacementsService } from './placements.service'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
-import { CreatePlacementDto, UpdatePlacementDto } from './dto/placement.dto'
+import { CreatePlacementDto, UpdatePlacementDto, BulkPlacementDto } from './dto/placement.dto'
 import type { UserRole } from '@kms/shared'
 
 interface AuthRequest {
@@ -72,6 +72,16 @@ export class PlacementsController {
     @Request() req: AuthRequest,
   ) {
     return this.placementsService.create(dto, req.user.sub, req.user.role)
+  }
+
+  @Post('placements/bulk')
+  @Roles('EDITOR')
+  @ApiOperation({ summary: '문서 일괄 배치' })
+  async bulkCreate(
+    @Body() dto: BulkPlacementDto,
+    @Request() req: AuthRequest,
+  ) {
+    return this.placementsService.bulkCreate(dto, req.user.sub, req.user.role)
   }
 
   @Patch('placements/:id')

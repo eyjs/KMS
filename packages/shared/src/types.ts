@@ -347,3 +347,34 @@ export interface RelationGraphResponse {
   edges: GraphEdge[]
   centerId: string
 }
+
+// ============================================================
+// 일괄 배치 (Bulk Placement)
+// ============================================================
+
+export interface BulkPlacementDto {
+  documentIds: string[]
+  domainCode: string
+  categoryId?: number
+}
+
+export interface BulkPlacementResult {
+  success: number
+  failed: number
+  errors: Array<{ documentId: string; reason: string }>
+}
+
+// ============================================================
+// 전역 관계 그래프
+// ============================================================
+
+export interface GlobalGraphQuery {
+  domain?: string
+  maxNodes?: number
+}
+
+export interface GlobalGraphResponse {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  hasMore: boolean
+}

@@ -24,8 +24,8 @@ const page = ref(1)
 const totalPages = ref(0)
 const PAGE_SIZE = 20
 
-// 탭: all(전체) | search(검색)
-const activeTab = ref<'all' | 'search'>('all')
+// 탭: all(도메인) | global(전역) | search(검색)
+const activeTab = ref<'all' | 'global' | 'search'>('all')
 
 onMounted(async () => {
   try {
@@ -51,6 +51,7 @@ watch(activeDomain, () => {
 watch(activeTab, (tab) => {
   page.value = 1
   if (tab === 'all') loadDocuments()
+  else if (tab === 'global') loadGlobalDocuments()
 })
 
 async function loadDocuments() {
@@ -58,6 +59,22 @@ async function loadDocuments() {
   try {
     const { data } = await documentsApi.list({
       domain: activeDomain.value,
+      page: page.value,
+      size: PAGE_SIZE,
+    })
+    documents.value = data.data.filter((d: DocumentEntity) => d.id !== props.excludeId)
+    totalPages.value = data.meta.totalPages
+  } catch {
+    documents.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadGlobalDocuments() {
+  loading.value = true
+  try {
+    const { data } = await documentsApi.list({
       page: page.value,
       size: PAGE_SIZE,
     })
@@ -104,6 +121,7 @@ function handleSearch() {
 function handlePageChange(p: number) {
   page.value = p
   if (activeTab.value === 'all') loadDocuments()
+  else if (activeTab.value === 'global') loadGlobalDocuments()
 }
 
 function selectDoc(doc: DocumentEntity) {
@@ -133,8 +151,16 @@ function lifecycleType(lifecycle: string): string {
       />
     </div>
 
-    <!-- 도메인 탭 -->
-    <div style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0; overflow-x: auto; white-space: nowrap">
+    <!-- 탭 전환: 전역 / 도메인 -->
+    <div style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0">
+      <el-radio-group v-model="activeTab" size="small">
+        <el-radio-button value="global">전역 검색</el-radio-button>
+        <el-radio-button value="all">도메인별</el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <!-- 도메인 탭 (도메인별 모드일 때만) -->
+    <div v-if="activeTab === 'all'" style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0; overflow-x: auto; white-space: nowrap">
       <el-radio-group v-model="activeDomain" size="small">
         <el-radio-button
           v-for="d in domains"
@@ -146,13 +172,16 @@ function lifecycleType(lifecycle: string): string {
       </el-radio-group>
     </div>
 
-    <!-- 서브 탭 -->
-    <div v-if="activeTab !== 'search'" style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0; font-size: 12px; color: #909399">
+    <!-- 서브 탭 헤더 -->
+    <div v-if="activeTab === 'search'" style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0; font-size: 12px; color: #909399">
+      검색 결과
+      <el-button text size="small" @click="activeTab = 'global'; searchQuery = ''; loadGlobalDocuments()">초기화</el-button>
+    </div>
+    <div v-else-if="activeTab === 'global'" style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0; font-size: 12px; color: #909399">
       전체 문서
     </div>
     <div v-else style="padding: 4px 12px; border-bottom: 1px solid #ebeef5; flex-shrink: 0; font-size: 12px; color: #909399">
-      검색 결과
-      <el-button text size="small" @click="activeTab = 'all'; searchQuery = ''; loadDocuments()">초기화</el-button>
+      {{ domains.find(d => d.code === activeDomain)?.displayName ?? '' }} 문서
     </div>
 
     <!-- 문서 목록 -->

@@ -5,6 +5,8 @@ import type {
   PaginatedResponse,
   CreatePlacementDto,
   UpdatePlacementDto,
+  BulkPlacementDto,
+  BulkPlacementResult,
 } from '@kms/shared'
 
 export const placementsApi = {
@@ -18,6 +20,10 @@ export const placementsApi = {
 
   create(data: CreatePlacementDto) {
     return client.post<DocumentPlacementEntity>('/placements', data)
+  },
+
+  bulkCreate(data: BulkPlacementDto) {
+    return client.post<BulkPlacementResult>('/placements/bulk', data)
   },
 
   update(id: string, data: UpdatePlacementDto) {

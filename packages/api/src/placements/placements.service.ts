@@ -8,7 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
 import { SECURITY_LEVEL_ORDER } from '@kms/shared'
-import type { SecurityLevel, UserRole, DocumentPlacementEntity } from '@kms/shared'
+import type { SecurityLevel, UserRole, DocumentPlacementEntity, BulkPlacementResult } from '@kms/shared'
 
 @Injectable()
 export class PlacementsService {
@@ -304,5 +304,147 @@ export class PlacementsService {
       'code' in error &&
       (error as { code: string }).code === 'P2002'
     )
+  }
+
+  /**
+   * 일괄 배치: 여러 문서를 한 도메인에 배치
+   * 대용량 처리를 위해 배치 단위 + 트랜잭션 사용
+   */
+  async bulkCreate(
+    data: { documentIds: string[]; domainCode: string; categoryId?: number },
+    userId: string,
+    userRole: UserRole,
+  ): Promise<BulkPlacementResult> {
+    const { documentIds, domainCode, categoryId } = data
+    const result: BulkPlacementResult = { success: 0, failed: 0, errors: [] }
+
+    // 도메인 존재 확인
+    const domain = await this.prisma.domainMaster.findUnique({
+      where: { code: domainCode },
+    })
+    if (!domain || !domain.isActive) {
+      throw new BadRequestException(`유효하지 않은 도메인입니다: ${domainCode}`)
+    }
+
+    // 카테고리 확인
+    if (categoryId) {
+      const category = await this.prisma.domainCategory.findUnique({
+        where: { id: categoryId },
+      })
+      if (!category || category.domainCode !== domainCode) {
+        throw new BadRequestException('카테고리가 해당 도메인에 존재하지 않습니다')
+      }
+    }
+
+    // 1. 문서 일괄 조회
+    const docs = await this.prisma.document.findMany({
+      where: { id: { in: documentIds }, isDeleted: false },
+    })
+    const docMap = new Map(docs.map((d) => [d.id, d]))
+
+    // 2. 이미 배치된 문서 조회 (중복 체크용)
+    const existingPlacements = await this.prisma.documentPlacement.findMany({
+      where: {
+        documentId: { in: documentIds },
+        domainCode,
+      },
+      select: { documentId: true },
+    })
+    const alreadyPlacedIds = new Set(existingPlacements.map((p) => p.documentId))
+
+    // 3. 유효한 문서 필터링
+    const validDocs: string[] = []
+    for (const docId of documentIds) {
+      const doc = docMap.get(docId)
+
+      if (!doc) {
+        result.failed++
+        result.errors.push({ documentId: docId, reason: '문서를 찾을 수 없습니다' })
+        continue
+      }
+
+      if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
+        result.failed++
+        result.errors.push({ documentId: docId, reason: '접근 권한이 없습니다' })
+        continue
+      }
+
+      if (alreadyPlacedIds.has(docId)) {
+        result.failed++
+        result.errors.push({ documentId: docId, reason: '이미 해당 도메인에 배치됨' })
+        continue
+      }
+
+      validDocs.push(docId)
+    }
+
+    // 4. 배치 단위로 트랜잭션 처리 (500개씩)
+    const BATCH_SIZE = 500
+    for (let i = 0; i < validDocs.length; i += BATCH_SIZE) {
+      const batch = validDocs.slice(i, i + BATCH_SIZE)
+
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          // 배치 생성
+          await tx.documentPlacement.createMany({
+            data: batch.map((docId) => ({
+              documentId: docId,
+              domainCode,
+              categoryId: categoryId ?? null,
+              placedBy: userId,
+              alias: null,
+              note: null,
+            })),
+            skipDuplicates: true,
+          })
+
+          // 이력 일괄 생성
+          await tx.documentHistory.createMany({
+            data: batch.map((docId) => ({
+              documentId: docId,
+              action: 'PLACEMENT_ADD',
+              changes: { domainCode, domainName: domain.displayName },
+              userId,
+            })),
+          })
+        })
+
+        result.success += batch.length
+      } catch {
+        // 배치 전체 실패 시 개별 처리로 폴백
+        for (const docId of batch) {
+          try {
+            await this.prisma.documentPlacement.create({
+              data: {
+                documentId: docId,
+                domainCode,
+                categoryId: categoryId ?? null,
+                placedBy: userId,
+                alias: null,
+                note: null,
+              },
+            })
+            await this.prisma.documentHistory.create({
+              data: {
+                documentId: docId,
+                action: 'PLACEMENT_ADD',
+                changes: { domainCode, domainName: domain.displayName },
+                userId,
+              },
+            })
+            result.success++
+          } catch (error: unknown) {
+            result.failed++
+            if (this.isUniqueViolation(error)) {
+              result.errors.push({ documentId: docId, reason: '이미 해당 도메인에 배치됨' })
+            } else {
+              result.errors.push({ documentId: docId, reason: '배치 실패' })
+            }
+          }
+        }
+      }
+    }
+
+    return result
   }
 }

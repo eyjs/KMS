@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
 import { RELATION_META, SECURITY_LEVEL_ORDER } from '@kms/shared'
-import type { RelationType, UserRole, SecurityLevel, GraphNode, GraphEdge } from '@kms/shared'
+import type { RelationType, UserRole, SecurityLevel, GraphNode, GraphEdge, GlobalGraphResponse } from '@kms/shared'
 
 @Injectable()
 export class RelationsService {
@@ -398,6 +398,77 @@ export class RelationsService {
       nodes: [...nodeMap.values()],
       edges,
       centerId: '',
+    }
+  }
+
+  /**
+   * 전역 관계 그래프: 전체 또는 특정 도메인의 모든 관계
+   */
+  async getGlobalGraph(userRole: UserRole, maxNodes: number = 200, domainCode?: string): Promise<GlobalGraphResponse> {
+    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
+    const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
+      .filter(([, level]) => level <= maxLevel)
+      .map(([name]) => name)
+
+    // 관계 조회 (도메인 필터 선택적)
+    const relations = await this.prisma.relation.findMany({
+      where: {
+        ...(domainCode ? { domainCode } : {}),
+        source: { isDeleted: false, securityLevel: { in: allowedLevels } },
+        target: { isDeleted: false, securityLevel: { in: allowedLevels } },
+      },
+      select: { id: true, sourceId: true, targetId: true, relationType: true, domainCode: true },
+      take: maxNodes * 5, // 엣지 수 제한 (대략)
+    })
+
+    // 관련 문서 ID 수집
+    const docIds = new Set<string>()
+    for (const r of relations) {
+      docIds.add(r.sourceId)
+      docIds.add(r.targetId)
+    }
+
+    const hasMore = docIds.size > maxNodes
+
+    // 노드 수 제한
+    const limitedDocIds = [...docIds].slice(0, maxNodes)
+
+    // 문서 일괄 조회
+    const docs = await this.prisma.document.findMany({
+      where: {
+        id: { in: limitedDocIds },
+        isDeleted: false,
+        securityLevel: { in: allowedLevels },
+      },
+    })
+
+    const nodeMap = new Map<string, GraphNode>()
+    for (const doc of docs) {
+      nodeMap.set(doc.id, {
+        id: doc.id,
+        docCode: doc.docCode,
+        fileName: doc.fileName,
+        lifecycle: doc.lifecycle as GraphNode['lifecycle'],
+        securityLevel: doc.securityLevel as GraphNode['securityLevel'],
+        depth: 0,
+      })
+    }
+
+    // 유효한 엣지만 필터
+    const edges: GraphEdge[] = relations
+      .filter((r) => nodeMap.has(r.sourceId) && nodeMap.has(r.targetId))
+      .map((r) => ({
+        id: r.id,
+        sourceId: r.sourceId,
+        targetId: r.targetId,
+        relationType: r.relationType as GraphEdge['relationType'],
+        domainCode: r.domainCode,
+      }))
+
+    return {
+      nodes: [...nodeMap.values()],
+      edges,
+      hasMore,
     }
   }
 }

@@ -26,6 +26,16 @@ const router = createRouter({
       component: () => import('@/views/MyDocumentsView.vue'),
     },
     {
+      path: '/documents',
+      name: 'AllDocuments',
+      component: () => import('@/views/AllDocumentsView.vue'),
+    },
+    {
+      path: '/graph',
+      name: 'GlobalGraph',
+      component: () => import('@/views/GlobalGraphView.vue'),
+    },
+    {
       path: '/d/:domainCode',
       name: 'DomainWorkspace',
       component: () => import('@/views/DomainWorkspace.vue'),
@@ -60,19 +70,11 @@ const router = createRouter({
     },
     // 기존 라우트 리다이렉트
     {
-      path: '/documents',
-      redirect: '/',
-    },
-    {
       path: '/documents/:id',
       redirect: (to) => `/d/_/doc/${to.params.id}`,
     },
     {
       path: '/upload',
-      redirect: '/',
-    },
-    {
-      path: '/graph',
       redirect: '/',
     },
     {

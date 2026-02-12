@@ -1,5 +1,5 @@
 import { client } from './client'
-import type { RelationEntity, RelationType, RelationGraphResponse } from '@kms/shared'
+import type { RelationEntity, RelationType, RelationGraphResponse, GlobalGraphResponse } from '@kms/shared'
 
 export const relationsApi = {
   getByDocument(documentId: string) {
@@ -25,6 +25,13 @@ export const relationsApi = {
     return client.get<RelationGraphResponse>(
       `/relations/graph/domain/${domainCode}`,
       { params: { maxNodes } },
+    )
+  },
+
+  getGlobalGraph(domain?: string, maxNodes: number = 200) {
+    return client.get<GlobalGraphResponse>(
+      '/relations/graph/global',
+      { params: { domain, maxNodes } },
     )
   },
 

@@ -28,6 +28,18 @@ interface AuthRequest {
 export class RelationsController {
   constructor(private readonly relationsService: RelationsService) {}
 
+  @Get('relations/graph/global')
+  @ApiOperation({ summary: '전역 관계 그래프 조회' })
+  async getGlobalGraph(
+    @Query('domain') domain: string | undefined,
+    @Query('maxNodes') maxNodes: string | undefined,
+    @Request() req: AuthRequest,
+  ) {
+    const parsed = maxNodes ? parseInt(maxNodes, 10) : NaN
+    const max = !isNaN(parsed) && parsed > 0 ? Math.min(parsed, 500) : 200
+    return this.relationsService.getGlobalGraph(req.user.role, max, domain)
+  }
+
   @Get('relations/graph/domain/:domainCode')
   @ApiOperation({ summary: '도메인 관계 그래프 조회' })
   async getDomainRelationGraph(

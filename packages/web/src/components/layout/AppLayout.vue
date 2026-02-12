@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
+import { useNavigationStore } from '@/stores/navigation'
 import { useRoute, useRouter } from 'vue-router'
 import DomainMenuItem from './DomainMenuItem.vue'
+import DomainBrowserDialog from './DomainBrowserDialog.vue'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { feedbackApi } from '@/api/feedback'
 import { FEEDBACK_CATEGORY_LABELS } from '@kms/shared'
@@ -14,10 +16,23 @@ useKeyboardShortcuts()
 
 const auth = useAuthStore()
 const domainStore = useDomainStore()
+const navigationStore = useNavigationStore()
 const route = useRoute()
 const router = useRouter()
 
 const collapsed = ref(false)
+const domainBrowserVisible = ref(false)
+
+// 도메인 방문 시 최근 기록에 추가
+watch(
+  () => route.params.domainCode,
+  (code) => {
+    if (code && typeof code === 'string') {
+      navigationStore.visitDomain(code)
+    }
+  },
+  { immediate: true },
+)
 
 const ROLE_LABELS: Record<string, string> = {
   VIEWER: '조회자',
@@ -145,6 +160,14 @@ async function submitFeedback() {
           <el-icon><component is="Monitor" /></el-icon>
           <template #title><span>대시보드</span></template>
         </el-menu-item>
+        <el-menu-item index="/documents">
+          <el-icon><component is="Files" /></el-icon>
+          <template #title><span>전체 문서함</span></template>
+        </el-menu-item>
+        <el-menu-item index="/my-documents">
+          <el-icon><component is="Folder" /></el-icon>
+          <template #title><span>내 문서함</span></template>
+        </el-menu-item>
         <el-menu-item index="/search">
           <el-icon><component is="Search" /></el-icon>
           <template #title>
@@ -154,20 +177,42 @@ async function submitFeedback() {
             </span>
           </template>
         </el-menu-item>
-        <el-menu-item index="/my-documents">
-          <el-icon><component is="Folder" /></el-icon>
-          <template #title><span>내 문서함</span></template>
+        <el-menu-item index="/graph">
+          <el-icon><component is="Share" /></el-icon>
+          <template #title><span>관계 그래프</span></template>
         </el-menu-item>
 
-        <!-- DOMAINS -->
-        <div v-if="!collapsed" style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px">
-          Domains
+        <!-- DOMAINS: 최근 방문 -->
+        <div v-if="!collapsed" style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between">
+          <span>Domains</span>
+          <el-button text size="small" style="color: #6b6e7e; padding: 0; font-size: 10px" @click="domainBrowserVisible = true">
+            전체보기
+          </el-button>
         </div>
-        <domain-menu-item
-          v-for="d in domainStore.domainTree"
-          :key="d.code"
-          :domain="d"
-        />
+        <div v-if="collapsed" style="padding: 20px 8px 6px; text-align: center">
+          <el-button text size="small" style="color: #6b6e7e; padding: 0" @click="domainBrowserVisible = true">
+            <el-icon><component is="More" /></el-icon>
+          </el-button>
+        </div>
+
+        <!-- 최근 방문 도메인 (최대 5개) -->
+        <template v-if="navigationStore.recentDomains.length > 0">
+          <domain-menu-item
+            v-for="d in navigationStore.recentDomains"
+            :key="d.code"
+            :domain="d"
+            :show-children="false"
+          />
+        </template>
+        <template v-else>
+          <!-- 도메인 방문 기록이 없으면 기본 트리 표시 (최대 3개) -->
+          <domain-menu-item
+            v-for="d in domainStore.domainTree.slice(0, 3)"
+            :key="d.code"
+            :domain="d"
+            :show-children="false"
+          />
+        </template>
 
         <!-- ADMIN -->
         <template v-if="auth.hasMinRole('ADMIN')">
@@ -207,6 +252,9 @@ async function submitFeedback() {
     >
       <el-icon :size="22"><component is="ChatDotRound" /></el-icon>
     </el-button>
+
+    <!-- 도메인 브라우저 다이얼로그 -->
+    <domain-browser-dialog v-model:visible="domainBrowserVisible" />
 
     <!-- 피드백 다이얼로그 -->
     <el-dialog v-model="feedbackVisible" title="피드백 보내기" width="480px" :close-on-click-modal="false">

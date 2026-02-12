@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { documentsApi } from '@/api/documents'
+import { placementsApi } from '@/api/placements'
 import { useDomainStore } from '@/stores/domain'
 import type { DocumentEntity } from '@kms/shared'
 import { useSearchHistory } from '@/composables/useSearchHistory'
 import StatusTag from '@/components/common/StatusTag.vue'
+import BulkPlacementDialog from '@/components/document/BulkPlacementDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -174,6 +176,82 @@ function handleRetry() {
   handleSearch()
 }
 
+// debounce 타이머
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// 자동 검색 (debounce)
+watch(keyword, (newVal) => {
+  if (isRestoring.value) return
+
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+  }
+
+  // 2글자 이상일 때만 자동 검색
+  if (newVal.trim().length >= 2) {
+    debounceTimer = setTimeout(() => {
+      page.value = 1
+      handleSearch()
+    }, 300)
+  }
+})
+
+// 컴포넌트 언마운트 시 타이머 정리
+onUnmounted(() => {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+  }
+})
+
+// 멀티셀렉트
+const selectedDocIds = ref<string[]>([])
+const showBulkPlacement = ref(false)
+
+function isSelected(docId: string): boolean {
+  return selectedDocIds.value.includes(docId)
+}
+
+function toggleSelection(docId: string, event: Event) {
+  event.stopPropagation()
+  const idx = selectedDocIds.value.indexOf(docId)
+  if (idx >= 0) {
+    selectedDocIds.value.splice(idx, 1)
+  } else {
+    selectedDocIds.value.push(docId)
+  }
+}
+
+function clearSelection() {
+  selectedDocIds.value = []
+}
+
+function openBulkPlacement() {
+  if (selectedDocIds.value.length === 0) return
+  showBulkPlacement.value = true
+}
+
+function handleBulkPlacementSuccess() {
+  showBulkPlacement.value = false
+  selectedDocIds.value = []
+  handleSearch()
+}
+
+// 빠른 배치 (단일)
+const quickPlacementDocId = ref<string | null>(null)
+const quickPlacementVisible = ref(false)
+
+function openQuickPlacement(docId: string, event: Event) {
+  event.stopPropagation()
+  quickPlacementDocId.value = docId
+  quickPlacementVisible.value = true
+}
+
+function handleQuickPlacementSuccess() {
+  quickPlacementDocId.value = null
+  // 결과 새로고침
+  handleSearch()
+}
+
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '-'
   if (bytes < 1024) return `${bytes} B`
@@ -227,9 +305,17 @@ function formatFileSize(bytes: number): string {
 
     <!-- 결과 -->
     <div v-if="searched">
-      <!-- 결과 헤더: 건수 + 정렬 -->
+      <!-- 결과 헤더: 건수 + 정렬 + 일괄 배치 -->
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
-        <span style="color: #909399; font-size: 13px">검색 결과 ({{ total }}건)</span>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="color: #909399; font-size: 13px">검색 결과 ({{ total.toLocaleString() }}건)</span>
+          <template v-if="selectedDocIds.length > 0">
+            <el-button type="primary" size="small" @click="openBulkPlacement">
+              일괄 배치 ({{ selectedDocIds.length.toLocaleString() }}건)
+            </el-button>
+            <el-button size="small" text @click="clearSelection">선택 해제</el-button>
+          </template>
+        </div>
         <el-select
           :model-value="currentSortValue"
           size="small"
@@ -259,10 +345,17 @@ function formatFileSize(bytes: number): string {
             :key="doc.id"
             shadow="never"
             style="margin-bottom: 8px; cursor: pointer"
+            :class="{ 'selected-card': isSelected(doc.id) }"
             :body-style="{ padding: '12px 16px' }"
             @click="goToDocument(doc)"
           >
             <div style="display: flex; justify-content: space-between; align-items: flex-start">
+              <!-- 체크박스 (멀티셀렉트용) -->
+              <el-checkbox
+                :model-value="isSelected(doc.id)"
+                style="margin-right: 12px"
+                @click="toggleSelection(doc.id, $event)"
+              />
               <div style="min-width: 0; flex: 1">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px">
                   <span v-if="doc.docCode" style="font-family: monospace; font-size: 12px; color: #909399">
@@ -273,7 +366,7 @@ function formatFileSize(bytes: number): string {
                   </span>
                 </div>
                 <!-- 배치된 도메인 태그 -->
-                <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px">
+                <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; align-items: center">
                   <template v-if="doc.domainTags?.length">
                     <el-tag
                       v-for="tag in doc.domainTags"
@@ -284,7 +377,17 @@ function formatFileSize(bytes: number): string {
                       {{ tag.name }}
                     </el-tag>
                   </template>
-                  <el-tag v-else size="small" type="warning">미배치</el-tag>
+                  <template v-else>
+                    <el-tag size="small" type="warning">미배치</el-tag>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      text
+                      @click="openQuickPlacement(doc.id, $event)"
+                    >
+                      빠른 배치
+                    </el-button>
+                  </template>
                   <span v-if="doc.fileSize" style="color: #c0c4cc; font-size: 11px; align-self: center; margin-left: 4px">
                     {{ formatFileSize(doc.fileSize) }}
                   </span>
@@ -342,6 +445,21 @@ function formatFileSize(bytes: number): string {
       </div>
       <el-empty description="검색어를 입력하거나 필터를 선택 후 검색하세요" />
     </div>
+
+    <!-- 빠른 배치 다이얼로그 (단일) -->
+    <BulkPlacementDialog
+      v-if="quickPlacementDocId"
+      v-model:visible="quickPlacementVisible"
+      :document-ids="[quickPlacementDocId]"
+      @success="handleQuickPlacementSuccess"
+    />
+
+    <!-- 일괄 배치 다이얼로그 (멀티셀렉트) -->
+    <BulkPlacementDialog
+      v-model:visible="showBulkPlacement"
+      :document-ids="selectedDocIds"
+      @success="handleBulkPlacementSuccess"
+    />
   </div>
 </template>
 
@@ -349,5 +467,10 @@ function formatFileSize(bytes: number): string {
 .search-view {
   height: 100%;
   overflow-y: auto;
+}
+
+.selected-card {
+  background-color: #ecf5ff;
+  border-color: #409eff;
 }
 </style>

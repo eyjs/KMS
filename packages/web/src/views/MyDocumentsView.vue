@@ -8,41 +8,74 @@
     <el-row :gutter="16" style="margin-bottom: 20px">
       <el-col :span="8">
         <el-card shadow="hover" class="stat-card">
-          <div class="stat-number">{{ stats.total }}</div>
+          <div class="stat-number">{{ stats.total.toLocaleString() }}</div>
           <div class="stat-label">전체 문서</div>
         </el-card>
       </el-col>
       <el-col :span="8">
         <el-card shadow="hover" class="stat-card stat-warning" @click="filterOrphans = true">
-          <div class="stat-number">{{ stats.orphan }}</div>
+          <div class="stat-number">{{ stats.orphan.toLocaleString() }}</div>
           <div class="stat-label">미배치</div>
         </el-card>
       </el-col>
       <el-col :span="8">
         <el-card shadow="hover" class="stat-card stat-success" @click="filterOrphans = false">
-          <div class="stat-number">{{ stats.total - stats.orphan }}</div>
+          <div class="stat-number">{{ (stats.total - stats.orphan).toLocaleString() }}</div>
           <div class="stat-label">배치완료</div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 필터 + 업로드 버튼 -->
+    <!-- 필터 + 액션 버튼 -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-      <div>
-        <el-radio-group v-model="filterOrphans" @change="loadDocuments(1)">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <el-radio-group v-model="filterOrphans" @change="handleFilterChange">
           <el-radio-button :value="null">전체</el-radio-button>
           <el-radio-button :value="true">미배치</el-radio-button>
           <el-radio-button :value="false">배치완료</el-radio-button>
         </el-radio-group>
+
+        <!-- 선택 시 일괄 배치 버튼 -->
+        <el-button
+          v-if="selectedDocIds.length > 0"
+          type="primary"
+          @click="openBulkPlacement"
+        >
+          일괄 배치 ({{ selectedDocIds.length.toLocaleString() }}건)
+        </el-button>
       </div>
+
       <el-button type="primary" @click="showUpload = true">
         <el-icon><Upload /></el-icon>
         문서 업로드
       </el-button>
     </div>
 
+    <!-- 전체 선택 안내 (대량 선택 지원) -->
+    <el-alert
+      v-if="selectedDocIds.length > 0 && selectedDocIds.length < total"
+      type="info"
+      :closable="false"
+      style="margin-bottom: 12px"
+    >
+      <template #default>
+        현재 페이지에서 {{ selectedDocIds.length }}건 선택됨.
+        <el-button type="primary" link @click="selectAllOrphans" :loading="selectingAll">
+          미배치 문서 전체 선택 ({{ stats.orphan.toLocaleString() }}건)
+        </el-button>
+      </template>
+    </el-alert>
+
     <!-- 문서 목록 -->
-    <el-table :data="documents" v-loading="loading" stripe @row-click="goToDocument">
+    <el-table
+      ref="tableRef"
+      :data="documents"
+      v-loading="loading"
+      stripe
+      @row-click="goToDocument"
+      @selection-change="handleSelectionChange"
+    >
+      <el-table-column type="selection" width="48" />
       <el-table-column prop="docCode" label="문서코드" width="160" />
       <el-table-column prop="fileName" label="파일명" min-width="200" />
       <el-table-column label="상태" width="100">
@@ -92,11 +125,18 @@
     <!-- 업로드 다이얼로그 -->
     <UploadDialog v-model:visible="showUpload" @uploaded="onUploaded" />
 
-    <!-- 배치 다이얼로그 -->
+    <!-- 개별 배치 다이얼로그 -->
     <PlacementDialog
       v-model:visible="showPlacement"
       :document-id="placementDocId"
       @placed="onPlaced"
+    />
+
+    <!-- 일괄 배치 다이얼로그 -->
+    <BulkPlacementDialog
+      v-model:visible="showBulkPlacement"
+      :document-ids="selectedDocIds"
+      @success="onBulkPlaced"
     />
   </div>
 </template>
@@ -106,11 +146,13 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Upload } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import type { ElTable } from 'element-plus'
 import { documentsApi } from '@/api/documents'
 import { SECURITY_LEVEL_LABELS } from '@kms/shared'
 import StatusTag from '@/components/common/StatusTag.vue'
 import UploadDialog from '@/components/domain/UploadDialog.vue'
 import PlacementDialog from '@/components/document/PlacementDialog.vue'
+import BulkPlacementDialog from '@/components/document/BulkPlacementDialog.vue'
 import type { DocumentEntity } from '@kms/shared'
 
 const router = useRouter()
@@ -122,7 +164,13 @@ const pageSize = 20
 const filterOrphans = ref<boolean | null>(null)
 const showUpload = ref(false)
 const showPlacement = ref(false)
+const showBulkPlacement = ref(false)
 const placementDocId = ref('')
+
+// 멀티셀렉트
+const tableRef = ref<InstanceType<typeof ElTable>>()
+const selectedDocIds = ref<string[]>([])
+const selectingAll = ref(false)
 
 const stats = ref({ total: 0, orphan: 0 })
 
@@ -171,6 +219,35 @@ function openPlacement(row: DocumentEntity) {
   showPlacement.value = true
 }
 
+function handleSelectionChange(selection: DocumentEntity[]) {
+  selectedDocIds.value = selection.map((d) => d.id)
+}
+
+function handleFilterChange() {
+  selectedDocIds.value = []
+  loadDocuments(1)
+}
+
+function openBulkPlacement() {
+  if (selectedDocIds.value.length === 0) return
+  showBulkPlacement.value = true
+}
+
+// 미배치 문서 전체 선택 (대량 작업용)
+async function selectAllOrphans() {
+  selectingAll.value = true
+  try {
+    // 미배치 문서 ID 전체 조회 (최대 5000개)
+    const res = await documentsApi.getOrphans(1, 5000)
+    selectedDocIds.value = res.data.data.map((d) => d.id)
+    ElMessage.success(`${selectedDocIds.value.length.toLocaleString()}건 선택됨`)
+  } catch {
+    ElMessage.error('전체 선택 실패')
+  } finally {
+    selectingAll.value = false
+  }
+}
+
 function onUploaded() {
   showUpload.value = false
   loadDocuments(1)
@@ -180,6 +257,13 @@ function onUploaded() {
 function onPlaced() {
   showPlacement.value = false
   loadDocuments(currentPage.value)
+  loadStats()
+}
+
+function onBulkPlaced() {
+  showBulkPlacement.value = false
+  selectedDocIds.value = []
+  loadDocuments(1)
   loadStats()
 }
 

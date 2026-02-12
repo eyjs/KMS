@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import type { DomainMasterEntity } from '@kms/shared'
 
-defineProps<{
-  domain: DomainMasterEntity
-}>()
+const props = withDefaults(
+  defineProps<{
+    domain: DomainMasterEntity
+    showChildren?: boolean
+  }>(),
+  {
+    showChildren: true,
+  },
+)
 </script>
 
 <template>
-  <el-sub-menu v-if="domain.children?.length" :index="domain.code">
+  <el-sub-menu v-if="showChildren && domain.children?.length" :index="domain.code">
     <template #title>
       <el-icon><component is="Folder" /></el-icon>
       <span>{{ domain.displayName }}</span>
