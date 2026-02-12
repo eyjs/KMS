@@ -1,10 +1,10 @@
-# KMS 문서관리 프레임워크 v3.1
+# KMS 문서관리 프레임워크 v4.0
 
 ## 프로젝트 목표
 
-**문서 체계 관리 시스템 구축**
+**문서 체계 관리 프레임워크 구축**
 
-문서의 저장, 분류, 관계를 관리하는 시스템을 구축한다.
+문서의 저장, 배치, 관계를 관리하는 범용 프레임워크를 구축한다.
 문서 처리(파싱, NLP, 벡터화)는 외주에 위임하고, 체계 관리에 집중한다.
 데이터 주권을 확보하면서 확장 가능하게 설계한다.
 
@@ -13,52 +13,56 @@
 | 단계 | 목표 | 상태 | 기술 |
 |------|------|------|------|
 | **Phase 1** | 분류체계 검증 | **완료** | Python + JSON + HTML |
-| **Phase 2** | 체계 관리 시스템 | **현재** | NestJS + Vue 3 + TypeScript + PostgreSQL |
+| **Phase 2** | 체계 관리 프레임워크 | **현재** | NestJS + Vue 3 + TypeScript + PostgreSQL |
 | **Phase 3** | 데이터 처리 확장 | 선택적 | Python 추가 (조건부) |
 
 ---
 
-## Phase 1: 분류체계 검증 (완료)
+## Phase 2: 체계 관리 프레임워크 (현재)
 
-### 달성 성과
-- 시스템/도메인 분리 구조 검증
-- 6개 GA 도메인 정의 완료
-- 온톨로지 구조 검증 6/6 통과
-- 지식 그래프 840노드/2,439엣지 생성
-- Admin UI 계층 탐색 동작
+### 핵심 설계 원칙 (ADR-013)
 
-### 기술 구현
-- JSON 기반 단일 HTML 페이지
-- 서버 없이 브라우저에서 동작
-- localStorage + JSON 파일로 데이터 관리
+> "보험업 문서관리 솔루션"에서 "범용 프레임워크"로 전환 (2026-02-11)
 
----
+| # | 원칙 | 설명 |
+|---|------|------|
+| 1 | 업로드는 자유 | 파일만 올리면 됨. 도메인/분류 선택은 선택적 |
+| 2 | 문서는 독립 엔티티 | 어떤 도메인에도 소속되지 않음 |
+| 3 | 도메인 = 작업 공간 | 사용자가 만들고, 안에 카테고리 트리를 자유롭게 구성 |
+| 4 | 문서-도메인 = M:N 바로가기 | Windows 바로가기 개념. 1회 업로드, N개 도메인에서 참조 |
+| 5 | 파일 해시 중복 방지 | 동일 파일 업로드 시 SHA-256으로 차단 |
+| 6 | 카테고리 = 도메인 내부 | 사용자가 자유롭게 생성하는 폴더 구조 |
 
-## Phase 2: 체계 관리 시스템 (현재)
+### 워크플로우
 
-### 목표
-문서 업로드, 분류, 관계 관리, 뷰어, 외부 API 제공
+```
+업로드(파일만) → "내 문서" → 도메인에 배치(바로가기) → 카테고리 지정
+```
 
 ### 구현 완료 기능
-- 파일 업로드 (PDF, Markdown, CSV) + 분류 선택
+
+- 파일 업로드 (PDF, Markdown, CSV) — 도메인 선택 없이 업로드 가능
 - 도메인 CRUD (무제한 깊이 트리 구조) + 코드 자동 생성
-- Facet CRUD (보험사/상품/문서유형 관리) + 코드 자동 생성
+- 카테고리 CRUD (도메인 내 폴더 구조)
+- 문서 배치 (DocumentPlacement) — 문서를 도메인/카테고리에 바로가기로 배치
 - 문서 목록/검색/필터 + 도메인 워크스페이스 (3패널)
 - 문서 상세 뷰어 (PDF, Markdown, CSV 미리보기)
-- 관계 추가/삭제 UI + DocumentExplorer (도메인/분류 탐색) + 관계 그래프 (vis-network)
-- 문서 분류/보안등급 수정 다이얼로그
+- 관계 추가/삭제 UI + DocumentExplorer + 관계 그래프 (vis-network)
+- 도메인별 관계 그래프 뷰
 - 라이프사이클 전환 (DRAFT → ACTIVE → DEPRECATED)
-- 대시보드 (통계 카드 클릭 네비게이션 + 조치 필요 문서 + 최근 활동)
+- 대시보드 (통계 카드 + 조치 필요 문서 + 최근 활동)
 - 통합 검색 (정렬 4종 + 검색이력 자동완성 + URL 상태 동기화)
 - 키보드 단축키 (Ctrl+K → 검색)
 - 사용자 관리 (JWT 인증, 업무 역할 기반 접근 제어)
+- 피드백 시스템 (플로팅 버튼 + 페이지 URL 자동 캡처)
 - 전역 에러 처리 (403/네트워크 에러 알림)
 
 ### 범위
 
 **포함 (직접 구현):**
 - 파일 업로드 (PDF, Markdown, CSV만)
-- 분류 선택 (보험사/상품/문서유형)
+- 도메인/카테고리 관리
+- 문서 배치 (바로가기)
 - 관계 관리 (부모-자식, 참조, 대체)
 - 라이프사이클 (DRAFT → ACTIVE → DEPRECATED)
 - 문서 뷰어 (pdf.js, marked.js, 테이블)
@@ -81,23 +85,6 @@
 
 ---
 
-## Phase 3: 데이터 처리 확장 (선택적)
-
-### 진입 조건
-- Phase 2 안정적 운영 (6개월+)
-- 예산 추가 확보 (5,000만원+)
-- Python 인력 확보
-
-### 확장 내용
-- Python 코어 엔진 추가
-- 문서 텍스트 추출 내재화
-- 벡터 DB 연동 (pgvector)
-- RAG 내재화 (외주 종료)
-
-**조건 미충족 시: Phase 2 + 외주 RAG로 계속 운영**
-
----
-
 ## 기술 스택
 
 ### Phase 2 (확정)
@@ -116,15 +103,6 @@
 | MD 뷰어 | marked.js | - |
 | 그래프 | vis-network | 9.x |
 
-### Phase 1 (검증용)
-
-| 영역 | 기술 |
-|------|------|
-| 프레임워크 | Vue 3 CDN |
-| 스타일링 | Tailwind CSS |
-| 그래프 | vis-network |
-| 데이터 | localStorage + JSON |
-
 ---
 
 ## 디렉토리 구조
@@ -140,103 +118,98 @@
 │   ├── shared/                      # @kms/shared (타입 + 상수)
 │   │   └── src/
 │   │       ├── types.ts             # 엔티티, DTO, Enum
-│   │       ├── constants.ts         # 도메인, 권한, 관계 정의
+│   │       ├── constants.ts         # 라벨, 권한, 관계 정의
 │   │       └── index.ts
 │   ├── api/                         # @kms/api (NestJS 백엔드)
 │   │   ├── src/
 │   │   │   ├── prisma/              # DB 서비스
 │   │   │   ├── auth/                # 인증 + 권한 (JWT, API Key, 역할, 보안등급)
 │   │   │   ├── documents/           # 문서 CRUD + 업로드 + 라이프사이클
-│   │   │   ├── relations/           # 관계 관리 (순환 방지, scope 검증)
-│   │   │   ├── taxonomy/            # 마스터 데이터 API
+│   │   │   ├── placements/          # 문서 배치 (바로가기)
+│   │   │   ├── categories/          # 도메인 카테고리 (폴더)
+│   │   │   ├── relations/           # 관계 관리 (순환 방지)
+│   │   │   ├── taxonomy/            # 도메인 마스터 API
+│   │   │   ├── feedback/            # 사용자 피드백
 │   │   │   └── common/              # 필터, 인터셉터
 │   │   └── prisma/
 │   │       ├── schema.prisma        # DB 스키마
-│   │       ├── triggers.sql         # 트리거 (SSOT, 순환방지)
-│   │       └── seed.ts              # 초기 데이터
+│   │       ├── triggers.sql         # 트리거 (순환방지)
+│   │       └── seed.ts              # 초기 데이터 (admin/admin만)
 │   └── web/                         # @kms/web (Vue 3 프론트엔드)
 │       └── src/
 │           ├── router/              # 라우터 + 라우트 가드
 │           ├── stores/              # Pinia (auth, domain)
-│           ├── api/                 # API 클라이언트 (client, documents, relations, taxonomy, admin, search)
-│           ├── views/               # 페이지 (Dashboard, Search, DomainWorkspace, DocumentDetail, DocumentCompare, Login, Admin*)
+│           ├── api/                 # API 클라이언트
+│           ├── views/               # 페이지
 │           ├── components/
 │           │   ├── common/          # StatusTag
 │           │   ├── document/        # DocumentExplorer, DocumentPreview, DocumentTable, DocumentTimeline
-│           │   ├── domain/          # ClassificationTree, UploadDialog, DomainMenuItem
+│           │   ├── domain/          # CategoryTree, UploadDialog, PlacementDialog
 │           │   ├── graph/           # RelationGraph (vis-network)
 │           │   ├── layout/          # AppLayout
 │           │   └── viewer/          # PdfViewer, MarkdownViewer, CsvViewer
 │           └── composables/         # useKeyboardShortcuts, useSearchHistory, useRecentDocs
 │
-├── scripts/                         # Python 코어 검증 도구
-│   ├── taxonomy.py
-│   ├── simulator.py
-│   ├── verifier.py
-│   └── ontology_validator.py
-│
-├── legacy/                          # Phase 1 아카이브
-│   ├── ui/                          # Phase 1 HTML UI
-│   └── data/                        # Phase 1 생성 데이터
+├── scripts/                         # Python 검증 도구 (Phase 1)
 │
 └── docs/                            # 문서
-    ├── phase1/
+    ├── architecture/
+    │   └── decision-log.md          # 아키텍처 의사결정 기록 (ADR)
     ├── phase2/
     │   └── database-schema.md       # DB 스키마 정본
-    ├── phase3/
-    └── architecture/
+    └── handoff.md                   # 세션 핸드오프
 ```
 
 ---
 
 ## 프레임워크 구조
 
-### 시스템 vs 도메인 분리
+### 핵심 모델: 원본 + 바로가기
 
 ```
-SYSTEM FRAMEWORK (불변)
-├── 채번 (고유 ID)
-├── 라이프사이클 (DRAFT → ACTIVE → DEPRECATED)
-├── 신선도 (HOT/WARM/COLD)
-├── 관계 (PARENT_OF, REFERENCE, SUPERSEDES)
-├── SSOT (중복 방지)
-└── 버전 (Major.Minor)
+Document (원본, 도메인 무관)
+    │
+    │  file_hash (SHA-256) — 동일 파일 중복 방지
+    │
+    ├──── DocumentPlacement (바로가기 1) ──→ DomainA / CategoryX
+    ├──── DocumentPlacement (바로가기 2) ──→ DomainB / CategoryY
+    └──── DocumentPlacement (바로가기 3) ──→ DomainC / (루트)
 
-DOMAIN (가변)
-└── GA (루트)
-    ├── SALES: carrier × product × docType
-    ├── COMM: carrier × product × docType
-    ├── CONTRACT: carrier × product × docType
-    ├── COMP: carrier × docType
-    └── EDU: docType
+DomainMaster (트리)
+    └── DomainCategory (폴더 구조)
 ```
+
+**Windows 탐색기 메타포:**
+- 원본 파일은 한 곳에만 존재
+- 여러 폴더에 "바로가기"를 만들어 배치
+- 원본을 수정하면 모든 바로가기에서 최신 내용이 보임
+- 바로가기를 삭제해도 원본은 안 사라짐
 
 ### 라이프사이클 상태 머신
 
 ```
-DRAFT → ACTIVE → DEPRECATED
+DRAFT ←→ ACTIVE → DEPRECATED
 ```
 
 | 상태 | 설명 | 전환 가능 |
 |------|------|----------|
 | DRAFT | 작성 중 | → ACTIVE |
-| ACTIVE | 유효한 문서 | → DEPRECATED |
+| ACTIVE | 유효한 문서 | → DRAFT, → DEPRECATED |
 | DEPRECATED | 만료됨 | (종료 상태) |
-
-> REVIEW, STALE, ARCHIVED는 Phase 3에서 검토
 
 ### 관계 유형
 
-| 관계 | 설명 | 양방향 |
-|------|------|--------|
-| PARENT_OF / CHILD_OF | 부모-자식 | O |
-| SIBLING | 형제 | O |
-| REFERENCE | 참조 | X |
-| SUPERSEDES | 버전 대체 | X |
+| 관계 | 설명 | 양방향 | 도메인 필수 |
+|------|------|--------|------------|
+| PARENT_OF / CHILD_OF | 부모-자식 | O | O |
+| SIBLING | 형제 | O | O |
+| REFERENCE | 참조 | X | O |
+| SUPERSEDES | 버전 대체 | X | X |
 
-### SSOT (Single Source of Truth)
+### 중복 방지 (SSOT 대체)
 
-동일 분류 경로에 ACTIVE 문서 1개만 허용
+- **file_hash (SHA-256)**: 동일 파일 업로드 차단
+- 분류 기반 SSOT는 폐기됨 (ADR-013)
 
 ### 권한 체계 (문서 보안 등급 + 사용자 역할)
 
@@ -259,7 +232,7 @@ DRAFT → ACTIVE → DEPRECATED
 
 ---
 
-## 데이터베이스 설계 (Phase 2)
+## 데이터베이스 설계
 
 > **정본**: `docs/phase2/database-schema.md` 참조
 
@@ -268,20 +241,30 @@ DRAFT → ACTIVE → DEPRECATED
 | 테이블 | 설명 |
 |--------|------|
 | `users` | 사용자 (JWT 인증용) |
-| `domain_master` | 도메인 정의 + 필수 facet |
-| `facet_master` | 분류 마스터 + 신선도 설정 |
-| `documents` | 문서 메타데이터 |
-| `classifications` | 문서별 분류 (EAV) |
+| `domain_master` | 도메인 트리 (작업 공간) |
+| `domain_categories` | 도메인 내 카테고리 (폴더 구조) |
+| `documents` | 문서 메타데이터 (원본) |
+| `document_placements` | 문서-도메인 배치 (바로가기, M:N) |
 | `relations` | 문서 간 관계 |
 | `document_history` | 변경 이력 |
+| `feedback` | 사용자 피드백 |
 | `api_keys` | 외부 API 인증 |
+
+### 폐기된 테이블 (ADR-013)
+
+| 테이블 | 폐기 이유 |
+|--------|----------|
+| `facet_type_master` | facet 개념 폐기 |
+| `facet_master` | facet 개념 폐기 |
+| `classifications` | EAV 분류 체계 폐기 |
 
 ### 주요 제약조건
 
 | 제약 | 구현 |
 |------|------|
+| 파일 중복 방지 | `documents.file_hash` UNIQUE |
+| 배치 중복 방지 | `document_placements(document_id, domain_code)` UNIQUE |
 | 순환 참조 방지 | 트리거 (PARENT_OF, CHILD_OF) |
-| SSOT | 트리거 (같은 hash + ACTIVE = 1개) |
 | 낙관적 잠금 | row_version 자동 증가 |
 
 ---
@@ -289,7 +272,7 @@ DRAFT → ACTIVE → DEPRECATED
 ## 코딩 컨벤션
 
 ### 파일명
-- kebab-case: `kms-admin.html`, `document-pipeline.md`
+- kebab-case: `document-explorer.vue`, `decision-log.md`
 
 ### JavaScript/Vue
 - 변수/함수: camelCase
@@ -300,6 +283,10 @@ DRAFT → ACTIVE → DEPRECATED
 - 주석: 한국어
 - 커밋 메시지: 한국어
 - UI 텍스트: 한국어
+
+### 상수 중앙집중화
+- 모든 라벨/태그 타입은 `@kms/shared/constants.ts`에서 관리
+- 컴포넌트에서 로컬 상수 정의 금지
 
 ---
 
@@ -335,104 +322,23 @@ npm --prefix packages/web run build            # 3. Web
 npm --prefix packages/api exec prisma studio   # DB GUI
 ```
 
-### Python 검증 도구
-
-```bash
-# 프로젝트 루트에서 실행
-python scripts/taxonomy.py
-python scripts/simulator.py
-python scripts/verifier.py
-python scripts/ontology_validator.py
-```
-
 ---
 
 ## 배포 가이드
 
 ### 백엔드 (Docker)
 
-#### 사전 준비
-- Docker + Docker Compose 설치
-- Node.js 20+ (빌드용)
+#### 환경변수
 
-#### 1. 환경변수 설정
-
-```bash
-# packages/api/.env 생성 (프로덕션)
-cp .env.example packages/api/.env
-```
-
-필수 환경변수:
 | 변수 | 설명 | 예시 |
 |------|------|------|
 | `DATABASE_URL` | PostgreSQL 접속 URL | `postgresql://kms:비밀번호@호스트:5432/kms?schema=public` |
-| `JWT_SECRET` | JWT 서명 키 (필수, 하드코딩 금지) | 32자 이상 랜덤 문자열 |
+| `JWT_SECRET` | JWT 서명 키 (필수) | 32자 이상 랜덤 문자열 |
 | `JWT_EXPIRES_IN` | 액세스 토큰 만료 | `1h` |
 | `JWT_REFRESH_EXPIRES_IN` | 리프레시 토큰 만료 | `7d` |
 | `API_PORT` | 서버 포트 | `3000` |
 | `STORAGE_PATH` | 파일 저장 경로 | `/app/storage/originals` |
-| `CORS_ORIGIN` | 허용 Origin | `https://kms-web.vercel.app` (Vercel 배포 후 실제 도메인으로 변경) |
-
-#### 2. 빌드
-
-```bash
-# 의존성 설치 + shared 빌드
-npm install
-npm --prefix packages/shared run build
-
-# Prisma 클라이언트 생성
-npm --prefix packages/api exec prisma generate
-
-# API 빌드
-npm --prefix packages/api run build
-```
-
-빌드 결과: `packages/api/dist/`
-
-#### 3. DB 마이그레이션
-
-```bash
-# 개발용 (자동 생성)
-npm --prefix packages/api exec prisma migrate dev
-
-# 프로덕션 (적용만)
-npm --prefix packages/api exec prisma migrate deploy
-
-# 시드 데이터 (최초 1회)
-npm --prefix packages/api exec prisma db seed
-```
-
-마이그레이션 후 트리거 적용:
-```bash
-# PostgreSQL에 직접 실행
-psql $DATABASE_URL -f packages/api/prisma/triggers.sql
-```
-
-#### 4. Docker 실행
-
-```bash
-# PostgreSQL + pgAdmin 시작
-docker compose up -d
-
-# API 서버 실행 (로컬)
-npm --prefix packages/api run start:prod
-
-# 또는 Docker로 API 실행
-# packages/api/Dockerfile 참고
-```
-
-#### 5. 확인
-
-```bash
-# 헬스체크
-curl http://localhost:3000/api
-
-# Swagger 문서
-# http://localhost:3000/api/docs
-
-# pgAdmin
-# http://localhost:5050 (admin@kms.local / admin)
-```
+| `CORS_ORIGIN` | 허용 Origin | `https://kms-web.vercel.app` |
 
 #### 초기 관리자 계정
 - 이메일: `admin`
@@ -441,62 +347,28 @@ curl http://localhost:3000/api
 
 > 프로덕션 배포 후 반드시 비밀번호 변경
 
----
-
 ### 프론트엔드 (Vercel)
-
-#### 1. Vercel 프로젝트 설정
 
 | 설정 | 값 |
 |------|-----|
 | Framework Preset | Other |
-| Root Directory | `.` (레포 루트, 비워두기) |
-| Build Command | (자동 — vercel.json에 정의됨) |
-| Output Directory | (자동 — vercel.json에 정의됨) |
-| Install Command | (자동 — vercel.json에 정의됨) |
-
-> `vercel.json`이 레포 루트에 모든 설정을 포함하고 있음
-
-#### 2. 환경변수 (Vercel Dashboard)
-
-| 변수 | 값 |
-|------|-----|
-| `VITE_API_BASE_URL` | `https://kms.joonbi.co.kr/api` |
-
-#### 3. API 프록시 설정
-
-`packages/web/vercel.json` 생성:
-레포 루트 `vercel.json`에 이미 설정됨 (빌드, 출력, API 프록시 포함)
-
-#### 4. 배포
-
-```bash
-# Vercel CLI
-npx vercel --prod
-
-# 또는 GitHub 연동 시 push하면 자동 배포
-```
-
-#### 5. 빌드 순서 주의사항
-
-Vercel에서 빌드 시 `@kms/shared`가 먼저 빌드되어야 합니다.
-`vercel.json`의 Build Command에서 shared → web 순서로 빌드합니다.
-Web은 vite alias로 shared 소스를 직접 읽으므로 ESM/CJS 충돌이 없습니다.
+| Root Directory | `.` (레포 루트) |
+| 환경변수 | `VITE_API_BASE_URL=https://kms.joonbi.co.kr/api` |
 
 ---
 
 ## 참고 문서
 
-- `docs/phase2/README.md` - Phase 2 상세
-- `docs/problems/final-design.md` - 최종 설계
-- `docs/architecture/tech-stack-decision.md` - 기술 스택 결정 근거
+- `docs/architecture/decision-log.md` — **아키텍처 의사결정 기록 (ADR-001~013)**
+- `docs/phase2/database-schema.md` — DB 스키마 정본
+- `docs/handoff.md` — 세션 핸드오프
 
 ---
 
 ## 핵심 원칙
 
-1. **체계 관리 집중**: 문서 처리는 외주, 체계 관리만 직접
-2. **허용 형식 제한**: PDF, Markdown, CSV만 (Word/PPT 차단)
-3. **데이터 주권 확보**: 원본 + 분류체계 100% 소유
-4. **확장성 열어두기**: Phase 3 인터페이스 정의만
+1. **프레임워크 > 솔루션**: 업종 특화 로직을 강제하지 않음
+2. **업로드는 자유**: 파일만 올리면 됨, 분류는 나중에
+3. **원본 + 바로가기**: 문서는 독립 엔티티, 도메인에는 바로가기로 배치
+4. **체계 관리 집중**: 문서 처리(파싱/NLP)는 외주 위임
 5. **풀스택 TypeScript**: NestJS + Vue 3 (타입 공유)

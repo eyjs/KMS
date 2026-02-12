@@ -92,6 +92,20 @@ export class DocumentsService {
     return crypto.createHash('sha256').update(buffer).digest('hex')
   }
 
+  /** 파일명 디코딩: latin1 → UTF-8, URL-encoded → UTF-8 */
+  private decodeFileName(originalname: string): string {
+    let name = Buffer.from(originalname, 'latin1').toString('utf8')
+    // URL 인코딩된 경우 추가 디코딩 (%XX 패턴)
+    if (/%[0-9A-Fa-f]{2}/.test(name)) {
+      try {
+        name = decodeURIComponent(name)
+      } catch {
+        // 디코딩 실패 시 원본 유지
+      }
+    }
+    return name
+  }
+
   async create(
     data: {
       securityLevel?: SecurityLevel
@@ -104,7 +118,7 @@ export class DocumentsService {
       throw new BadRequestException('파일이 필요합니다')
     }
 
-    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8')
+    const originalName = this.decodeFileName(file.originalname)
     const ext = originalName.split('.').pop()?.toLowerCase()
     if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
       throw new BadRequestException('허용되지 않는 파일 형식입니다')
@@ -284,6 +298,12 @@ export class DocumentsService {
         where,
         include: {
           _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
+          placements: {
+            include: {
+              domain: { select: { displayName: true } },
+              category: { select: { name: true } },
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * size,
@@ -293,7 +313,14 @@ export class DocumentsService {
     ])
 
     return {
-      data: data.map((d) => this.formatDocument(d)),
+      data: data.map((d) => ({
+        ...this.formatDocument(d),
+        placements: d.placements.map((p) => ({
+          domainCode: p.domainCode,
+          domainName: p.domain.displayName,
+          categoryName: p.category?.name ?? null,
+        })),
+      })),
       meta: { total, page, size, totalPages: Math.ceil(total / size) },
     }
   }
@@ -394,7 +421,7 @@ export class DocumentsService {
       throw new ForbiddenException('접근 권한이 없습니다')
     }
 
-    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8')
+    const originalName = this.decodeFileName(file.originalname)
     const ext = originalName.split('.').pop()?.toLowerCase()
     if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
       throw new BadRequestException('허용되지 않는 파일 형식입니다')

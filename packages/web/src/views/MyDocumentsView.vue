@@ -90,10 +90,26 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="배치" width="80" align="center">
+      <el-table-column label="배치된 도메인" min-width="180">
         <template #default="{ row }">
-          <el-tag v-if="row.placementCount === 0" type="warning" size="small">미배치</el-tag>
-          <span v-else>{{ row.placementCount }}개</span>
+          <template v-if="row.placements?.length > 0">
+            <div style="display: flex; flex-wrap: wrap; gap: 4px">
+              <el-tag
+                v-for="p in row.placements.slice(0, 3)"
+                :key="p.domainCode"
+                size="small"
+                type="info"
+                style="cursor: pointer"
+                @click.stop="$router.push(`/d/${p.domainCode}`)"
+              >
+                {{ p.domainName }}{{ p.categoryName ? ` / ${p.categoryName}` : '' }}
+              </el-tag>
+              <el-tag v-if="row.placements.length > 3" size="small" type="info">
+                +{{ row.placements.length - 3 }}
+              </el-tag>
+            </div>
+          </template>
+          <el-tag v-else type="warning" size="small">미배치</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="업로드일" width="120">

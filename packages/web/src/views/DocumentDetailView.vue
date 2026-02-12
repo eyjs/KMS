@@ -276,9 +276,11 @@ async function handleRelationDelete(relationId: string) {
 const editDialogVisible = ref(false)
 const editLoading = ref(false)
 const editForm = ref<{
+  fileName: string
   securityLevel: string
   validUntil: string
 }>({
+  fileName: '',
   securityLevel: 'INTERNAL',
   validUntil: '',
 })
@@ -300,6 +302,7 @@ async function openEditDialog() {
   }
 
   editForm.value = {
+    fileName: doc.value.fileName ?? '',
     securityLevel: doc.value.securityLevel,
     validUntil: doc.value.validUntil ? doc.value.validUntil.slice(0, 10) : '',
   }
@@ -311,6 +314,7 @@ async function handleEditSubmit() {
   editLoading.value = true
   try {
     const { data } = await documentsApi.update(id.value, {
+      fileName: editForm.value.fileName || undefined,
       securityLevel: editForm.value.securityLevel,
       validUntil: editForm.value.validUntil || null,
       rowVersion: doc.value.rowVersion,
@@ -459,26 +463,35 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
 
           <!-- 액션 버튼 -->
           <el-divider />
-          <div style="display: flex; flex-direction: column; gap: 8px">
-            <el-button v-if="hasFile" size="small" @click="handleDownload" style="width: 100%">다운로드</el-button>
-            <el-button
-              v-for="next in getNextLifecycles(doc.lifecycle)"
-              :key="next"
-              size="small"
-              :type="next === 'DRAFT' ? 'info' : next === 'DEPRECATED' ? 'danger' : 'primary'"
-              @click="handleTransition(next as Lifecycle)"
-              style="width: 100%"
-            >
-              → {{ LIFECYCLE_LABELS[next] ?? next }}
+          <div class="action-buttons">
+            <!-- 다운로드: 항상 primary -->
+            <el-button v-if="hasFile" type="primary" plain @click="handleDownload">
+              다운로드
             </el-button>
+
+            <!-- 상태 전환 버튼 그룹 -->
+            <div v-if="getNextLifecycles(doc.lifecycle).length > 0" class="action-group">
+              <div class="action-group-label">상태 전환</div>
+              <el-button
+                v-for="next in getNextLifecycles(doc.lifecycle)"
+                :key="next"
+                :type="next === 'ACTIVE' ? 'success' : next === 'DEPRECATED' ? 'warning' : 'info'"
+                plain
+                @click="handleTransition(next as Lifecycle)"
+              >
+                {{ LIFECYCLE_LABELS[next] ?? next }}
+              </el-button>
+            </div>
+
+            <!-- 삭제: 별도 영역 -->
             <el-button
               v-if="auth.hasMinRole('REVIEWER')"
-              size="small"
               type="danger"
+              text
               @click="handleDelete"
-              style="width: 100%"
+              style="margin-top: 8px"
             >
-              삭제
+              문서 삭제
             </el-button>
           </div>
         </el-card>
@@ -648,6 +661,12 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
       :close-on-click-modal="false"
     >
       <el-form label-width="90px" label-position="left">
+        <el-form-item label="파일명">
+          <el-input v-model="editForm.fileName" placeholder="표시될 파일명" />
+          <div style="font-size: 12px; color: #909399; margin-top: 4px">
+            다운로드 시 사용될 파일명입니다
+          </div>
+        </el-form-item>
         <el-form-item label="보안등급">
           <el-select
             v-model="editForm.securityLevel"
@@ -683,3 +702,29 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-buttons .el-button {
+  width: 100%;
+  margin: 0;
+}
+
+.action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.action-group-label {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 2px;
+}
+</style>
