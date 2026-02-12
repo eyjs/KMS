@@ -498,19 +498,18 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
         </el-card>
       </div>
 
-      <!-- 오른쪽: 뷰어 + 이력 + 관계 -->
-      <div style="flex: 1; min-width: 0; overflow-y: auto">
-        <!-- 문서 뷰어 -->
-        <el-card shadow="never" style="margin-bottom: 12px" :body-style="{ padding: '0' }">
+      <!-- 가운데: 문서 뷰어 (메인) -->
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
+        <el-card shadow="never" style="flex: 1; display: flex; flex-direction: column" :body-style="{ padding: '0', flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' }">
           <template #header>
             <span style="font-weight: 600">문서 뷰어</span>
           </template>
-          <div v-if="hasFile" style="height: 400px">
+          <div v-if="hasFile" style="flex: 1; min-height: 0">
             <PdfViewer v-if="doc.fileType === 'pdf'" :document-id="doc.id" />
             <MarkdownViewer v-else-if="doc.fileType === 'md'" :document-id="doc.id" />
             <CsvViewer v-else-if="doc.fileType === 'csv'" :document-id="doc.id" />
           </div>
-          <div v-else style="padding: 40px; text-align: center; color: #909399">
+          <div v-else style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; color: #909399">
             <p style="margin: 0 0 12px">파일이 아직 첨부되지 않은 문서입니다</p>
             <el-button type="primary" size="small" :loading="attachLoading" @click="triggerFileAttach">
               파일 첨부
@@ -518,67 +517,86 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
             <input ref="fileInput" type="file" accept=".pdf,.md,.csv" style="display: none" @change="handleFileAttach" />
           </div>
         </el-card>
+      </div>
 
-        <!-- 변경 이력 (접을 수 있음) -->
-        <el-collapse v-model="historyExpanded" style="margin-bottom: 12px; border: 1px solid #ebeef5; border-radius: 4px">
-          <el-collapse-item name="history">
-            <template #title>
-              <span style="font-weight: 600; font-size: 14px; color: #303133">변경 이력</span>
-            </template>
-            <DocumentTimeline :document-id="doc.id" />
-          </el-collapse-item>
-        </el-collapse>
-
+      <!-- 오른쪽: 관련 문서 + 변경 이력 위젯 -->
+      <div style="width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto">
         <!-- 관련 문서 -->
         <el-card shadow="never">
           <template #header>
             <div style="display: flex; justify-content: space-between; align-items: center">
               <span style="font-weight: 600">관련 문서</span>
-              <div style="display: flex; gap: 6px">
-                <el-button
-                  v-if="auth.hasMinRole('EDITOR')"
-                  type="primary"
-                  size="small"
-                  @click="router.push(`/d/${domainCode}/compare?source=${id}`)"
-                >
-                  관계 설정
-                </el-button>
-                <el-button
-                  v-if="auth.hasMinRole('EDITOR')"
-                  size="small"
-                  @click="openRelationDialog"
-                >
-                  + 빠른 추가
-                </el-button>
-              </div>
+              <el-button
+                v-if="auth.hasMinRole('EDITOR')"
+                size="small"
+                @click="openRelationDialog"
+              >
+                + 추가
+              </el-button>
             </div>
           </template>
-          <div v-if="allRelations.length > 0">
+          <div v-if="allRelations.length > 0" style="max-height: 240px; overflow-y: auto">
             <div
               v-for="rel in allRelations"
               :key="rel.id"
-              style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f2f3f5"
+              class="relation-item"
             >
-              <el-tag size="small" type="info">{{ RELATION_TYPE_LABELS[rel.type] ?? rel.type }}</el-tag>
-              <el-tag v-if="rel.domainCode" size="small" style="font-size: 11px">{{ rel.domainCode }}</el-tag>
-              <span
-                style="font-size: 13px; color: #303133; flex: 1; cursor: pointer"
-                @click="router.push(`/d/${domainCode}/doc/${rel.docId}`)"
-              >
-                {{ rel.fileName }}
-              </span>
+              <div style="flex: 1; min-width: 0">
+                <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px">
+                  <el-tag size="small" type="info">{{ RELATION_TYPE_LABELS[rel.type] ?? rel.type }}</el-tag>
+                  <el-tag v-if="rel.domainCode" size="small" style="font-size: 10px">{{ rel.domainCode }}</el-tag>
+                </div>
+                <span
+                  class="relation-file-name"
+                  @click="router.push(`/d/${domainCode}/doc/${rel.docId}`)"
+                >
+                  {{ rel.fileName }}
+                </span>
+              </div>
               <el-button
                 v-if="auth.hasMinRole('EDITOR')"
                 text
                 size="small"
                 type="danger"
+                style="flex-shrink: 0"
                 @click="handleRelationDelete(rel.id)"
               >
                 삭제
               </el-button>
             </div>
           </div>
-          <el-empty v-else description="관련 문서가 없습니다" :image-size="60" />
+          <div v-else style="padding: 16px 0; text-align: center; color: #909399; font-size: 13px">
+            관련 문서가 없습니다
+          </div>
+          <div v-if="auth.hasMinRole('EDITOR')" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #f2f3f5">
+            <el-button
+              text
+              size="small"
+              type="primary"
+              style="width: 100%"
+              @click="router.push(`/d/${domainCode}/compare?source=${id}`)"
+            >
+              관계 설정 화면으로 이동
+            </el-button>
+          </div>
+        </el-card>
+
+        <!-- 변경 이력 (접을 수 있음) -->
+        <el-card shadow="never" :body-style="{ padding: historyExpanded.length > 0 ? '16px' : '0' }">
+          <template #header>
+            <div
+              style="display: flex; justify-content: space-between; align-items: center; cursor: pointer"
+              @click="historyExpanded = historyExpanded.length > 0 ? [] : ['history']"
+            >
+              <span style="font-weight: 600">변경 이력</span>
+              <el-icon :style="{ transform: historyExpanded.length > 0 ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+              </el-icon>
+            </div>
+          </template>
+          <div v-show="historyExpanded.length > 0" style="max-height: 300px; overflow-y: auto">
+            <DocumentTimeline :document-id="doc.id" />
+          </div>
         </el-card>
       </div>
     </div>
@@ -729,5 +747,31 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
   font-size: 12px;
   color: #909399;
   margin-bottom: 2px;
+}
+
+.relation-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f2f3f5;
+}
+
+.relation-item:last-child {
+  border-bottom: none;
+}
+
+.relation-file-name {
+  font-size: 13px;
+  color: #303133;
+  cursor: pointer;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relation-file-name:hover {
+  color: #409eff;
 }
 </style>
