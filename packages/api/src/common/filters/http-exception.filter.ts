@@ -20,6 +20,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       status = exception.getStatus()
       const res = exception.getResponse()
       message = typeof res === 'string' ? res : (res as { message: string }).message
+    } else {
+      // 500 에러 시 실제 예외 내용 로깅
+      console.error('[GlobalExceptionFilter] Unhandled exception:', exception)
     }
 
     response.status(status).json({
