@@ -5,14 +5,23 @@ import { taxonomyApi } from '@/api/taxonomy'
 import { LIFECYCLE_LABELS } from '@kms/shared'
 import type { DocumentEntity, DomainMasterEntity } from '@kms/shared'
 
-const props = defineProps<{
-  sourceDocument: DocumentEntity
-  excludeId?: string
-  existingRelations?: Map<string, string>
-}>()
+const props = withDefaults(
+  defineProps<{
+    sourceDocument?: DocumentEntity
+    excludeId?: string
+    existingRelations?: Map<string, string>
+    multiSelect?: boolean
+    selectedIds?: string[]
+  }>(),
+  {
+    multiSelect: false,
+    selectedIds: () => [],
+  },
+)
 
 const emit = defineEmits<{
   (e: 'select', doc: DocumentEntity): void
+  (e: 'update:selectedIds', ids: string[]): void
 }>()
 
 const domains = ref<DomainMasterEntity[]>([])
@@ -124,8 +133,34 @@ function handlePageChange(p: number) {
   else if (activeTab.value === 'global') loadGlobalDocuments()
 }
 
+// 내부 선택 상태 (멀티 모드용)
+const internalSelectedIds = ref<string[]>([...props.selectedIds])
+
+// props.selectedIds 변경 시 동기화
+watch(() => props.selectedIds, (ids) => {
+  internalSelectedIds.value = [...ids]
+})
+
 function selectDoc(doc: DocumentEntity) {
-  emit('select', doc)
+  if (props.multiSelect) {
+    toggleSelection(doc.id)
+  } else {
+    emit('select', doc)
+  }
+}
+
+function toggleSelection(docId: string) {
+  const idx = internalSelectedIds.value.indexOf(docId)
+  if (idx >= 0) {
+    internalSelectedIds.value.splice(idx, 1)
+  } else {
+    internalSelectedIds.value.push(docId)
+  }
+  emit('update:selectedIds', [...internalSelectedIds.value])
+}
+
+function isSelected(docId: string): boolean {
+  return internalSelectedIds.value.includes(docId)
 }
 
 const displayList = computed(() => documents.value)
@@ -190,31 +225,39 @@ function lifecycleType(lifecycle: string): string {
         <div
           v-for="doc in displayList"
           :key="doc.id"
-          style="padding: 8px 12px; border-bottom: 1px solid #f2f3f5; cursor: pointer; transition: background 0.15s"
-          @mouseenter="($event.currentTarget as HTMLElement).style.background = '#f5f7fa'"
-          @mouseleave="($event.currentTarget as HTMLElement).style.background = ''"
+          class="doc-item"
+          :class="{ selected: multiSelect && isSelected(doc.id) }"
           @click="selectDoc(doc)"
         >
-          <div style="display: flex; align-items: center; gap: 6px">
-            <span style="font-size: 13px; font-weight: 500; color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-              {{ doc.fileName ?? doc.docCode ?? '(제목 없음)' }}
-            </span>
-            <el-tag
-              v-if="props.existingRelations?.has(doc.id)"
-              size="small"
-              type="info"
-              style="flex-shrink: 0"
-            >
-              {{ props.existingRelations.get(doc.id) }}
-            </el-tag>
-            <el-tag size="small" :type="lifecycleType(doc.lifecycle)">
-              {{ LIFECYCLE_LABELS[doc.lifecycle] ?? doc.lifecycle }}
-            </el-tag>
-          </div>
-          <div style="font-size: 11px; color: #909399; margin-top: 2px">
-            <span v-if="doc.docCode" style="margin-right: 8px">{{ doc.docCode }}</span>
-            <span v-if="doc.placementCount > 0">{{ doc.placementCount }}곳 배치</span>
-            <span v-else>미배치</span>
+          <el-checkbox
+            v-if="multiSelect"
+            :model-value="isSelected(doc.id)"
+            style="margin-right: 8px"
+            @click.stop
+            @change="toggleSelection(doc.id)"
+          />
+          <div style="flex: 1; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 6px">
+              <span style="font-size: 13px; font-weight: 500; color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                {{ doc.fileName ?? doc.docCode ?? '(제목 없음)' }}
+              </span>
+              <el-tag
+                v-if="props.existingRelations?.has(doc.id)"
+                size="small"
+                type="info"
+                style="flex-shrink: 0"
+              >
+                {{ props.existingRelations.get(doc.id) }}
+              </el-tag>
+              <el-tag size="small" :type="lifecycleType(doc.lifecycle)">
+                {{ LIFECYCLE_LABELS[doc.lifecycle] ?? doc.lifecycle }}
+              </el-tag>
+            </div>
+            <div style="font-size: 11px; color: #909399; margin-top: 2px">
+              <span v-if="doc.docCode" style="margin-right: 8px">{{ doc.docCode }}</span>
+              <span v-if="doc.placementCount > 0">{{ doc.placementCount }}곳 배치</span>
+              <span v-else>미배치</span>
+            </div>
           </div>
         </div>
       </template>
@@ -236,3 +279,22 @@ function lifecycleType(lifecycle: string): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.doc-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f2f3f5;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.doc-item:hover {
+  background: #f5f7fa;
+}
+
+.doc-item.selected {
+  background: #ecf5ff;
+}
+</style>

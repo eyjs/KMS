@@ -2,17 +2,18 @@
 /**
  * 통합 문서 추가 다이얼로그
  * - 탭 1: 새 파일 업로드 + 현재 도메인에 배치
- * - 탭 2: 기존 문서 검색 + 현재 도메인에 배치
+ * - 탭 2: 기존 문서 검색 (DocumentExplorer) + 현재 도메인에 배치
  */
 import { ref, watch, computed } from 'vue'
-import { UploadFilled, CircleCheck, CircleClose, Search } from '@element-plus/icons-vue'
+import { UploadFilled, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { documentsApi } from '@/api/documents'
 import { placementsApi } from '@/api/placements'
 import { categoriesApi } from '@/api/categories'
-import { SECURITY_LEVEL_LABELS, LIFECYCLE_LABELS } from '@kms/shared'
+import { SECURITY_LEVEL_LABELS } from '@kms/shared'
 import type { UploadFile } from 'element-plus'
-import type { DocumentEntity, DomainCategoryEntity } from '@kms/shared'
+import type { DomainCategoryEntity } from '@kms/shared'
+import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -119,45 +120,8 @@ async function submitUpload() {
 }
 
 // === 기존 문서 탭 ===
-const searchQuery = ref('')
-const searchResults = ref<DocumentEntity[]>([])
-const searchLoading = ref(false)
 const selectedDocIds = ref<string[]>([])
 const placementLoading = ref(false)
-
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-
-function handleSearch() {
-  if (searchTimer) clearTimeout(searchTimer)
-  if (!searchQuery.value || searchQuery.value.length < 2) {
-    searchResults.value = []
-    return
-  }
-  searchLoading.value = true
-  searchTimer = setTimeout(async () => {
-    try {
-      const { data } = await documentsApi.search({
-        q: searchQuery.value,
-        page: 1,
-        size: 20,
-      })
-      searchResults.value = data.data
-    } catch {
-      searchResults.value = []
-    } finally {
-      searchLoading.value = false
-    }
-  }, 300)
-}
-
-function toggleDocSelection(docId: string) {
-  const idx = selectedDocIds.value.indexOf(docId)
-  if (idx >= 0) {
-    selectedDocIds.value.splice(idx, 1)
-  } else {
-    selectedDocIds.value.push(docId)
-  }
-}
 
 async function submitPlacement() {
   if (selectedDocIds.value.length === 0) {
@@ -238,8 +202,6 @@ watch(
       uploadResults.value = []
       uploadForm.value = { securityLevel: 'INTERNAL', validUntil: '' }
       // 기존 문서 탭 초기화
-      searchQuery.value = ''
-      searchResults.value = []
       selectedDocIds.value = []
       // 카테고리 초기화
       selectedCategoryId.value = null
@@ -257,12 +219,6 @@ watch(
     }
   },
 )
-
-function lifecycleType(lifecycle: string): string {
-  if (lifecycle === 'ACTIVE') return 'success'
-  if (lifecycle === 'DRAFT') return 'info'
-  return 'danger'
-}
 </script>
 
 <template>
@@ -303,13 +259,15 @@ function lifecycleType(lifecycle: string): string {
         <el-form label-position="top">
           <el-form-item label="파일 선택" required>
             <el-upload
+              ref="uploadRef"
+              v-model:file-list="fileList"
               :auto-upload="false"
-              :file-list="fileList"
               :on-change="onFileChange"
               :on-remove="onFileRemove"
               accept=".pdf,.md,.csv"
               multiple
               drag
+              action="#"
             >
               <el-icon style="font-size: 32px; color: var(--el-text-color-placeholder)"><UploadFilled /></el-icon>
               <div>파일을 드래그하거나 클릭하여 선택하세요</div>
@@ -357,48 +315,12 @@ function lifecycleType(lifecycle: string): string {
 
       <!-- 기존 문서 검색 탭 -->
       <el-tab-pane label="기존 문서 배치" name="existing">
-        <el-input
-          v-model="searchQuery"
-          placeholder="문서 검색 (2글자 이상)..."
-          prefix-icon="Search"
-          clearable
-          size="large"
-          @input="handleSearch"
-          style="margin-bottom: 12px"
-        />
-
-        <div v-loading="searchLoading" style="max-height: 300px; overflow-y: auto">
-          <template v-if="searchResults.length > 0">
-            <div
-              v-for="doc in searchResults"
-              :key="doc.id"
-              class="doc-item"
-              :class="{ selected: selectedDocIds.includes(doc.id) }"
-              @click="toggleDocSelection(doc.id)"
-            >
-              <el-checkbox :model-value="selectedDocIds.includes(doc.id)" @click.stop />
-              <div style="flex: 1; min-width: 0; margin-left: 8px">
-                <div style="font-size: 13px; font-weight: 500; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                  {{ doc.fileName ?? doc.docCode ?? '(제목 없음)' }}
-                </div>
-                <div style="font-size: 11px; color: #909399; margin-top: 2px">
-                  <span v-if="doc.docCode" style="margin-right: 8px">{{ doc.docCode }}</span>
-                  <span>{{ doc.placementCount > 0 ? `${doc.placementCount}곳 배치` : '미배치' }}</span>
-                </div>
-              </div>
-              <el-tag size="small" :type="lifecycleType(doc.lifecycle)">
-                {{ LIFECYCLE_LABELS[doc.lifecycle] ?? doc.lifecycle }}
-              </el-tag>
-            </div>
-          </template>
-          <div v-else-if="!searchLoading && searchQuery.length >= 2" style="text-align: center; padding: 24px; color: #909399">
-            검색 결과가 없습니다
-          </div>
-          <div v-else-if="!searchLoading" style="text-align: center; padding: 24px; color: #909399">
-            검색어를 입력하세요
-          </div>
+        <div style="height: 350px; border: 1px solid #ebeef5; border-radius: 4px; overflow: hidden">
+          <DocumentExplorer
+            :multi-select="true"
+            v-model:selected-ids="selectedDocIds"
+          />
         </div>
-
         <div v-if="selectedDocIds.length > 0" style="margin-top: 12px; color: #409eff; font-size: 13px">
           {{ selectedDocIds.length }}건 선택됨
         </div>
@@ -441,22 +363,5 @@ function lifecycleType(lifecycle: string): string {
   gap: 8px;
   padding: 4px 0;
   font-size: 13px;
-}
-
-.doc-item {
-  display: flex;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid #f2f3f5;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.doc-item:hover {
-  background: #f5f7fa;
-}
-
-.doc-item.selected {
-  background: #ecf5ff;
 }
 </style>
