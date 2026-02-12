@@ -1,19 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useDomainStore } from '@/stores/domain'
 import { useAuthStore } from '@/stores/auth'
-import { taxonomyApi } from '@/api/taxonomy'
-import { placementsApi } from '@/api/placements'
 import CategoryTree from '@/components/domain/CategoryTree.vue'
 import DocumentTable from '@/components/document/DocumentTable.vue'
 import DocumentPreview from '@/components/document/DocumentPreview.vue'
 import AddDocumentDialog from '@/components/domain/AddDocumentDialog.vue'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
 import { relationsApi } from '@/api/relations'
-import { DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
-import type { DocumentEntity, DomainMasterEntity, CreateDomainDto, UpdateDomainDto, RelationGraphResponse } from '@kms/shared'
+import type { DocumentEntity, RelationGraphResponse } from '@kms/shared'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,24 +30,7 @@ const categoryTreeRef = ref<InstanceType<typeof CategoryTree>>()
 const graphData = ref<RelationGraphResponse | null>(null)
 const graphLoading = ref(false)
 
-// 하위 도메인
-const childDomains = computed(() =>
-  domainStore.domainsFlat.filter((d) => d.parentCode === domainCode.value),
-)
 const isAdmin = computed(() => auth.hasMinRole('ADMIN'))
-
-// 도메인 경로
-const domainBreadcrumb = computed(() => {
-  const path: DomainMasterEntity[] = []
-  let current = domainStore.domainsFlat.find((d) => d.code === domainCode.value)
-  while (current) {
-    path.unshift(current)
-    current = current.parentCode
-      ? domainStore.domainsFlat.find((d) => d.code === current!.parentCode)
-      : undefined
-  }
-  return path
-})
 
 watch(domainCode, (code) => {
   if (code) {
@@ -111,118 +91,6 @@ function openAddDocument() {
   showAddDocument.value = true
 }
 
-function navigateToChild(child: DomainMasterEntity) {
-  router.push(`/d/${child.code}`)
-}
-
-function getDomainDepth(code: string): number {
-  let depth = 0
-  let current = domainStore.domainsFlat.find((d) => d.code === code)
-  while (current?.parentCode) {
-    depth++
-    current = domainStore.domainsFlat.find((d) => d.code === current!.parentCode)
-  }
-  return depth
-}
-
-const canAddChildDomain = computed(() =>
-  getDomainDepth(domainCode.value) + 1 < DOMAIN_MAX_DEPTH,
-)
-
-// 하위 도메인 CRUD
-const childDialogVisible = ref(false)
-const childDialogMode = ref<'create' | 'edit'>('create')
-const childDialogLoading = ref(false)
-const childFormData = ref({
-  codeSuffix: '',
-  displayName: '',
-  description: '',
-  sortOrder: 0,
-})
-const editingChildCode = ref('')
-
-function openChildCreateDialog() {
-  if (!canAddChildDomain.value) {
-    const maxLabel = DOMAIN_LEVEL_LABELS[DOMAIN_MAX_DEPTH - 1] ?? '최하위'
-    ElMessage.warning(`도메인은 "${maxLabel}" 단계까지 가능합니다. ${DOMAIN_GUIDANCE.principle}`)
-    return
-  }
-  childDialogMode.value = 'create'
-  childFormData.value = { codeSuffix: '', displayName: '', description: '', sortOrder: 0 }
-  childDialogVisible.value = true
-}
-
-function openChildEditDialog(child: DomainMasterEntity) {
-  childDialogMode.value = 'edit'
-  editingChildCode.value = child.code
-  const prefix = `${domainCode.value}-`
-  childFormData.value = {
-    codeSuffix: child.code.startsWith(prefix) ? child.code.slice(prefix.length) : child.code,
-    displayName: child.displayName,
-    description: child.description ?? '',
-    sortOrder: child.sortOrder,
-  }
-  childDialogVisible.value = true
-}
-
-async function handleChildSubmit() {
-  if (!childFormData.value.displayName.trim()) {
-    ElMessage.warning('이름을 입력하세요')
-    return
-  }
-  childDialogLoading.value = true
-  try {
-    if (childDialogMode.value === 'create') {
-      const dto: CreateDomainDto = {
-        displayName: childFormData.value.displayName,
-        parentCode: domainCode.value,
-        description: childFormData.value.description || undefined,
-        sortOrder: childFormData.value.sortOrder,
-      }
-      if (childFormData.value.codeSuffix.trim()) {
-        dto.code = `${domainCode.value}-${childFormData.value.codeSuffix.trim()}`
-      }
-      await taxonomyApi.createDomain(dto)
-      ElMessage.success('하위 도메인이 생성되었습니다')
-    } else {
-      const dto: UpdateDomainDto = {
-        displayName: childFormData.value.displayName,
-        description: childFormData.value.description || undefined,
-        sortOrder: childFormData.value.sortOrder,
-      }
-      await taxonomyApi.updateDomain(editingChildCode.value, dto)
-      ElMessage.success('하위 도메인이 수정되었습니다')
-    }
-    childDialogVisible.value = false
-    await domainStore.reloadDomains()
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '오류가 발생했습니다'
-    ElMessage.error(msg)
-  } finally {
-    childDialogLoading.value = false
-  }
-}
-
-async function handleChildDelete(child: DomainMasterEntity) {
-  try {
-    await ElMessageBox.confirm(
-      `"${child.displayName}" 도메인을 삭제하시겠습니까?`,
-      '하위 도메인 삭제',
-      { confirmButtonText: '삭제', cancelButtonText: '취소', type: 'warning' },
-    )
-  } catch {
-    return
-  }
-  try {
-    await taxonomyApi.deleteDomain(child.code)
-    ElMessage.success('하위 도메인이 삭제되었습니다')
-    await domainStore.reloadDomains()
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '삭제 중 오류가 발생했습니다'
-    ElMessage.error(msg)
-  }
-}
-
 // 패널 리사이즈
 const treeWidth = ref(220)
 const previewWidth = ref(300)
@@ -272,59 +140,17 @@ onUnmounted(() => {
     <!-- 상단 도구모음 -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-shrink: 0">
       <div style="display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden">
-        <template v-if="domainBreadcrumb.length > 1">
-          <template v-for="(ancestor, idx) in domainBreadcrumb.slice(0, -1)" :key="ancestor.code">
-            <span v-if="idx > 0" style="color: #c0c4cc; font-size: 12px">/</span>
-            <span
-              style="font-size: 12px; color: #409eff; cursor: pointer; white-space: nowrap"
-              @click="router.push(`/d/${ancestor.code}`)"
-            >
-              {{ ancestor.displayName }}
-            </span>
-          </template>
-          <span style="color: #c0c4cc; font-size: 12px">/</span>
-        </template>
         <h2 style="margin: 0; font-size: 18px; white-space: nowrap">
           {{ domainStore.currentDomain?.displayName ?? domainCode }}
         </h2>
         <el-tag size="small">{{ domainCode }}</el-tag>
       </div>
       <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0">
-        <el-button v-if="isAdmin && canAddChildDomain" size="small" @click="openChildCreateDialog">+ 하위 도메인</el-button>
         <el-button type="primary" size="small" @click="openAddDocument">+ 문서 추가</el-button>
         <el-radio-group v-model="activeTab" size="small">
           <el-radio-button value="list">목록</el-radio-button>
           <el-radio-button value="graph">그래프</el-radio-button>
         </el-radio-group>
-      </div>
-    </div>
-
-    <!-- 하위 도메인 카드 -->
-    <div v-if="childDomains.length > 0" style="margin-bottom: 6px; flex-shrink: 0">
-      <div style="display: flex; gap: 8px; flex-wrap: wrap; max-height: 80px; overflow-y: auto">
-        <div
-          v-for="child in childDomains"
-          :key="child.code"
-          class="child-domain-card"
-          @click="navigateToChild(child)"
-        >
-          <div style="font-size: 13px; font-weight: 500; color: #303133">{{ child.displayName }}</div>
-          <div style="font-size: 11px; color: #909399; margin-top: 1px">{{ child.code }}</div>
-          <el-dropdown
-            v-if="isAdmin"
-            trigger="click"
-            style="position: absolute; top: 4px; right: 4px"
-            @click.stop
-          >
-            <el-button text size="small" style="padding: 2px" @click.stop>...</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="openChildEditDialog(child)">수정</el-dropdown-item>
-                <el-dropdown-item @click="handleChildDelete(child)" style="color: #f56c6c">삭제</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
       </div>
     </div>
 
@@ -411,57 +237,10 @@ onUnmounted(() => {
       :domain-name="domainStore.currentDomain?.displayName ?? domainCode"
       @success="handleAddDocumentSuccess"
     />
-
-    <!-- 하위 도메인 생성/수정 다이얼로그 -->
-    <el-dialog
-      v-model="childDialogVisible"
-      :title="childDialogMode === 'create' ? '하위 도메인 추가' : '하위 도메인 수정'"
-      width="420px"
-      :close-on-click-modal="false"
-    >
-      <el-form label-width="90px" label-position="left">
-        <el-form-item v-if="childDialogMode === 'edit'" label="코드">
-          <el-input :model-value="editingChildCode" disabled />
-        </el-form-item>
-        <el-form-item label="이름" required>
-          <el-input v-model="childFormData.displayName" placeholder="예: 자동차보험 영업" maxlength="100" />
-          <div v-if="childDialogMode === 'create'" style="font-size: 11px; color: #909399; margin-top: 2px">
-            코드는 자동 생성됩니다
-          </div>
-        </el-form-item>
-        <el-form-item label="설명">
-          <el-input v-model="childFormData.description" type="textarea" :rows="2" maxlength="500" />
-        </el-form-item>
-        <el-form-item label="정렬 순서">
-          <el-input-number v-model="childFormData.sortOrder" :min="0" :max="999" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="childDialogVisible = false">취소</el-button>
-        <el-button type="primary" :loading="childDialogLoading" @click="handleChildSubmit">
-          {{ childDialogMode === 'create' ? '생성' : '저장' }}
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.child-domain-card {
-  padding: 8px 12px;
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: border-color 0.2s;
-  min-width: 120px;
-  position: relative;
-}
-
-.child-domain-card:hover {
-  border-color: #409eff;
-}
-
 .resize-handle {
   width: 6px;
   cursor: col-resize;
