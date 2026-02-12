@@ -1,8 +1,8 @@
-import { IsString, IsEnum, IsOptional, MaxLength } from 'class-validator'
+import { IsString, IsIn, IsOptional, MaxLength } from 'class-validator'
 import { FeedbackCategory, FeedbackStatus } from '@kms/shared'
 
 export class CreateFeedbackDto {
-  @IsEnum(FeedbackCategory)
+  @IsIn(Object.values(FeedbackCategory))
   category!: string
 
   @IsString()
@@ -20,7 +20,7 @@ export class CreateFeedbackDto {
 
 export class UpdateFeedbackDto {
   @IsOptional()
-  @IsEnum(FeedbackStatus)
+  @IsIn(Object.values(FeedbackStatus))
   status?: string
 
   @IsOptional()
