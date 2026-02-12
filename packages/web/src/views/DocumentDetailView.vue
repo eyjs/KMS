@@ -29,6 +29,7 @@ const doc = ref<DocumentEntity | null>(null)
 const relations = ref<{ asSource: RelationEntity[]; asTarget: RelationEntity[] }>({ asSource: [], asTarget: [] })
 const placements = ref<DocumentPlacementEntity[]>([])
 const loading = ref(true)
+const historyExpanded = ref<string[]>([]) // 기본값: 접힌 상태
 
 const RELATION_TYPES: Array<{ value: RelationType; label: string }> = [
   { value: 'PARENT_OF', label: '상위 문서 (PARENT_OF)' },
@@ -518,13 +519,15 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
           </div>
         </el-card>
 
-        <!-- 변경 이력 -->
-        <el-card shadow="never" style="margin-bottom: 12px">
-          <template #header>
-            <span style="font-weight: 600">변경 이력</span>
-          </template>
-          <DocumentTimeline :document-id="doc.id" />
-        </el-card>
+        <!-- 변경 이력 (접을 수 있음) -->
+        <el-collapse v-model="historyExpanded" style="margin-bottom: 12px; border: 1px solid #ebeef5; border-radius: 4px">
+          <el-collapse-item name="history">
+            <template #title>
+              <span style="font-weight: 600; font-size: 14px; color: #303133">변경 이력</span>
+            </template>
+            <DocumentTimeline :document-id="doc.id" />
+          </el-collapse-item>
+        </el-collapse>
 
         <!-- 관련 문서 -->
         <el-card shadow="never">
