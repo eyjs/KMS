@@ -7,12 +7,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Search } from '@element-plus/icons-vue'
 import { useDomainStore } from '@/stores/domain'
 import { ROLE_LABELS } from '@kms/shared'
+import FolderBrowser from '@/components/common/FolderBrowser.vue'
+import { getApiErrorMessage } from '@/utils'
 import type {
   PermissionGroupEntity,
   UserGroupMembershipEntity,
   GroupFolderAccessEntity,
   DomainCategoryEntity,
-  FolderPermission,
 } from '@kms/shared'
 
 const FOLDER_PERMISSION_LABELS: Record<string, string> = {
@@ -32,14 +33,6 @@ interface UserItem {
   role: string
   isActive: boolean
   createdAt: string
-}
-
-interface TreeItem {
-  id: number
-  label: string
-  code: string
-  domainCode: string
-  children?: TreeItem[]
 }
 
 // ============================================================
@@ -118,19 +111,6 @@ const usersNotInGroup = computed(() => {
     )
 })
 
-const categoryTree = computed((): TreeItem[] => {
-  function toTree(cats: DomainCategoryEntity[]): TreeItem[] {
-    return cats.map((c) => ({
-      id: c.id,
-      label: c.name,
-      code: c.code,
-      domainCode: c.domainCode,
-      children: c.children?.length ? toTree(c.children) : undefined,
-    }))
-  }
-  return toTree(categories.value)
-})
-
 // ============================================================
 // 사용자 권한 탭 로직
 // ============================================================
@@ -179,8 +159,8 @@ async function saveUserGroups() {
     ElMessage.success('소속 그룹이 저장되었습니다')
     // 그룹 목록도 새로고침 (멤버 수 반영)
     await loadAllGroups()
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '저장 실패'
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '저장 실패')
     ElMessage.error(msg)
   } finally {
     savingUserGroups.value = false
@@ -268,8 +248,8 @@ async function saveGroup() {
     }
     showGroupDialog.value = false
     await loadAllGroups()
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '저장 실패'
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '저장 실패')
     ElMessage.error(msg)
   } finally {
     savingGroup.value = false
@@ -319,8 +299,8 @@ async function addMember(user: UserItem) {
     await loadGroupMembers()
     await loadGroups()
     ElMessage.success(`${user.name}님이 그룹에 추가되었습니다`)
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '추가 실패'
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '추가 실패')
     ElMessage.error(msg)
   } finally {
     addingMember.value = false
@@ -388,8 +368,8 @@ async function addFolderAccess() {
     await loadGroups()
     showFolderAccessDialog.value = false
     ElMessage.success('폴더 권한이 추가되었습니다')
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '추가 실패'
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '추가 실패')
     ElMessage.error(msg)
   } finally {
     addingFolderAccess.value = false
@@ -745,16 +725,17 @@ onMounted(async () => {
           </el-select>
         </el-form-item>
         <el-form-item label="폴더" required>
-          <el-tree-select
+          <FolderBrowser
+            v-if="folderAccessForm.domainCode"
             v-model="folderAccessForm.categoryId"
-            :data="categoryTree"
-            :props="{ label: 'label', children: 'children', value: 'id' }"
-            placeholder="폴더 선택"
-            check-strictly
-            style="width: 100%"
+            :categories="categories"
+            :allow-root="false"
+            height="200px"
             :loading="categoriesLoading"
-            :disabled="!folderAccessForm.domainCode"
           />
+          <div v-else style="color: #909399; font-size: 13px">
+            도메인을 먼저 선택하세요
+          </div>
         </el-form-item>
         <el-form-item label="권한" required>
           <el-radio-group v-model="folderAccessForm.accessType">

@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { client } from '@/api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getApiErrorMessage } from '@/utils'
 import type { UserRole } from '@kms/shared'
 
 interface UserItem {
@@ -53,7 +54,7 @@ async function createUser() {
     newUser.value = { email: '', password: '', name: '', role: 'EDITOR' }
     await loadUsers()
   } catch (err: unknown) {
-    const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '생성에 실패했습니다'
+    const message = getApiErrorMessage(err, '생성에 실패했습니다')
     ElMessage.error(message)
   } finally {
     loading.value = false

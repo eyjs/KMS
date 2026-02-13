@@ -109,6 +109,7 @@ import { Plus, Delete, Edit, Rank } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { categoriesApi } from '@/api/categories'
 import { useDomainStore } from '@/stores/domain'
+import { getApiErrorMessage } from '@/utils'
 import type { DomainCategoryEntity } from '@kms/shared'
 
 const props = defineProps<{
@@ -229,9 +230,8 @@ async function confirmAdd() {
     ElMessage.success('폴더가 추가되었습니다')
     showAddDialog.value = false
     await loadCategories()
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '추가 실패'
-    ElMessage.error(msg)
+  } catch (err) {
+    ElMessage.error(getApiErrorMessage(err, '추가 실패'))
   } finally {
     adding.value = false
   }
@@ -276,9 +276,8 @@ async function confirmRename() {
     ElMessage.success('이름이 변경되었습니다')
     showRenameDialog.value = false
     await loadCategories()
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '이름 변경 실패'
-    ElMessage.error(msg)
+  } catch (err) {
+    ElMessage.error(getApiErrorMessage(err, '이름 변경 실패'))
   } finally {
     renaming.value = false
   }
@@ -341,9 +340,8 @@ async function confirmMove() {
     ElMessage.success('이동되었습니다')
     showMoveDialog.value = false
     await loadCategories()
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '이동 실패'
-    ElMessage.error(msg)
+  } catch (err) {
+    ElMessage.error(getApiErrorMessage(err, '이동 실패'))
   } finally {
     moving.value = false
   }

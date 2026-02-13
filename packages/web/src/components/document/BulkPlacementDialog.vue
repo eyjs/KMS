@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useDomainStore } from '@/stores/domain'
 import { placementsApi } from '@/api/placements'
 import { categoriesApi } from '@/api/categories'
 import { ElMessage } from 'element-plus'
-import type { DomainMasterEntity, DomainCategoryEntity } from '@kms/shared'
+import FolderBrowser from '@/components/common/FolderBrowser.vue'
+import type { DomainCategoryEntity } from '@kms/shared'
 
 const props = defineProps<{
   visible: boolean
@@ -23,10 +24,6 @@ const selectedCategoryId = ref<number | undefined>(undefined)
 const categories = ref<DomainCategoryEntity[]>([])
 const loading = ref(false)
 const loadingCategories = ref(false)
-
-const selectedDomain = computed(() =>
-  domainStore.domainsFlat.find((d) => d.code === selectedDomainCode.value),
-)
 
 // 도메인 선택 시 폴더 로드
 watch(selectedDomainCode, async (code) => {
@@ -96,46 +93,6 @@ async function handleSubmit() {
   }
 }
 
-// 폴더 트리를 el-cascader용 데이터로 변환
-interface CascaderNode {
-  value: number
-  label: string
-  children?: CascaderNode[]
-}
-
-function buildCategoryTree(cats: DomainCategoryEntity[]): CascaderNode[] {
-  const map = new Map<number, CascaderNode & { children: CascaderNode[] }>()
-  const roots: CascaderNode[] = []
-
-  for (const cat of cats) {
-    map.set(cat.id, { value: cat.id, label: cat.name, children: [] })
-  }
-
-  for (const cat of cats) {
-    const node = map.get(cat.id)!
-    if (cat.parentId && map.has(cat.parentId)) {
-      map.get(cat.parentId)!.children.push(node)
-    } else {
-      roots.push(node)
-    }
-  }
-
-  // children이 빈 배열이면 제거
-  function clean(nodes: CascaderNode[]) {
-    for (const n of nodes) {
-      if (n.children && n.children.length === 0) {
-        delete n.children
-      } else if (n.children) {
-        clean(n.children)
-      }
-    }
-  }
-  clean(roots)
-
-  return roots
-}
-
-const categoryTree = computed(() => buildCategoryTree(categories.value))
 </script>
 
 <template>
@@ -180,14 +137,12 @@ const categoryTree = computed(() => buildCategoryTree(categories.value))
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="categoryTree.length > 0" label="폴더 (선택)">
-        <el-cascader
+      <el-form-item v-if="categories.length > 0" label="폴더 (선택)">
+        <FolderBrowser
           v-model="selectedCategoryId"
-          :options="categoryTree"
-          :props="{ checkStrictly: true, emitPath: false }"
-          clearable
-          placeholder="폴더 선택 (선택사항)"
-          style="width: 100%"
+          :categories="categories"
+          :allow-root="true"
+          height="200px"
           :loading="loadingCategories"
         />
       </el-form-item>

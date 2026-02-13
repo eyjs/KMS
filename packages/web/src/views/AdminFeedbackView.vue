@@ -10,6 +10,7 @@ import {
 } from '@kms/shared'
 import type { FeedbackEntity, FeedbackStatus as FeedbackStatusType } from '@kms/shared'
 import { ElMessage } from 'element-plus'
+import { formatDateTimeShort } from '@/utils'
 
 const loading = ref(false)
 const feedbacks = ref<FeedbackEntity[]>([])
@@ -66,7 +67,7 @@ async function saveDetail() {
 }
 
 function formatDate(d: string) {
-  return new Date(d).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return formatDateTimeShort(d)
 }
 </script>
 

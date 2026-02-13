@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useDomainStore } from '@/stores/domain'
 import { DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
+import { getApiErrorMessage } from '@/utils'
 import type { DomainMasterEntity, CreateDomainDto, UpdateDomainDto } from '@kms/shared'
 
 const domainStore = useDomainStore()
@@ -97,7 +98,7 @@ async function handleDialogSubmit() {
     dialogVisible.value = false
     await domainStore.reloadDomains()
   } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '오류가 발생했습니다'
+    const msg = getApiErrorMessage(err, '오류가 발생했습니다')
     ElMessage.error(msg)
   } finally {
     dialogLoading.value = false
@@ -119,7 +120,7 @@ async function handleDelete(domain: DomainMasterEntity) {
     ElMessage.success('도메인이 삭제되었습니다')
     await domainStore.reloadDomains()
   } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '삭제 중 오류가 발생했습니다'
+    const msg = getApiErrorMessage(err, '삭제 중 오류가 발생했습니다')
     ElMessage.error(msg)
   }
 }

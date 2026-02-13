@@ -169,6 +169,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import UploadDialog from '@/components/domain/UploadDialog.vue'
 import PlacementDialog from '@/components/document/PlacementDialog.vue'
 import BulkPlacementDialog from '@/components/document/BulkPlacementDialog.vue'
+import { formatDate } from '@/utils'
 import type { DocumentEntity } from '@kms/shared'
 
 const router = useRouter()
@@ -193,10 +194,6 @@ const stats = ref({ total: 0, orphan: 0 })
 function securityTagType(level: string) {
   const map: Record<string, string> = { PUBLIC: 'success', INTERNAL: '', CONFIDENTIAL: 'warning', SECRET: 'danger' }
   return map[level] ?? ''
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('ko-KR')
 }
 
 async function loadDocuments(page = 1) {

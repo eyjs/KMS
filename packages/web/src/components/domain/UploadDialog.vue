@@ -85,6 +85,7 @@ import { UploadFilled, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { documentsApi } from '@/api/documents'
 import { SECURITY_LEVEL_LABELS } from '@kms/shared'
+import { getApiErrorMessage } from '@/utils'
 import type { UploadFile } from 'element-plus'
 
 defineProps<{ visible: boolean }>()
@@ -137,9 +138,8 @@ async function submit() {
           success: true,
           docCode: res.data.docCode,
         }]
-      } catch (err: unknown) {
-        const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '업로드 실패'
-        uploadResults.value = [{ fileName: file.name, success: false, error: msg }]
+      } catch (err) {
+        uploadResults.value = [{ fileName: file.name, success: false, error: getApiErrorMessage(err, '업로드 실패') }]
       }
     } else {
       const res = await documentsApi.bulkUpload(selectedFiles.value, form.value.securityLevel)

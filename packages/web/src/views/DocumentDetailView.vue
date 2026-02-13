@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDomainStore } from '@/stores/domain'
 import { LIFECYCLE_TRANSITIONS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
 import { useRecentDocs } from '@/composables/useRecentDocs'
+import { getApiErrorMessage } from '@/utils'
 import type { DocumentEntity, DocumentPlacementEntity, Lifecycle, RelationEntity, RelationType } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
@@ -292,8 +293,8 @@ async function handleRelationSubmit() {
     relationDialogVisible.value = false
     const { data } = await relationsApi.getByDocument(id.value)
     relations.value = data
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '관계 추가에 실패했습니다'
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '관계 추가에 실패했습니다')
     ElMessage.error(msg)
   } finally {
     relationLoading.value = false
@@ -365,8 +366,8 @@ async function handleEditSubmit() {
     doc.value = data
     editDialogVisible.value = false
     ElMessage.success('수정되었습니다')
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '수정에 실패했습니다'
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '수정에 실패했습니다')
     ElMessage.error(msg)
   } finally {
     editLoading.value = false

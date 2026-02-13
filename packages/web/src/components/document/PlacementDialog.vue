@@ -20,16 +20,16 @@
       </el-form-item>
 
       <el-form-item label="폴더 (선택)">
-        <el-tree-select
+        <FolderBrowser
+          v-if="form.domainCode"
           v-model="form.categoryId"
-          :data="categoryTreeData"
-          :props="{ label: 'label', value: 'value', children: 'children' }"
-          placeholder="루트에 배치"
-          check-strictly
-          clearable
-          style="width: 100%"
-          :disabled="!form.domainCode"
+          :categories="categories"
+          :allow-root="true"
+          height="200px"
         />
+        <div v-else style="color: #909399; font-size: 13px">
+          도메인을 먼저 선택하세요
+        </div>
       </el-form-item>
 
       <el-form-item label="별칭 (선택)">
@@ -56,7 +56,9 @@ import { ElMessage } from 'element-plus'
 import { useDomainStore } from '@/stores/domain'
 import { placementsApi } from '@/api/placements'
 import { categoriesApi } from '@/api/categories'
-import type { DomainMasterEntity, DomainCategoryEntity } from '@kms/shared'
+import FolderBrowser from '@/components/common/FolderBrowser.vue'
+import { buildDomainTreeOptions, getApiErrorMessage } from '@/utils'
+import type { DomainCategoryEntity } from '@kms/shared'
 
 const props = defineProps<{
   visible: boolean
@@ -79,30 +81,7 @@ const form = ref({
   note: '',
 })
 
-interface TreeOption {
-  label: string
-  value: string | number
-  children?: TreeOption[]
-}
-
-function buildDomainTree(domains: DomainMasterEntity[]): TreeOption[] {
-  return domains.map((d) => ({
-    label: d.displayName,
-    value: d.code,
-    children: d.children?.length ? buildDomainTree(d.children) : undefined,
-  }))
-}
-
-function buildCategoryTree(cats: DomainCategoryEntity[]): TreeOption[] {
-  return cats.map((c) => ({
-    label: c.name,
-    value: c.id,
-    children: c.children?.length ? buildCategoryTree(c.children) : undefined,
-  }))
-}
-
-const domainTreeData = computed(() => buildDomainTree(domainStore.domainTree))
-const categoryTreeData = computed(() => buildCategoryTree(categories.value))
+const domainTreeData = computed(() => buildDomainTreeOptions(domainStore.domainTree))
 
 watch(() => props.visible, (v) => {
   if (v) {
@@ -139,9 +118,8 @@ async function submit() {
     })
     ElMessage.success('배치되었습니다')
     emit('placed')
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '배치 실패'
-    ElMessage.error(msg)
+  } catch (err) {
+    ElMessage.error(getApiErrorMessage(err, '배치 실패'))
   } finally {
     submitting.value = false
   }

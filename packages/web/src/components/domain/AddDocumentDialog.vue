@@ -4,16 +4,18 @@
  * - 탭 1: 새 파일 업로드 + 현재 도메인에 배치
  * - 탭 2: 기존 문서 검색 (DocumentExplorer) + 현재 도메인에 배치
  */
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import { UploadFilled, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { documentsApi } from '@/api/documents'
 import { placementsApi } from '@/api/placements'
 import { categoriesApi } from '@/api/categories'
 import { SECURITY_LEVEL_LABELS } from '@kms/shared'
+import { getApiErrorMessage } from '@/utils'
 import type { UploadFile } from 'element-plus'
 import type { DomainCategoryEntity } from '@kms/shared'
 import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
+import FolderBrowser from '@/components/common/FolderBrowser.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -83,9 +85,8 @@ async function submitUpload() {
           success: true,
           docCode: res.data.docCode,
         }]
-      } catch (err: unknown) {
-        const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '업로드 실패'
-        uploadResults.value = [{ fileName: file.name, success: false, error: msg }]
+      } catch (err) {
+        uploadResults.value = [{ fileName: file.name, success: false, error: getApiErrorMessage(err, '업로드 실패') }]
       }
     } else {
       const res = await documentsApi.bulkUpload(selectedFiles.value, uploadForm.value.securityLevel)
@@ -151,45 +152,6 @@ async function submitPlacement() {
   }
 }
 
-// 폴더 트리 데이터
-interface CascaderNode {
-  value: number
-  label: string
-  children?: CascaderNode[]
-}
-
-function buildCategoryTree(cats: DomainCategoryEntity[]): CascaderNode[] {
-  const map = new Map<number, CascaderNode & { children: CascaderNode[] }>()
-  const roots: CascaderNode[] = []
-
-  for (const cat of cats) {
-    map.set(cat.id, { value: cat.id, label: cat.name, children: [] })
-  }
-
-  for (const cat of cats) {
-    const node = map.get(cat.id)!
-    if (cat.parentId && map.has(cat.parentId)) {
-      map.get(cat.parentId)!.children.push(node)
-    } else {
-      roots.push(node)
-    }
-  }
-
-  function clean(nodes: CascaderNode[]) {
-    for (const n of nodes) {
-      if (n.children && n.children.length === 0) {
-        delete n.children
-      } else if (n.children) {
-        clean(n.children)
-      }
-    }
-  }
-  clean(roots)
-  return roots
-}
-
-const categoryTree = computed(() => buildCategoryTree(categories.value))
-
 // 다이얼로그 열릴 때 초기화
 watch(
   () => props.visible,
@@ -240,14 +202,12 @@ watch(
     </div>
 
     <!-- 폴더 선택 (공통) -->
-    <el-form-item v-if="categoryTree.length > 0" label="폴더 (선택)" style="margin-bottom: 16px">
-      <el-cascader
+    <el-form-item v-if="categories.length > 0" label="폴더 (선택)" style="margin-bottom: 16px">
+      <FolderBrowser
         v-model="selectedCategoryId"
-        :options="categoryTree"
-        :props="{ checkStrictly: true, emitPath: false }"
-        clearable
-        placeholder="루트에 배치"
-        style="width: 100%"
+        :categories="categories"
+        :allow-root="true"
+        height="180px"
         :loading="loadingCategories"
       />
     </el-form-item>

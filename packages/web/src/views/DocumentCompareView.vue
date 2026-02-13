@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { documentsApi } from '@/api/documents'
 import { relationsApi } from '@/api/relations'
 import { LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
+import { getApiErrorMessage } from '@/utils'
 import type { DocumentEntity, RelationType, RelationGraphResponse } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
@@ -100,10 +101,10 @@ async function handleEdgeClick(edgeId: string, relationType: string) {
     await relationsApi.delete(edgeId)
     ElMessage.success('관계가 삭제되었습니다')
     if (sourceId.value) loadGraph(sourceId.value)
-  } catch (err: unknown) {
+  } catch (err) {
     // ElMessageBox cancel은 무시
     if (err === 'cancel') return
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '관계 삭제에 실패했습니다'
+    const msg = getApiErrorMessage(err, '관계 삭제에 실패했습니다')
     ElMessage.error(msg)
   }
 }
@@ -135,8 +136,8 @@ async function handleSave() {
     // 관계 저장 후 그래프 새로고침
     targetDoc.value = null
     if (sourceId.value) loadGraph(sourceId.value)
-  } catch (err: unknown) {
-    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '관계 설정에 실패했습니다'
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '관계 설정에 실패했습니다')
     ElMessage.error(msg)
   } finally {
     saving.value = false

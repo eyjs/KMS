@@ -5,6 +5,7 @@ import { documentsApi, type DocumentStats } from '@/api/documents'
 import BulkPlacementDialog from '@/components/document/BulkPlacementDialog.vue'
 import UploadDialog from '@/components/domain/UploadDialog.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
+import { formatDate, formatFileSize } from '@/utils'
 import { LIFECYCLE_LABELS, SECURITY_LEVEL_LABELS } from '@kms/shared'
 import { ElMessage } from 'element-plus'
 import type { DocumentEntity, Lifecycle } from '@kms/shared'
@@ -171,16 +172,6 @@ function goToDocument(row: DocumentEntity) {
   const firstPlacement = row.placements?.[0]
   const domainCode = firstPlacement?.domainCode ?? '_'
   router.push(`/d/${domainCode}/doc/${row.id}`)
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ko-KR')
 }
 
 function getPlacementTags(doc: DocumentEntity): Array<{ code: string; name: string }> {
