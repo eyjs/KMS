@@ -144,7 +144,7 @@ export const documentsApi = {
   },
 
   search(params: { q?: string; domain?: string; lifecycle?: string; orphan?: boolean; page?: number; size?: number }) {
-    return client.get<PaginatedResponse<DocumentEntity & { domainTags?: Array<{ code: string; name: string }> }>>('/documents/search', { params })
+    return client.get<PaginatedResponse<DocumentEntity>>('/documents/search', { params })
   },
 
   getIssues(type: string, page = 1, size = 10) {

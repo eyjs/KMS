@@ -16,8 +16,6 @@ const hasMore = ref(false)
 const selectedDomain = ref<string>('')
 const maxNodes = ref(200)
 
-const graphRef = ref<InstanceType<typeof RelationGraph>>()
-
 async function loadGraph() {
   loading.value = true
   try {
@@ -47,10 +45,18 @@ function handleNodeClick(nodeId: string) {
   router.push(`/d/${domainCode}/doc/${nodeId}`)
 }
 
-function handleNodeDoubleClick(nodeId: string) {
-  // 더블클릭: 해당 노드 중심으로 확장 (문서 상세로 이동)
-  const domainCode = selectedDomain.value || '_'
-  router.push(`/d/${domainCode}/doc/${nodeId}`)
+async function handleNodeDoubleClick(nodeId: string) {
+  // 더블클릭: 해당 노드 중심으로 그래프 재로드
+  loading.value = true
+  try {
+    const { data } = await relationsApi.getGraph(nodeId, 3)
+    graphData.value = data
+    hasMore.value = false
+  } catch {
+    ElMessage.error('관계 그래프 로드에 실패했습니다')
+  } finally {
+    loading.value = false
+  }
 }
 
 watch(selectedDomain, () => {
@@ -92,7 +98,6 @@ onMounted(() => {
     <!-- 그래프 영역 -->
     <div style="flex: 1; min-height: 0; background: white; border-radius: 8px; overflow: hidden; position: relative">
       <relation-graph
-        ref="graphRef"
         :data="graphData"
         :loading="loading"
         @node-click="handleNodeClick"
@@ -121,7 +126,7 @@ onMounted(() => {
 
     <!-- 안내 -->
     <div style="flex-shrink: 0; color: #909399; font-size: 12px; text-align: center">
-      노드를 클릭하면 문서 상세로 이동합니다. 마우스 휠로 확대/축소, 드래그로 이동할 수 있습니다.
+      노드 클릭: 문서 상세 이동 | 더블클릭: 중심 전환 | 마우스 휠: 확대/축소 | 드래그: 이동
     </div>
   </div>
 </template>

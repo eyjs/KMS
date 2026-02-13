@@ -156,40 +156,6 @@ function renderGraph() {
   })
 }
 
-function mergeData(
-  newNodes: Array<Record<string, unknown>>,
-  newEdges: Array<Record<string, unknown>>,
-) {
-  if (!nodesDataSet || !edgesDataSet) return
-
-  const existingNodeIds = new Set(nodesDataSet.getIds())
-  const existingEdgeIds = new Set(edgesDataSet.getIds())
-
-  const addNodes = newNodes.filter((n) => !existingNodeIds.has(n.id as string))
-  const addEdges = newEdges.filter((e) => !existingEdgeIds.has(e.id as string))
-
-  if (addNodes.length > 0) nodesDataSet.add(addNodes)
-  if (addEdges.length > 0) edgesDataSet.add(addEdges)
-}
-
-/** 외부에서 확장 데이터를 병합할 때 사용 (더블클릭 확장) */
-function mergeGraphData(response: RelationGraphResponse) {
-  if (!nodesDataSet || !edgesDataSet) {
-    renderGraph()
-    return
-  }
-
-  // 확장 엣지의 관계유형 매핑 추가
-  for (const edge of response.edges) {
-    edgeRelationMap.set(edge.id, edge.relationType)
-  }
-
-  const visNodes = response.nodes.map((node) => buildVisNode(node, response.centerId))
-  const visEdges = response.edges.map((edge) => buildVisEdge(edge))
-
-  mergeData(visNodes, visEdges)
-}
-
 // data 변경 시 항상 새로 렌더 (관계 저장 후 갱신)
 watch(() => props.data, (newData) => {
   if (newData) {
@@ -207,7 +173,6 @@ onUnmounted(() => {
   destroyNetwork()
 })
 
-defineExpose({ mergeGraphData })
 </script>
 
 <template>

@@ -20,7 +20,7 @@ const domainFilter = ref<string>()
 const lifecycleFilter = ref<string>()
 const orphanFilter = ref(false)
 
-type SearchResult = DocumentEntity & { domainTags?: Array<{ code: string; name: string }> }
+type SearchResult = DocumentEntity
 
 const results = ref<SearchResult[]>([])
 const total = ref(0)
@@ -152,8 +152,7 @@ function handlePageChange(newPage: number) {
 }
 
 function goToDocument(doc: SearchResult) {
-  // domainTags 또는 placements에서 도메인 코드 추출
-  const domainCode = doc.domainTags?.[0]?.code ?? doc.placements?.[0]?.domainCode ?? '_'
+  const domainCode = doc.placements?.[0]?.domainCode ?? '_'
   router.push(`/d/${domainCode}/doc/${doc.id}`)
 }
 
@@ -367,14 +366,14 @@ function formatFileSize(bytes: number): string {
                 </div>
                 <!-- 배치된 도메인 태그 -->
                 <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; align-items: center">
-                  <template v-if="doc.domainTags?.length">
+                  <template v-if="doc.placements?.length">
                     <el-tag
-                      v-for="tag in doc.domainTags"
-                      :key="tag.code"
+                      v-for="p in doc.placements"
+                      :key="p.domainCode"
                       size="small"
                       type="info"
                     >
-                      {{ tag.name }}
+                      {{ p.domainName }}
                     </el-tag>
                   </template>
                   <template v-else>

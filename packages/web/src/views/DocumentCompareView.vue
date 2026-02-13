@@ -23,7 +23,6 @@ const saving = ref(false)
 // 그래프
 const graphData = ref<RelationGraphResponse | null>(null)
 const graphLoading = ref(false)
-const graphRef = ref<InstanceType<typeof RelationGraph>>()
 
 // 관계 유형
 const relationType = ref<RelationType>('REFERENCE')
@@ -69,16 +68,8 @@ function handleNodeClick(nodeId: string) {
 }
 
 async function handleNodeDoubleClick(nodeId: string) {
-  // 그래프 확장: 해당 노드 기준 depth=1 추가 로드
-  try {
-    graphLoading.value = true
-    const { data } = await relationsApi.getGraph(nodeId, 1)
-    graphRef.value?.mergeGraphData(data)
-  } catch {
-    ElMessage.warning('관계 확장에 실패했습니다')
-  } finally {
-    graphLoading.value = false
-  }
+  // 클릭한 노드를 중심으로 그래프 재로드
+  await loadGraph(nodeId)
 }
 
 // 탐색기에 전달할 기존 관계 Map
@@ -181,11 +172,10 @@ function goBack() {
       <template #header>
         <div style="display: flex; align-items: center; justify-content: space-between">
           <span style="font-weight: 600; font-size: 13px">지식 그래프</span>
-          <span style="font-size: 11px; color: #909399">노드 클릭: 대상 선택 | 더블클릭: 확장 | 간선 클릭: 삭제</span>
+          <span style="font-size: 11px; color: #909399">노드 클릭: 대상 선택 | 더블클릭: 중심 전환 | 간선 클릭: 삭제</span>
         </div>
       </template>
       <RelationGraph
-        ref="graphRef"
         :data="graphData"
         :loading="graphLoading"
         @node-click="handleNodeClick"

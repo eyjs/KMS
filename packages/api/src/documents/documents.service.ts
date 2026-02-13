@@ -265,6 +265,9 @@ export class DocumentsService {
         where,
         include: {
           _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
+          placements: {
+            select: { domainCode: true, domain: { select: { displayName: true } } },
+          },
         },
         orderBy: { [sort]: order },
         skip: (page - 1) * size,
@@ -274,7 +277,13 @@ export class DocumentsService {
     ])
 
     return {
-      data: data.map((d) => this.formatDocument(d)),
+      data: data.map((d) => ({
+        ...this.formatDocument(d),
+        placements: d.placements.map((p) => ({
+          domainCode: p.domainCode,
+          domainName: p.domain.displayName,
+        })),
+      })),
       meta: { total, page, size, totalPages: Math.ceil(total / size) },
     }
   }
@@ -721,9 +730,9 @@ export class DocumentsService {
     return {
       data: data.map((d) => ({
         ...this.formatDocument(d),
-        domainTags: d.placements.map((p) => ({
-          code: p.domainCode,
-          name: p.domain.displayName,
+        placements: d.placements.map((p) => ({
+          domainCode: p.domainCode,
+          domainName: p.domain.displayName,
         })),
       })),
       meta: { total, page, size, totalPages: Math.ceil(total / size) },

@@ -60,6 +60,19 @@ function handleGraphNodeClick(nodeId: string) {
   router.push(`/d/${domainCode.value}/doc/${nodeId}`)
 }
 
+async function handleGraphNodeDoubleClick(nodeId: string) {
+  // 더블클릭: 해당 노드 중심으로 그래프 재로드
+  graphLoading.value = true
+  try {
+    const { data } = await relationsApi.getGraph(nodeId, 3)
+    graphData.value = data
+  } catch {
+    ElMessage.error('관계 그래프 로드에 실패했습니다')
+  } finally {
+    graphLoading.value = false
+  }
+}
+
 function handleCategorySelect(categoryId: number | null) {
   selectedCategoryId.value = categoryId
   selectedDoc.value = null
@@ -200,6 +213,7 @@ onUnmounted(() => {
                   :data="graphData"
                   :loading="graphLoading"
                   @node-click="handleGraphNodeClick"
+                  @node-double-click="handleGraphNodeDoubleClick"
                 />
                 <div v-else-if="!graphLoading" style="display: flex; align-items: center; justify-content: center; height: 100%">
                   <el-empty description="관계가 설정된 문서가 없습니다" />

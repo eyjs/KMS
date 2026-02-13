@@ -217,7 +217,7 @@ async function loadStats() {
   try {
     const [myRes, orphanRes] = await Promise.all([
       documentsApi.getMyDocuments(1, 1),
-      documentsApi.getOrphans(1, 1),
+      documentsApi.getMyDocuments(1, 1, true),
     ])
     stats.value.total = myRes.data.meta.total
     stats.value.orphan = orphanRes.data.meta.total
@@ -253,8 +253,8 @@ function openBulkPlacement() {
 async function selectAllOrphans() {
   selectingAll.value = true
   try {
-    // 미배치 문서 ID 전체 조회 (최대 5000개)
-    const res = await documentsApi.getOrphans(1, 5000)
+    // 내 미배치 문서 ID 전체 조회 (최대 5000개)
+    const res = await documentsApi.getMyDocuments(1, 5000, true)
     selectedDocIds.value = res.data.data.map((d) => d.id)
     ElMessage.success(`${selectedDocIds.value.length.toLocaleString()}건 선택됨`)
   } catch {
