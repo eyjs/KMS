@@ -71,6 +71,7 @@ export class DocumentsController {
       { securityLevel: body.securityLevel as SecurityLevel | undefined, validUntil: body.validUntil },
       file ?? null,
       req.user.sub,
+      req.user.role,
     )
   }
 
@@ -90,6 +91,7 @@ export class DocumentsController {
       files,
       body.securityLevel as SecurityLevel | undefined,
       req.user.sub,
+      req.user.role,
     )
   }
 

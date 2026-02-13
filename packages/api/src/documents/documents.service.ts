@@ -113,6 +113,7 @@ export class DocumentsService {
     },
     file: Express.Multer.File | null,
     userId: string,
+    userRole: UserRole,
   ) {
     if (!file) {
       throw new BadRequestException('파일이 필요합니다')
@@ -132,11 +133,17 @@ export class DocumentsService {
     if (existing) {
       // 업로드된 파일 삭제
       try { fs.unlinkSync(file.path) } catch { /* 임시 파일 삭제 실패 무시 */ }
+
+      // 접근 가능한 경우에만 기존 문서 정보 노출
+      const canSee = SecurityLevelGuard.canAccess(userRole, existing.securityLevel as SecurityLevel)
+
       throw new ConflictException({
         message: '동일한 파일이 이미 존재합니다',
-        existingDocumentId: existing.id,
-        existingDocCode: existing.docCode,
-        existingFileName: existing.fileName,
+        ...(canSee && {
+          existingDocumentId: existing.id,
+          existingDocCode: existing.docCode,
+          existingFileName: existing.fileName,
+        }),
       })
     }
 
@@ -188,6 +195,7 @@ export class DocumentsService {
     files: Express.Multer.File[],
     securityLevel: SecurityLevel | undefined,
     userId: string,
+    userRole: UserRole,
   ) {
     const results: Array<{
       fileName: string
@@ -200,7 +208,7 @@ export class DocumentsService {
 
     for (const file of files) {
       try {
-        const doc = await this.create({ securityLevel }, file, userId)
+        const doc = await this.create({ securityLevel }, file, userId, userRole)
         results.push({
           fileName: file.originalname,
           success: true,

@@ -39,10 +39,14 @@ export class AuthService {
     return this.generateTokens(user)
   }
 
+  private getRefreshSecret(): string {
+    return this.config.get('JWT_REFRESH_SECRET') ?? this.config.get('JWT_SECRET') + '-refresh'
+  }
+
   async refresh(refreshToken: string) {
     try {
       const payload = this.jwt.verify<JwtPayload>(refreshToken, {
-        secret: this.config.get('JWT_SECRET') + '-refresh',
+        secret: this.getRefreshSecret(),
       })
 
       const user = await this.prisma.user.findUnique({
@@ -53,7 +57,8 @@ export class AuthService {
       }
 
       return this.generateTokens(user)
-    } catch {
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error
       throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다')
     }
   }
@@ -155,7 +160,7 @@ export class AuthService {
 
     const accessToken = this.jwt.sign(payload)
     const refreshToken = this.jwt.sign(payload, {
-      secret: this.config.get('JWT_SECRET') + '-refresh',
+      secret: this.getRefreshSecret(),
       expiresIn: this.config.get('JWT_REFRESH_EXPIRES_IN', '7d'),
     })
 

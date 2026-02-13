@@ -242,28 +242,30 @@ export class PlacementsService {
     })
     if (!placement) throw new NotFoundException('배치를 찾을 수 없습니다')
 
-    // 해당 도메인의 domain-scoped 관계도 함께 삭제
-    // OR 조건으로 source/target 양쪽 모두 커버 → 양방향 관계(PARENT_OF↔CHILD_OF)도 삭제됨
-    await this.prisma.relation.deleteMany({
-      where: {
-        domainCode: placement.domainCode,
-        OR: [
-          { sourceId: placement.documentId },
-          { targetId: placement.documentId },
-        ],
-      },
-    })
+    await this.prisma.$transaction(async (tx) => {
+      // 해당 도메인의 domain-scoped 관계도 함께 삭제
+      // OR 조건으로 source/target 양쪽 모두 커버 → 양방향 관계(PARENT_OF↔CHILD_OF)도 삭제됨
+      await tx.relation.deleteMany({
+        where: {
+          domainCode: placement.domainCode,
+          OR: [
+            { sourceId: placement.documentId },
+            { targetId: placement.documentId },
+          ],
+        },
+      })
 
-    await this.prisma.documentPlacement.delete({ where: { id } })
+      await tx.documentPlacement.delete({ where: { id } })
 
-    // 이력 기록
-    await this.prisma.documentHistory.create({
-      data: {
-        documentId: placement.documentId,
-        action: 'PLACEMENT_REMOVE',
-        changes: { domainCode: placement.domainCode, domainName: placement.domain.displayName },
-        userId,
-      },
+      // 이력 기록
+      await tx.documentHistory.create({
+        data: {
+          documentId: placement.documentId,
+          action: 'PLACEMENT_REMOVE',
+          changes: { domainCode: placement.domainCode, domainName: placement.domain.displayName },
+          userId,
+        },
+      })
     })
 
     return { message: '배치가 해제되었습니다' }

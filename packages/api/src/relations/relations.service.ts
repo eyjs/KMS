@@ -143,42 +143,49 @@ export class RelationsService {
       }
     }
 
-    // 관계 생성
-    const relation = await this.prisma.relation.create({
-      data: {
-        sourceId,
-        targetId,
-        relationType,
-        domainCode: effectiveDomainCode,
-        createdById: userId,
-      },
-    })
+    // 관계 생성 + 양방향 + 이력을 트랜잭션으로 처리
+    const relation = await this.prisma.$transaction(async (tx) => {
+      const rel = await tx.relation.create({
+        data: {
+          sourceId,
+          targetId,
+          relationType,
+          domainCode: effectiveDomainCode,
+          createdById: userId,
+        },
+      })
 
-    // 양방향 관계면 역방향도 생성
-    if (meta.bidirectional && meta.inverse) {
-      try {
-        await this.prisma.relation.create({
-          data: {
-            sourceId: targetId,
-            targetId: sourceId,
-            relationType: meta.inverse,
-            domainCode: effectiveDomainCode,
-            createdById: userId,
-          },
-        })
-      } catch {
-        // 이미 존재하면 무시
+      // 양방향 관계면 역방향도 생성
+      if (meta.bidirectional && meta.inverse) {
+        try {
+          await tx.relation.create({
+            data: {
+              sourceId: targetId,
+              targetId: sourceId,
+              relationType: meta.inverse,
+              domainCode: effectiveDomainCode,
+              createdById: userId,
+            },
+          })
+        } catch (error: unknown) {
+          // Unique 위반(이미 존재)만 무시, 나머지 DB 에러는 전파
+          const isUnique = typeof error === 'object' && error !== null
+            && 'code' in error && (error as { code: string }).code === 'P2002'
+          if (!isUnique) throw error
+        }
       }
-    }
 
-    // 이력 기록
-    await this.prisma.documentHistory.create({
-      data: {
-        documentId: sourceId,
-        action: 'RELATION_ADD',
-        changes: { targetId, relationType, domainCode: effectiveDomainCode },
-        userId,
-      },
+      // 이력 기록
+      await tx.documentHistory.create({
+        data: {
+          documentId: sourceId,
+          action: 'RELATION_ADD',
+          changes: { targetId, relationType, domainCode: effectiveDomainCode },
+          userId,
+        },
+      })
+
+      return rel
     })
 
     return relation
@@ -200,28 +207,31 @@ export class RelationsService {
       throw new ForbiddenException('대상 문서에 대한 접근 권한이 없습니다')
     }
 
-    // 양방향이면 역방향도 삭제
     const meta = RELATION_META[relation.relationType as RelationType]
-    if (meta?.bidirectional && meta.inverse) {
-      await this.prisma.relation.deleteMany({
-        where: {
-          sourceId: relation.targetId,
-          targetId: relation.sourceId,
-          relationType: meta.inverse,
-          domainCode: relation.domainCode,
+
+    await this.prisma.$transaction(async (tx) => {
+      // 양방향이면 역방향도 삭제
+      if (meta?.bidirectional && meta.inverse) {
+        await tx.relation.deleteMany({
+          where: {
+            sourceId: relation.targetId,
+            targetId: relation.sourceId,
+            relationType: meta.inverse,
+            domainCode: relation.domainCode,
+          },
+        })
+      }
+
+      await tx.relation.delete({ where: { id } })
+
+      await tx.documentHistory.create({
+        data: {
+          documentId: relation.sourceId,
+          action: 'RELATION_REMOVE',
+          changes: { targetId: relation.targetId, relationType: relation.relationType, domainCode: relation.domainCode },
+          userId,
         },
       })
-    }
-
-    await this.prisma.relation.delete({ where: { id } })
-
-    await this.prisma.documentHistory.create({
-      data: {
-        documentId: relation.sourceId,
-        action: 'RELATION_REMOVE',
-        changes: { targetId: relation.targetId, relationType: relation.relationType, domainCode: relation.domainCode },
-        userId,
-      },
     })
 
     return { message: '관계가 삭제되었습니다' }
@@ -335,42 +345,33 @@ export class RelationsService {
     }
   }
 
-  /** 도메인 내 관계 그래프 */
+  /** 도메인 내 관계 그래프 — 배치된 모든 문서를 노드로 포함 (관계 없는 고아 노드 포함) */
   async getRelationGraphByDomain(domainCode: string, userRole: UserRole, maxNodes: number = 200) {
     const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
     const allowedLevels = Object.entries(SECURITY_LEVEL_ORDER)
       .filter(([, level]) => level <= maxLevel)
       .map(([name]) => name)
 
-    // 해당 도메인의 관계만 조회
-    const relations = await this.prisma.relation.findMany({
-      where: {
-        domainCode,
-        source: { isDeleted: false, securityLevel: { in: allowedLevels } },
-        target: { isDeleted: false, securityLevel: { in: allowedLevels } },
-      },
-      select: { id: true, sourceId: true, targetId: true, relationType: true, domainCode: true },
+    // 1. 해당 도메인에 배치된 모든 문서 조회 (관계 유무 무관)
+    const placements = await this.prisma.documentPlacement.findMany({
+      where: { domainCode },
+      select: { documentId: true },
     })
+    const placedDocIds = placements.map((p) => p.documentId)
 
-    // 관련 문서 ID 수집
-    const docIds = new Set<string>()
-    for (const r of relations) {
-      docIds.add(r.sourceId)
-      docIds.add(r.targetId)
-    }
-
-    if (docIds.size > maxNodes) {
-      return { nodes: [], edges: [], centerId: '' }
-    }
-
-    // 문서 일괄 조회
+    // 2. 문서 일괄 조회 (보안등급 필터)
     const docs = await this.prisma.document.findMany({
       where: {
-        id: { in: [...docIds] },
+        id: { in: placedDocIds },
         isDeleted: false,
         securityLevel: { in: allowedLevels },
       },
+      take: maxNodes,
     })
+
+    if (docs.length === 0) {
+      return { nodes: [], edges: [], centerId: '' }
+    }
 
     const nodeMap = new Map<string, GraphNode>()
     for (const doc of docs) {
@@ -383,6 +384,16 @@ export class RelationsService {
         depth: 0,
       })
     }
+
+    // 3. 해당 도메인의 관계 조회
+    const relations = await this.prisma.relation.findMany({
+      where: {
+        domainCode,
+        source: { isDeleted: false, securityLevel: { in: allowedLevels } },
+        target: { isDeleted: false, securityLevel: { in: allowedLevels } },
+      },
+      select: { id: true, sourceId: true, targetId: true, relationType: true, domainCode: true },
+    })
 
     const edges: GraphEdge[] = relations
       .filter((r) => nodeMap.has(r.sourceId) && nodeMap.has(r.targetId))
@@ -402,7 +413,8 @@ export class RelationsService {
   }
 
   /**
-   * 전역 관계 그래프: 전체 또는 특정 도메인의 모든 관계
+   * 전역 관계 그래프: 모든 문서를 노드로 포함 (관계 없는 고아 문서 포함)
+   * 도메인 필터 시 해당 도메인에 배치된 문서만 표시
    */
   async getGlobalGraph(userRole: UserRole, maxNodes: number = 200, domainCode?: string): Promise<GlobalGraphResponse> {
     const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
@@ -410,36 +422,22 @@ export class RelationsService {
       .filter(([, level]) => level <= maxLevel)
       .map(([name]) => name)
 
-    // 관계 조회 (도메인 필터 선택적)
-    const relations = await this.prisma.relation.findMany({
-      where: {
-        ...(domainCode ? { domainCode } : {}),
-        source: { isDeleted: false, securityLevel: { in: allowedLevels } },
-        target: { isDeleted: false, securityLevel: { in: allowedLevels } },
-      },
-      select: { id: true, sourceId: true, targetId: true, relationType: true, domainCode: true },
-      take: maxNodes * 5, // 엣지 수 제한 (대략)
-    })
-
-    // 관련 문서 ID 수집
-    const docIds = new Set<string>()
-    for (const r of relations) {
-      docIds.add(r.sourceId)
-      docIds.add(r.targetId)
+    // 1. 문서 조회: 도메인 필터 있으면 해당 배치 문서, 없으면 전체
+    const docWhere: Record<string, unknown> = {
+      isDeleted: false,
+      securityLevel: { in: allowedLevels },
+    }
+    if (domainCode) {
+      docWhere.placements = { some: { domainCode } }
     }
 
-    const hasMore = docIds.size > maxNodes
+    const totalCount = await this.prisma.document.count({ where: docWhere })
+    const hasMore = totalCount > maxNodes
 
-    // 노드 수 제한
-    const limitedDocIds = [...docIds].slice(0, maxNodes)
-
-    // 문서 일괄 조회
     const docs = await this.prisma.document.findMany({
-      where: {
-        id: { in: limitedDocIds },
-        isDeleted: false,
-        securityLevel: { in: allowedLevels },
-      },
+      where: docWhere,
+      take: maxNodes,
+      orderBy: { createdAt: 'desc' },
     })
 
     const nodeMap = new Map<string, GraphNode>()
@@ -454,7 +452,17 @@ export class RelationsService {
       })
     }
 
-    // 유효한 엣지만 필터
+    // 2. 관계 조회 (노드에 포함된 문서 간의 관계만)
+    const docIds = [...nodeMap.keys()]
+    const relations = await this.prisma.relation.findMany({
+      where: {
+        ...(domainCode ? { domainCode } : {}),
+        sourceId: { in: docIds },
+        targetId: { in: docIds },
+      },
+      select: { id: true, sourceId: true, targetId: true, relationType: true, domainCode: true },
+    })
+
     const edges: GraphEdge[] = relations
       .filter((r) => nodeMap.has(r.sourceId) && nodeMap.has(r.targetId))
       .map((r) => ({

@@ -416,6 +416,7 @@ npm --prefix packages/api exec prisma studio   # DB GUI
 |------|------|------|
 | `DATABASE_URL` | PostgreSQL 접속 URL | `postgresql://kms:비밀번호@호스트:5432/kms?schema=public` |
 | `JWT_SECRET` | JWT 서명 키 (필수) | 32자 이상 랜덤 문자열 |
+| `JWT_REFRESH_SECRET` | 리프레시 토큰 서명 키 (권장) | 별도 32자 이상 랜덤 문자열 |
 | `JWT_EXPIRES_IN` | 액세스 토큰 만료 | `1h` |
 | `JWT_REFRESH_EXPIRES_IN` | 리프레시 토큰 만료 | `7d` |
 | `API_PORT` | 서버 포트 | `3000` |
