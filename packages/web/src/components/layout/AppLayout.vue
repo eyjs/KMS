@@ -182,11 +182,11 @@ async function submitFeedback() {
           <template #title><span>관계 그래프</span></template>
         </el-menu-item>
 
-        <!-- DOMAINS: 최근 방문 -->
+        <!-- DOMAINS -->
         <div v-if="!collapsed" style="padding: 20px 20px 6px; font-size: 11px; color: #6b6e7e; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between">
           <span>Domains</span>
           <el-button text size="small" style="color: #6b6e7e; padding: 0; font-size: 10px" @click="domainBrowserVisible = true">
-            전체보기
+            검색
           </el-button>
         </div>
         <div v-if="collapsed" style="padding: 20px 8px 6px; text-align: center">
@@ -195,24 +195,13 @@ async function submitFeedback() {
           </el-button>
         </div>
 
-        <!-- 최근 방문 도메인 (최대 5개) -->
-        <template v-if="navigationStore.recentDomains.length > 0">
-          <domain-menu-item
-            v-for="d in navigationStore.recentDomains"
-            :key="d.code"
-            :domain="d"
-            :show-children="false"
-          />
-        </template>
-        <template v-else>
-          <!-- 도메인 방문 기록이 없으면 기본 트리 표시 (최대 3개) -->
-          <domain-menu-item
-            v-for="d in domainStore.domainTree.slice(0, 3)"
-            :key="d.code"
-            :domain="d"
-            :show-children="false"
-          />
-        </template>
+        <!-- 전체 도메인 트리 (루트부터 고정) -->
+        <domain-menu-item
+          v-for="d in domainStore.domainTree"
+          :key="d.code"
+          :domain="d"
+          :show-children="true"
+        />
 
         <!-- ADMIN -->
         <template v-if="auth.hasMinRole('ADMIN')">

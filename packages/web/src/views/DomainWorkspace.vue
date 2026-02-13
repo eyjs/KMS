@@ -9,6 +9,7 @@ import DocumentTable from '@/components/document/DocumentTable.vue'
 import DocumentPreview from '@/components/document/DocumentPreview.vue'
 import AddDocumentDialog from '@/components/domain/AddDocumentDialog.vue'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
+import GraphNodeDrawer from '@/components/graph/GraphNodeDrawer.vue'
 import { relationsApi } from '@/api/relations'
 import type { DocumentEntity, RelationGraphResponse } from '@kms/shared'
 
@@ -29,6 +30,8 @@ const categoryTreeRef = ref<InstanceType<typeof CategoryTree>>()
 // 그래프 데이터
 const graphData = ref<RelationGraphResponse | null>(null)
 const graphLoading = ref(false)
+const drawerVisible = ref(false)
+const drawerNodeId = ref<string | null>(null)
 
 const isAdmin = computed(() => auth.hasMinRole('ADMIN'))
 
@@ -57,7 +60,13 @@ watch(activeTab, (tab) => {
 })
 
 function handleGraphNodeClick(nodeId: string) {
-  router.push(`/d/${domainCode.value}/doc/${nodeId}`)
+  drawerNodeId.value = nodeId
+  drawerVisible.value = true
+}
+
+function handleDrawerNavigate(docId: string) {
+  // Drawer 내 관련 문서 클릭 시 해당 문서로 전환
+  drawerNodeId.value = docId
 }
 
 async function handleGraphNodeDoubleClick(nodeId: string) {
@@ -243,6 +252,14 @@ onUnmounted(() => {
         <DocumentPreview :document="selectedDoc" />
       </el-card>
     </div>
+
+    <!-- 그래프 노드 사이드 패널 -->
+    <GraphNodeDrawer
+      v-model:visible="drawerVisible"
+      :node-id="drawerNodeId"
+      :domain-code="domainCode"
+      @navigate="handleDrawerNavigate"
+    />
 
     <!-- 문서 추가 다이얼로그 (업로드 + 기존 문서 배치 통합) -->
     <AddDocumentDialog

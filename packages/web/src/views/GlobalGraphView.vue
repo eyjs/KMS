@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useDomainStore } from '@/stores/domain'
 import { relationsApi } from '@/api/relations'
 import RelationGraph from '@/components/graph/RelationGraph.vue'
+import GraphNodeDrawer from '@/components/graph/GraphNodeDrawer.vue'
 import { ElMessage } from 'element-plus'
 import type { RelationGraphResponse } from '@kms/shared'
 
-const router = useRouter()
 const domainStore = useDomainStore()
 
 const loading = ref(false)
@@ -15,6 +14,8 @@ const graphData = ref<RelationGraphResponse | null>(null)
 const hasMore = ref(false)
 const selectedDomain = ref<string>('')
 const maxNodes = ref(200)
+const drawerVisible = ref(false)
+const drawerNodeId = ref<string | null>(null)
 
 async function loadGraph() {
   loading.value = true
@@ -39,10 +40,12 @@ async function loadGraph() {
 }
 
 function handleNodeClick(nodeId: string) {
-  // 클릭한 노드(문서)로 이동
-  // 도메인 필터가 있으면 해당 도메인, 없으면 _
-  const domainCode = selectedDomain.value || '_'
-  router.push(`/d/${domainCode}/doc/${nodeId}`)
+  drawerNodeId.value = nodeId
+  drawerVisible.value = true
+}
+
+function handleDrawerNavigate(docId: string) {
+  drawerNodeId.value = docId
 }
 
 async function handleNodeDoubleClick(nodeId: string) {
@@ -126,7 +129,15 @@ onMounted(() => {
 
     <!-- 안내 -->
     <div style="flex-shrink: 0; color: #909399; font-size: 12px; text-align: center">
-      노드 클릭: 문서 상세 이동 | 더블클릭: 중심 전환 | 마우스 휠: 확대/축소 | 드래그: 이동
+      노드 클릭: 문서 정보 | 더블클릭: 중심 전환 | 마우스 휠: 확대/축소 | 드래그: 이동
     </div>
+
+    <!-- 그래프 노드 사이드 패널 -->
+    <GraphNodeDrawer
+      v-model:visible="drawerVisible"
+      :node-id="drawerNodeId"
+      :domain-code="selectedDomain || undefined"
+      @navigate="handleDrawerNavigate"
+    />
   </div>
 </template>
