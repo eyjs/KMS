@@ -141,6 +141,7 @@ model Document {
   @@index([securityLevel])
   @@index([isDeleted])
   @@index([fileHash])
+  @@index([fileName])
   @@map("documents")
 }
 
@@ -186,6 +187,7 @@ model DocumentHistory {
 
   @@index([documentId])
   @@index([createdAt])
+  @@index([action, createdAt])
   @@map("document_history")
 }
 

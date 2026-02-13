@@ -130,7 +130,7 @@ export class DocumentsController {
   ) {
     return this.documentsService.getRecent(
       parseInt(limit ?? '10', 10),
-      req?.user.role ?? 'VIEWER',
+      req!.user.role,
     )
   }
 
@@ -142,7 +142,7 @@ export class DocumentsController {
     @Request() req?: AuthRequest,
   ) {
     return this.documentsService.findOrphans(
-      req?.user.role ?? 'VIEWER',
+      req!.user.role,
       parseInt(page ?? '1', 10),
       parseInt(size ?? '20', 10),
     )
@@ -158,8 +158,8 @@ export class DocumentsController {
   ) {
     const orphanFilter = orphan === 'true' ? true : orphan === 'false' ? false : null
     return this.documentsService.findMyDocuments(
-      req?.user.sub ?? '',
-      req?.user.role ?? 'VIEWER',
+      req!.user.sub,
+      req!.user.role,
       parseInt(page ?? '1', 10),
       parseInt(size ?? '20', 10),
       orphanFilter,
@@ -234,7 +234,7 @@ export class DocumentsController {
         page: parseInt(page ?? '1', 10),
         size: parseInt(size ?? '20', 10),
       },
-      req?.user.role ?? 'VIEWER',
+      req!.user.role,
     )
   }
 

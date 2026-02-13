@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { documentsApi } from '@/api/documents'
 import type { AuditLogEntry, AuditStats } from '@/api/documents'
 import { ACTION_LABELS, ACTION_TAG_TYPES } from '@kms/shared'
@@ -50,7 +51,18 @@ async function loadLog() {
   }
 }
 
+const MAX_DATE_RANGE_DAYS = 90
+
 async function handleFilter() {
+  if (filterDateRange.value) {
+    const from = new Date(filterDateRange.value[0])
+    const to = new Date(filterDateRange.value[1])
+    const diffDays = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))
+    if (diffDays > MAX_DATE_RANGE_DAYS) {
+      ElMessage.warning(`검색 기간은 최대 ${MAX_DATE_RANGE_DAYS}일까지 가능합니다`)
+      return
+    }
+  }
   logPage.value = 1
   await loadLog()
 }

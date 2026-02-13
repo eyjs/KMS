@@ -1031,17 +1031,19 @@ export class DocumentsService {
   // 감사 로그
   // ============================================================
 
-  /** 문서 열람 기록 (5분 디바운스) */
+  /** 문서 열람 기록 (디바운스) */
+  private static readonly VIEW_DEBOUNCE_MS = 5 * 60 * 1000 // 5분
+
   async recordView(docId: string, userId: string) {
     const recent = await this.prisma.documentHistory.findFirst({
       where: {
         documentId: docId,
         userId,
         action: 'VIEW',
-        createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+        createdAt: { gte: new Date(Date.now() - DocumentsService.VIEW_DEBOUNCE_MS) },
       },
     })
-    if (recent) return // 5분 이내 중복 기록 방지
+    if (recent) return
 
     await this.prisma.documentHistory.create({
       data: { documentId: docId, action: 'VIEW', userId },

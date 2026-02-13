@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useDomainStore } from '@/stores/domain'
 import { documentsApi } from '@/api/documents'
@@ -11,6 +11,7 @@ import { useRecentDocs } from '@/composables/useRecentDocs'
 import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
+const route = useRoute()
 const domainStore = useDomainStore()
 const { recentDocs } = useRecentDocs()
 
@@ -70,7 +71,9 @@ const ISSUE_TABS = [
   { key: 'duplicate_name', label: '파일명 중복', emptyText: '파일명 중복 문서가 없습니다', ctaLabel: '확인', ctaType: 'danger' as const },
 ] as const
 
-const activeIssueTab = ref('warning')
+const validIssueKeys = ISSUE_TABS.map((t) => t.key) as readonly string[]
+const initialTab = validIssueKeys.includes(route.query.issue as string) ? (route.query.issue as string) : 'warning'
+const activeIssueTab = ref(initialTab)
 const issueCounts = ref<IssueCounts>({ warning: 0, expired: 0, noFile: 0, staleDraft: 0, longOrphan: 0, duplicateName: 0 })
 const issueDocuments = ref<DocumentEntity[]>([])
 const issueLoading = ref(false)
@@ -115,6 +118,7 @@ async function loadIssues() {
 
 async function handleIssueTabChange() {
   issuePage.value = 1
+  router.replace({ query: { ...route.query, issue: activeIssueTab.value } })
   await loadIssues()
 }
 
