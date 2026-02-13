@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger'
 import { PlacementsService } from './placements.service'
-import { PrismaService } from '../prisma/prisma.service'
+import { TaxonomyService } from '../taxonomy/taxonomy.service'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
@@ -30,7 +30,7 @@ interface AuthRequest {
 export class PlacementsController {
   constructor(
     private readonly placementsService: PlacementsService,
-    private readonly prisma: PrismaService,
+    private readonly taxonomyService: TaxonomyService,
   ) {}
 
   @Get('documents/:id/placements')
@@ -57,7 +57,7 @@ export class PlacementsController {
   ) {
     let domainCodes: string | string[] = code
     if (includeSubdomains === 'true') {
-      domainCodes = await this.getDescendantDomainCodes(code)
+      domainCodes = await this.taxonomyService.getDescendantCodes(code)
     }
     return this.placementsService.findByDomain(
       domainCodes,
@@ -71,32 +71,6 @@ export class PlacementsController {
       },
       req!.user.role,
     )
-  }
-
-  /** 해당 도메인 + 모든 하위 도메인 코드를 BFS로 수집 */
-  private async getDescendantDomainCodes(code: string): Promise<string[]> {
-    const domains = await this.prisma.domainMaster.findMany({
-      where: { isActive: true },
-      select: { code: true, parentCode: true },
-    })
-    const childrenMap = new Map<string, string[]>()
-    for (const d of domains) {
-      if (d.parentCode) {
-        const siblings = childrenMap.get(d.parentCode) ?? []
-        siblings.push(d.code)
-        childrenMap.set(d.parentCode, siblings)
-      }
-    }
-    const result: string[] = [code]
-    const queue = [code]
-    while (queue.length > 0) {
-      const current = queue.shift()!
-      for (const child of childrenMap.get(current) ?? []) {
-        result.push(child)
-        queue.push(child)
-      }
-    }
-    return result
   }
 
   @Post('placements')

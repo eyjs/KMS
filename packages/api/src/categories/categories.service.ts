@@ -5,17 +5,21 @@ import {
   ConflictException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { TaxonomyService } from '../taxonomy/taxonomy.service'
 import type { DomainCategoryEntity } from '@kms/shared'
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly taxonomyService: TaxonomyService,
+  ) {}
 
   async findByDomain(domainCode: string): Promise<DomainCategoryEntity[]> {
     await this.validateDomain(domainCode)
 
     // 하위 도메인이 있으면 전체(자기+하위) 카테고리를 조회
-    const descendantCodes = await this.getDescendantDomainCodes(domainCode)
+    const descendantCodes = await this.taxonomyService.getDescendantCodes(domainCode)
 
     const all = await this.prisma.domainCategory.findMany({
       where: { domainCode: { in: descendantCodes } },
@@ -23,32 +27,6 @@ export class CategoriesService {
     })
 
     return this.buildTree(all)
-  }
-
-  /** 해당 도메인 + 모든 하위 도메인 코드를 BFS로 수집 */
-  private async getDescendantDomainCodes(code: string): Promise<string[]> {
-    const domains = await this.prisma.domainMaster.findMany({
-      where: { isActive: true },
-      select: { code: true, parentCode: true },
-    })
-    const childrenMap = new Map<string, string[]>()
-    for (const d of domains) {
-      if (d.parentCode) {
-        const siblings = childrenMap.get(d.parentCode) ?? []
-        siblings.push(d.code)
-        childrenMap.set(d.parentCode, siblings)
-      }
-    }
-    const result: string[] = [code]
-    const queue = [code]
-    while (queue.length > 0) {
-      const current = queue.shift()!
-      for (const child of childrenMap.get(current) ?? []) {
-        result.push(child)
-        queue.push(child)
-      }
-    }
-    return result
   }
 
   async create(domainCode: string, data: { parentId?: number; name: string; sortOrder?: number }) {
