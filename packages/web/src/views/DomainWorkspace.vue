@@ -40,10 +40,8 @@ const hasSubdomains = computed(() =>
   domainStore.domainsFlat.some((d) => d.parentCode === domainCode.value),
 )
 
-// 카테고리 미선택(전체) + 하위 도메인 존재 시 하위 문서 포함
-const includeSubdomains = computed(() =>
-  selectedCategoryId.value === null && hasSubdomains.value,
-)
+// 하위 도메인 존재 시 항상 하위 문서 포함 (카테고리 선택과 무관)
+const includeSubdomains = computed(() => hasSubdomains.value)
 
 watch(domainCode, (code) => {
   if (code) {
