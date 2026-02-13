@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { DocumentsController } from './documents.controller'
 import { DocumentsService } from './documents.service'
 import { AuthModule } from '../auth/auth.module'
+import { CategoriesModule } from '../categories/categories.module'
 import { diskStorage } from 'multer'
 import { v4 as uuid } from 'uuid'
 import * as path from 'path'
@@ -11,6 +12,7 @@ import * as path from 'path'
 @Module({
   imports: [
     AuthModule,
+    CategoriesModule,
     MulterModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

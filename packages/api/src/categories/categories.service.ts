@@ -378,6 +378,89 @@ export class CategoriesService {
     return this.update(id, { parentId })
   }
 
+  // ============================================================
+  // API Key 폴더 권한 (그룹 기반)
+  // ============================================================
+
+  /**
+   * 그룹들이 접근 가능한 모든 폴더 ID 목록 반환
+   * includeChildren이 true인 경우 하위 폴더도 포함
+   */
+  async getAccessibleFolderIds(groupIds: string[]): Promise<number[]> {
+    if (!groupIds || groupIds.length === 0) {
+      return []
+    }
+
+    // 그룹에 직접 할당된 폴더 권한 조회
+    const accesses = await this.prisma.groupFolderAccess.findMany({
+      where: {
+        groupId: { in: groupIds },
+        group: { isActive: true },
+      },
+      select: { categoryId: true, includeChildren: true },
+    })
+
+    const directFolderIds = new Set<number>()
+    const foldersWithChildren: number[] = []
+
+    for (const access of accesses) {
+      directFolderIds.add(access.categoryId)
+      if (access.includeChildren) {
+        foldersWithChildren.push(access.categoryId)
+      }
+    }
+
+    // includeChildren이 true인 폴더의 하위 폴더 모두 수집
+    const allFolderIds = new Set<number>(directFolderIds)
+    for (const folderId of foldersWithChildren) {
+      const descendants = await this.getDescendantIds(folderId)
+      for (const id of descendants) {
+        allFolderIds.add(id)
+      }
+    }
+
+    return Array.from(allFolderIds)
+  }
+
+  /**
+   * API Key 그룹 기반 폴더 권한 확인
+   * 지정된 그룹들이 해당 폴더에 접근 가능한지 확인
+   */
+  async getGroupsPermissionForFolder(groupIds: string[], categoryId: number): Promise<FolderPermission> {
+    if (!groupIds || groupIds.length === 0) {
+      return 'NONE'
+    }
+
+    // 폴더와 상위 폴더 목록 수집 (includeChildren을 위해)
+    const folderIds = await this.getFolderAncestorIds(categoryId)
+
+    // 그룹의 폴더 권한 조회
+    const accesses = await this.prisma.groupFolderAccess.findMany({
+      where: {
+        groupId: { in: groupIds },
+        group: { isActive: true },
+        OR: [
+          { categoryId },
+          {
+            categoryId: { in: folderIds },
+            includeChildren: true,
+          },
+        ],
+      },
+    })
+
+    // 가장 높은 권한 반환
+    let maxPermission: FolderPermission = 'NONE'
+    for (const access of accesses) {
+      const perm = access.accessType as FolderPermission
+      if (FOLDER_PERMISSION_ORDER[perm] > FOLDER_PERMISSION_ORDER[maxPermission]) {
+        maxPermission = perm
+      }
+    }
+
+    return maxPermission
+  }
+
   private async getDescendantIds(id: number): Promise<number[]> {
     const children = await this.prisma.domainCategory.findMany({
       where: { parentId: id },

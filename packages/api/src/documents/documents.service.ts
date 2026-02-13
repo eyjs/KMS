@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
+import { CategoriesService } from '../categories/categories.service'
 import {
   LIFECYCLE_TRANSITIONS,
   FRESHNESS_THRESHOLDS,
@@ -25,10 +26,19 @@ import * as fs from 'fs'
 
 type IssueType = 'warning' | 'expired' | 'no_file' | 'stale_draft' | 'long_orphan' | 'duplicate_name'
 
+/** 인증된 사용자 정보 (JWT 또는 API Key) */
+export interface AuthUser {
+  sub: string
+  role: UserRole
+  isApiKey?: boolean
+  groupIds?: string[]
+}
+
 @Injectable()
 export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly categoriesService: CategoriesService,
   ) {}
 
   /** 역할별 접근 가능 보안등급 목록 */
@@ -37,6 +47,34 @@ export class DocumentsService {
     return Object.entries(SECURITY_LEVEL_ORDER)
       .filter(([, level]) => level <= maxLevel)
       .map(([name]) => name)
+  }
+
+  /**
+   * API Key가 문서에 접근 가능한지 확인
+   * 문서가 배치된 폴더 중 하나라도 그룹에서 접근 가능하면 허용
+   */
+  private async canApiKeyAccessDocument(
+    groupIds: string[],
+    placements: Array<{ categoryId: number | null }>,
+  ): Promise<boolean> {
+    if (!groupIds || groupIds.length === 0) {
+      return false
+    }
+
+    // 배치된 폴더가 없으면 접근 불가 (미배치 문서는 API Key로 접근 불가)
+    const categoryIds = placements
+      .map((p) => p.categoryId)
+      .filter((id): id is number => id !== null)
+
+    if (categoryIds.length === 0) {
+      return false
+    }
+
+    // 그룹이 접근 가능한 폴더 목록 조회
+    const accessibleFolderIds = await this.categoriesService.getAccessibleFolderIds(groupIds)
+
+    // 배치된 폴더 중 하나라도 접근 가능하면 허용
+    return categoryIds.some((id) => accessibleFolderIds.includes(id))
   }
 
   /** 이슈 유형별 Prisma where 조건 빌더 */
@@ -376,7 +414,7 @@ export class DocumentsService {
     }
   }
 
-  async findOne(id: string, userRole: UserRole) {
+  async findOne(id: string, userRole: UserRole, authUser?: AuthUser) {
     const doc = await this.prisma.document.findFirst({
       where: { id, isDeleted: false },
       include: {
@@ -384,7 +422,7 @@ export class DocumentsService {
         placements: {
           include: {
             domain: { select: { displayName: true } },
-            category: { select: { name: true } },
+            category: { select: { name: true, code: true } },
             user: { select: { name: true } },
           },
         },
@@ -393,10 +431,25 @@ export class DocumentsService {
 
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
 
+    // 1. 신원등급 체크 (내부/외부 공통)
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException(
         `이 문서는 ${doc.securityLevel} 등급입니다. 접근 권한이 없습니다.`,
       )
+    }
+
+    // 2. 외부 API Key인 경우에만 폴더 권한 체크
+    if (authUser?.isApiKey) {
+      if (!authUser.groupIds || authUser.groupIds.length === 0) {
+        throw new ForbiddenException('API Key는 권한 그룹 소속이 필요합니다')
+      }
+      const canAccess = await this.canApiKeyAccessDocument(
+        authUser.groupIds,
+        doc.placements.map((p) => ({ categoryId: p.categoryId })),
+      )
+      if (!canAccess) {
+        throw new ForbiddenException('폴더 접근 권한이 없습니다')
+      }
     }
 
     return {
@@ -408,6 +461,7 @@ export class DocumentsService {
         domainName: p.domain.displayName,
         categoryId: p.categoryId,
         categoryName: p.category?.name ?? null,
+        categoryCode: p.category?.code ?? null,
         placedBy: p.placedBy,
         placedByName: p.user?.name ?? null,
         placedAt: p.placedAt.toISOString(),
@@ -418,15 +472,30 @@ export class DocumentsService {
   }
 
   /** 내부 전용 — filePath 포함하여 반환 */
-  async findOneInternal(id: string, userRole: UserRole) {
+  async findOneInternal(id: string, userRole: UserRole, authUser?: AuthUser) {
     const doc = await this.prisma.document.findFirst({
       where: { id, isDeleted: false },
+      include: {
+        placements: { select: { categoryId: true } },
+      },
     })
 
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
 
+    // 1. 신원등급 체크
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException('접근 권한이 없습니다')
+    }
+
+    // 2. 외부 API Key인 경우에만 폴더 권한 체크
+    if (authUser?.isApiKey) {
+      if (!authUser.groupIds || authUser.groupIds.length === 0) {
+        throw new ForbiddenException('API Key는 권한 그룹 소속이 필요합니다')
+      }
+      const canAccess = await this.canApiKeyAccessDocument(authUser.groupIds, doc.placements)
+      if (!canAccess) {
+        throw new ForbiddenException('폴더 접근 권한이 없습니다')
+      }
     }
 
     return doc
@@ -1025,6 +1094,149 @@ export class DocumentsService {
     })
     if (!version) throw new NotFoundException('해당 버전을 찾을 수 없습니다')
     return version
+  }
+
+  // ============================================================
+  // RAG용 접근 가능 문서 API
+  // ============================================================
+
+  /**
+   * 현재 사용자(또는 API Key)가 접근 가능한 문서 ID 목록 반환
+   * RAG 벡터 검색 시 권한 필터로 사용
+   */
+  async getAccessibleDocumentIds(authUser: AuthUser): Promise<string[]> {
+    const allowedLevels = this.getAllowedLevels(authUser.role)
+
+    // 내부 사용자: 신원등급 범위 내 모든 문서
+    if (!authUser.isApiKey) {
+      const docs = await this.prisma.document.findMany({
+        where: {
+          isDeleted: false,
+          securityLevel: { in: allowedLevels },
+        },
+        select: { id: true },
+      })
+      return docs.map((d) => d.id)
+    }
+
+    // 외부 API Key: 그룹에 지정된 폴더 범위 내 문서만
+    if (!authUser.groupIds || authUser.groupIds.length === 0) {
+      return [] // 그룹 미소속 API Key는 문서 없음
+    }
+
+    const accessibleFolderIds = await this.categoriesService.getAccessibleFolderIds(authUser.groupIds)
+    if (accessibleFolderIds.length === 0) {
+      return []
+    }
+
+    const docs = await this.prisma.document.findMany({
+      where: {
+        isDeleted: false,
+        securityLevel: { in: allowedLevels },
+        placements: { some: { categoryId: { in: accessibleFolderIds } } },
+      },
+      select: { id: true },
+    })
+    return docs.map((d) => d.id)
+  }
+
+  /**
+   * 접근 가능 문서 메타데이터 반환 (캐싱/인덱싱용)
+   */
+  async getAccessibleDocumentsMetadata(authUser: AuthUser) {
+    const allowedLevels = this.getAllowedLevels(authUser.role)
+
+    let whereCondition: Prisma.DocumentWhereInput = {
+      isDeleted: false,
+      securityLevel: { in: allowedLevels },
+    }
+
+    // 외부 API Key: 그룹에 지정된 폴더 범위로 필터
+    if (authUser.isApiKey) {
+      if (!authUser.groupIds || authUser.groupIds.length === 0) {
+        return { documents: [] }
+      }
+
+      const accessibleFolderIds = await this.categoriesService.getAccessibleFolderIds(authUser.groupIds)
+      if (accessibleFolderIds.length === 0) {
+        return { documents: [] }
+      }
+
+      whereCondition = {
+        ...whereCondition,
+        placements: { some: { categoryId: { in: accessibleFolderIds } } },
+      }
+    }
+
+    const docs = await this.prisma.document.findMany({
+      where: whereCondition,
+      select: {
+        id: true,
+        docCode: true,
+        fileName: true,
+        securityLevel: true,
+        lifecycle: true,
+        placements: {
+          select: {
+            domainCode: true,
+            categoryId: true,
+            category: { select: { code: true, name: true } },
+          },
+        },
+      },
+    })
+
+    return {
+      documents: docs.map((d) => ({
+        id: d.id,
+        docCode: d.docCode,
+        fileName: d.fileName,
+        securityLevel: d.securityLevel,
+        lifecycle: d.lifecycle,
+        folders: d.placements.map((p) => ({
+          domainCode: p.domainCode,
+          categoryId: p.categoryId,
+          categoryCode: p.category?.code ?? null,
+          categoryName: p.category?.name ?? null,
+        })),
+      })),
+    }
+  }
+
+  /**
+   * 특정 문서 접근 가능 여부 확인 (단건)
+   */
+  async canAccessDocument(docId: string, authUser: AuthUser): Promise<{ canAccess: boolean; reason?: string }> {
+    const doc = await this.prisma.document.findFirst({
+      where: { id: docId, isDeleted: false },
+      include: { placements: { select: { categoryId: true } } },
+    })
+
+    if (!doc) {
+      return { canAccess: false, reason: '문서를 찾을 수 없습니다' }
+    }
+
+    // 신원등급 체크
+    if (!SecurityLevelGuard.canAccess(authUser.role, doc.securityLevel as SecurityLevel)) {
+      return { canAccess: false, reason: '신원 등급이 부족합니다' }
+    }
+
+    // 내부 사용자: 신원등급만 통과하면 접근 허용
+    if (!authUser.isApiKey) {
+      return { canAccess: true }
+    }
+
+    // 외부 API Key: 그룹 및 폴더 권한 체크
+    if (!authUser.groupIds || authUser.groupIds.length === 0) {
+      return { canAccess: false, reason: 'API Key는 권한 그룹 소속이 필요합니다' }
+    }
+
+    const canAccess = await this.canApiKeyAccessDocument(authUser.groupIds, doc.placements)
+    if (!canAccess) {
+      return { canAccess: false, reason: '폴더 접근 권한이 없습니다' }
+    }
+
+    return { canAccess: true }
   }
 
   // ============================================================

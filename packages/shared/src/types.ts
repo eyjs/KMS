@@ -177,6 +177,9 @@ export interface ApiKeyEntity {
   expiresAt: string | null
   isActive: boolean
   createdAt: string
+  lastUsedAt: string | null
+  groupIds?: string[]
+  groups?: Pick<PermissionGroupEntity, 'id' | 'name'>[]
 }
 
 // ============================================================
@@ -249,6 +252,7 @@ export interface CreateApiKeyDto {
   name: string
   role: UserRole
   expiresAt?: string
+  groupIds?: string[]
 }
 
 export interface CreateDomainDto {
@@ -480,4 +484,16 @@ export interface AddGroupMemberDto {
 
 export interface UpdateUserGroupsDto {
   groupIds: string[]
+}
+
+export interface UpdateApiKeyGroupsDto {
+  groupIds: string[]
+}
+
+export interface ApiKeyGroupMembershipEntity {
+  id: string
+  apiKeyId: number
+  groupId: string
+  joinedAt: string
+  group?: Pick<PermissionGroupEntity, 'id' | 'name'>
 }

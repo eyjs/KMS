@@ -23,8 +23,14 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('유효하지 않은 API Key입니다')
     }
 
-    // API Key 사용자 정보를 request에 주입
-    request.user = { role: result.role, name: result.name, isApiKey: true }
+    // API Key 사용자 정보를 request에 주입 (groupIds 포함)
+    request.user = {
+      sub: String(result.id),
+      role: result.role,
+      name: result.name,
+      isApiKey: true,
+      groupIds: result.groupIds,
+    }
     return true
   }
 }

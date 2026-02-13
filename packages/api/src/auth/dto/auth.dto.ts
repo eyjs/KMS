@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsDateString } from 'class-validator'
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsDateString, IsArray, IsUUID } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 
 const VALID_ROLES = ['VIEWER', 'EDITOR', 'REVIEWER', 'APPROVER', 'ADMIN'] as const
@@ -61,6 +61,20 @@ export class CreateApiKeyDto {
   @IsOptional()
   @IsDateString()
   expiresAt?: string
+
+  @ApiProperty({ required: false, description: '소속 권한 그룹 ID 목록' })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  groupIds?: string[]
+}
+
+export class UpdateApiKeyGroupsDto {
+  @ApiProperty({ description: '그룹 ID 목록', type: [String] })
+  @IsNotEmpty()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  groupIds!: string[]
 }
 
 export class UpdateUserGroupsDto {

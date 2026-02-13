@@ -14,6 +14,8 @@ import type {
   UserGroupMembershipEntity,
   GroupFolderAccessEntity,
   DomainCategoryEntity,
+  ApiKeyEntity,
+  UserRole,
 } from '@kms/shared'
 
 const FOLDER_PERMISSION_LABELS: Record<string, string> = {
@@ -85,6 +87,26 @@ const folderAccessForm = ref({
 const categories = ref<DomainCategoryEntity[]>([])
 const categoriesLoading = ref(false)
 const addingFolderAccess = ref(false)
+
+// API Key 탭
+const apiKeys = ref<ApiKeyEntity[]>([])
+const apiKeysLoading = ref(false)
+const selectedApiKey = ref<ApiKeyEntity | null>(null)
+const apiKeyGroups = ref<PermissionGroupEntity[]>([])
+const apiKeyGroupsLoading = ref(false)
+const selectedApiKeyGroupIds = ref<string[]>([])
+const savingApiKeyGroups = ref(false)
+
+// API Key 생성 다이얼로그
+const showCreateApiKeyDialog = ref(false)
+const apiKeyForm = ref({
+  name: '',
+  role: 'VIEWER' as UserRole,
+  expiresAt: '',
+  groupIds: [] as string[],
+})
+const creatingApiKey = ref(false)
+const createdApiKey = ref<string | null>(null)
 
 // ============================================================
 // 계산 속성
@@ -398,11 +420,120 @@ function getDomainName(code: string): string {
 }
 
 // ============================================================
+// API Key 탭 로직
+// ============================================================
+
+async function loadApiKeys() {
+  apiKeysLoading.value = true
+  try {
+    const { data } = await groupsApi.listApiKeys()
+    apiKeys.value = data
+  } catch {
+    apiKeys.value = []
+  } finally {
+    apiKeysLoading.value = false
+  }
+}
+
+async function selectApiKey(apiKey: ApiKeyEntity) {
+  selectedApiKey.value = apiKey
+  apiKeyGroupsLoading.value = true
+  try {
+    const { data } = await groupsApi.getApiKeyGroups(apiKey.id)
+    apiKeyGroups.value = data
+    selectedApiKeyGroupIds.value = data.map((g) => g.id)
+  } catch {
+    apiKeyGroups.value = []
+    selectedApiKeyGroupIds.value = []
+  } finally {
+    apiKeyGroupsLoading.value = false
+  }
+}
+
+async function saveApiKeyGroups() {
+  if (!selectedApiKey.value) return
+  savingApiKeyGroups.value = true
+  try {
+    await groupsApi.updateApiKeyGroups(selectedApiKey.value.id, selectedApiKeyGroupIds.value)
+    ElMessage.success('소속 그룹이 저장되었습니다')
+    await loadApiKeys()
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '저장 실패')
+    ElMessage.error(msg)
+  } finally {
+    savingApiKeyGroups.value = false
+  }
+}
+
+async function toggleApiKeyActive(apiKey: ApiKeyEntity) {
+  try {
+    await groupsApi.toggleApiKeyActive(apiKey.id)
+    await loadApiKeys()
+    ElMessage.success(`API Key가 ${!apiKey.isActive ? '활성화' : '비활성화'}되었습니다`)
+  } catch {
+    ElMessage.error('상태 변경 실패')
+  }
+}
+
+async function deleteApiKey(apiKey: ApiKeyEntity) {
+  try {
+    await ElMessageBox.confirm(
+      `"${apiKey.name}" API Key를 삭제하시겠습니까?`,
+      'API Key 삭제',
+      { type: 'warning' },
+    )
+    await groupsApi.deleteApiKey(apiKey.id)
+    apiKeys.value = apiKeys.value.filter((k) => k.id !== apiKey.id)
+    if (selectedApiKey.value?.id === apiKey.id) selectedApiKey.value = null
+    ElMessage.success('API Key가 삭제되었습니다')
+  } catch {
+    // 취소
+  }
+}
+
+function openCreateApiKeyDialog() {
+  apiKeyForm.value = { name: '', role: 'VIEWER', expiresAt: '', groupIds: [] }
+  createdApiKey.value = null
+  showCreateApiKeyDialog.value = true
+}
+
+async function createApiKey() {
+  if (!apiKeyForm.value.name.trim()) {
+    ElMessage.warning('이름을 입력하세요')
+    return
+  }
+  creatingApiKey.value = true
+  try {
+    const { data } = await groupsApi.createApiKey({
+      name: apiKeyForm.value.name,
+      role: apiKeyForm.value.role,
+      expiresAt: apiKeyForm.value.expiresAt || undefined,
+      groupIds: apiKeyForm.value.groupIds.length > 0 ? apiKeyForm.value.groupIds : undefined,
+    })
+    createdApiKey.value = data.key
+    await loadApiKeys()
+    ElMessage.success('API Key가 생성되었습니다. 키를 복사하세요!')
+  } catch (err) {
+    const msg = getApiErrorMessage(err, '생성 실패')
+    ElMessage.error(msg)
+  } finally {
+    creatingApiKey.value = false
+  }
+}
+
+function copyApiKey() {
+  if (createdApiKey.value) {
+    navigator.clipboard.writeText(createdApiKey.value)
+    ElMessage.success('API Key가 복사되었습니다')
+  }
+}
+
+// ============================================================
 // 초기화
 // ============================================================
 
 onMounted(async () => {
-  await Promise.all([loadUsers(), loadGroups()])
+  await Promise.all([loadUsers(), loadGroups(), loadApiKeys()])
   await domainStore.loadDomains()
 })
 </script>
@@ -495,6 +626,120 @@ onMounted(async () => {
 
             <div v-if="selectedUser" style="padding-top: 12px; border-top: 1px solid #ebeef5">
               <el-button type="primary" :loading="savingUserGroups" @click="saveUserGroups" style="width: 100%">
+                저장
+              </el-button>
+            </div>
+          </el-card>
+        </div>
+      </el-tab-pane>
+
+      <!-- ============================================================ -->
+      <!-- API Key 탭 -->
+      <!-- ============================================================ -->
+      <el-tab-pane label="API Key" name="apikeys">
+        <div style="display: flex; gap: 16px; height: calc(100vh - 180px)">
+          <!-- API Key 목록 -->
+          <el-card shadow="never" style="flex: 1; overflow: hidden; display: flex; flex-direction: column">
+            <template #header>
+              <div style="display: flex; justify-content: space-between; align-items: center">
+                <span style="font-weight: 600">API Key 목록</span>
+                <el-button type="primary" size="small" :icon="Plus" @click="openCreateApiKeyDialog">
+                  새 API Key
+                </el-button>
+              </div>
+            </template>
+            <el-table
+              v-loading="apiKeysLoading"
+              :data="apiKeys"
+              size="small"
+              :header-cell-style="{ background: '#fafafa' }"
+              highlight-current-row
+              style="flex: 1"
+              @current-change="selectApiKey"
+            >
+              <el-table-column prop="name" label="이름" min-width="120" />
+              <el-table-column label="역할" width="80">
+                <template #default="{ row }">
+                  {{ ROLE_LABELS[row.role] ?? row.role }}
+                </template>
+              </el-table-column>
+              <el-table-column label="접두어" width="80">
+                <template #default="{ row }">
+                  <code style="font-size: 11px">{{ row.keyPrefix }}...</code>
+                </template>
+              </el-table-column>
+              <el-table-column label="그룹" width="60" align="center">
+                <template #default="{ row }">{{ row.groups?.length ?? 0 }}</template>
+              </el-table-column>
+              <el-table-column label="상태" width="60" align="center">
+                <template #default="{ row }">
+                  <el-tag
+                    :type="row.isActive ? 'success' : 'danger'"
+                    size="small"
+                    style="cursor: pointer"
+                    @click.stop="toggleApiKeyActive(row)"
+                  >
+                    {{ row.isActive ? '활성' : '비활성' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="마지막 사용" width="100">
+                <template #default="{ row }">
+                  {{ row.lastUsedAt ? new Date(row.lastUsedAt).toLocaleDateString('ko-KR') : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column width="60" align="center">
+                <template #default="{ row }">
+                  <el-button size="small" text type="danger" :icon="Delete" @click.stop="deleteApiKey(row)" />
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+
+          <!-- API Key 그룹 설정 패널 -->
+          <el-card shadow="never" style="width: 360px; overflow: hidden; display: flex; flex-direction: column">
+            <template #header>
+              <span style="font-weight: 600">
+                {{ selectedApiKey ? `${selectedApiKey.name} 소속 그룹` : 'API Key를 선택하세요' }}
+              </span>
+            </template>
+
+            <div v-if="!selectedApiKey" style="text-align: center; color: #909399; padding: 40px 0">
+              왼쪽 목록에서 API Key를 선택하면<br>소속 그룹을 설정할 수 있습니다.
+              <div style="margin-top: 16px; font-size: 12px; color: #c0c4cc">
+                외부 업체 API Key는 그룹을 통해<br>접근 가능한 폴더 범위를 제한할 수 있습니다.
+              </div>
+            </div>
+
+            <div v-else v-loading="apiKeyGroupsLoading" style="flex: 1; overflow-y: auto">
+              <div style="margin-bottom: 12px; font-size: 13px; color: #606266">
+                기본 역할: <el-tag size="small">{{ ROLE_LABELS[selectedApiKey.role] ?? selectedApiKey.role }}</el-tag>
+              </div>
+
+              <div style="margin-bottom: 12px; padding: 8px; background: #fef0f0; border-radius: 4px; font-size: 12px; color: #f56c6c">
+                외부 API Key는 소속 그룹이 없으면 문서에 접근할 수 없습니다.
+              </div>
+
+              <el-checkbox-group v-model="selectedApiKeyGroupIds" style="display: flex; flex-direction: column; gap: 8px">
+                <el-checkbox
+                  v-for="group in allGroups"
+                  :key="group.id"
+                  :value="group.id"
+                  :disabled="!group.isActive"
+                  style="margin: 0"
+                >
+                  <span>{{ group.name }}</span>
+                  <span v-if="!group.isActive" style="color: #909399; font-size: 12px"> (비활성)</span>
+                </el-checkbox>
+              </el-checkbox-group>
+
+              <div v-if="allGroups.length === 0" style="text-align: center; color: #909399; padding: 20px 0">
+                등록된 권한 그룹이 없습니다
+              </div>
+            </div>
+
+            <div v-if="selectedApiKey" style="padding-top: 12px; border-top: 1px solid #ebeef5">
+              <el-button type="primary" :loading="savingApiKeyGroups" @click="saveApiKeyGroups" style="width: 100%">
                 저장
               </el-button>
             </div>
@@ -753,6 +998,79 @@ onMounted(async () => {
       <template #footer>
         <el-button @click="showFolderAccessDialog = false">취소</el-button>
         <el-button type="primary" :loading="addingFolderAccess" @click="addFolderAccess">추가</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- API Key 생성 다이얼로그 -->
+    <el-dialog
+      v-model="showCreateApiKeyDialog"
+      title="새 API Key"
+      width="480px"
+      destroy-on-close
+      :close-on-click-modal="!createdApiKey"
+    >
+      <div v-if="createdApiKey" style="text-align: center">
+        <div style="margin-bottom: 16px; color: #67c23a; font-size: 14px; font-weight: 600">
+          API Key가 생성되었습니다!
+        </div>
+        <div style="margin-bottom: 8px; font-size: 12px; color: #909399">
+          이 키는 다시 확인할 수 없습니다. 지금 복사하세요.
+        </div>
+        <el-input
+          :model-value="createdApiKey"
+          readonly
+          style="margin-bottom: 16px"
+        >
+          <template #append>
+            <el-button @click="copyApiKey">복사</el-button>
+          </template>
+        </el-input>
+        <el-button type="primary" @click="showCreateApiKeyDialog = false">확인</el-button>
+      </div>
+
+      <el-form v-else label-position="top">
+        <el-form-item label="이름" required>
+          <el-input v-model="apiKeyForm.name" placeholder="예: 외부업체A, RAG봇" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="역할" required>
+          <el-select v-model="apiKeyForm.role" style="width: 100%">
+            <el-option value="VIEWER" :label="ROLE_LABELS.VIEWER" />
+            <el-option value="EDITOR" :label="ROLE_LABELS.EDITOR" />
+            <el-option value="REVIEWER" :label="ROLE_LABELS.REVIEWER" />
+            <el-option value="APPROVER" :label="ROLE_LABELS.APPROVER" />
+          </el-select>
+          <div style="margin-top: 4px; font-size: 11px; color: #909399">
+            역할에 따라 접근 가능한 문서 보안등급이 결정됩니다.
+          </div>
+        </el-form-item>
+        <el-form-item label="만료일 (선택)">
+          <el-date-picker
+            v-model="apiKeyForm.expiresAt"
+            type="date"
+            placeholder="만료일 선택"
+            style="width: 100%"
+            value-format="YYYY-MM-DD"
+          />
+        </el-form-item>
+        <el-form-item label="소속 그룹 (선택)">
+          <el-checkbox-group v-model="apiKeyForm.groupIds" style="display: flex; flex-direction: column; gap: 4px">
+            <el-checkbox
+              v-for="group in allGroups.filter(g => g.isActive)"
+              :key="group.id"
+              :value="group.id"
+              style="margin: 0"
+            >
+              {{ group.name }}
+            </el-checkbox>
+          </el-checkbox-group>
+          <div style="margin-top: 4px; font-size: 11px; color: #f56c6c">
+            그룹 미소속 API Key는 문서 접근이 불가합니다.
+          </div>
+        </el-form-item>
+      </el-form>
+      <template v-if="!createdApiKey" #footer>
+        <el-button @click="showCreateApiKeyDialog = false">취소</el-button>
+        <el-button type="primary" :loading="creatingApiKey" @click="createApiKey">생성</el-button>
       </template>
     </el-dialog>
   </div>

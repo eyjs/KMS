@@ -39,7 +39,7 @@ import {
 import type { UserRole, SecurityLevel } from '@kms/shared'
 
 interface AuthRequest {
-  user: { sub: string; email: string; role: UserRole }
+  user: { sub: string; email: string; role: UserRole; isApiKey?: boolean; groupIds?: string[] }
 }
 
 @ApiTags('documents')
@@ -148,6 +148,30 @@ export class DocumentsController {
     )
   }
 
+  @Get('accessible')
+  @ApiOperation({ summary: 'RAG용 - 접근 가능 문서 ID 목록' })
+  async getAccessibleDocumentIds(@Request() req: AuthRequest) {
+    return {
+      documentIds: await this.documentsService.getAccessibleDocumentIds({
+        sub: req.user.sub,
+        role: req.user.role,
+        isApiKey: req.user.isApiKey,
+        groupIds: req.user.groupIds,
+      }),
+    }
+  }
+
+  @Get('accessible/metadata')
+  @ApiOperation({ summary: 'RAG용 - 접근 가능 문서 메타데이터' })
+  async getAccessibleDocumentsMetadata(@Request() req: AuthRequest) {
+    return this.documentsService.getAccessibleDocumentsMetadata({
+      sub: req.user.sub,
+      role: req.user.role,
+      isApiKey: req.user.isApiKey,
+      groupIds: req.user.groupIds,
+    })
+  }
+
   @Get('my')
   @ApiOperation({ summary: '내가 올린 문서 목록' })
   async getMyDocuments(
@@ -243,7 +267,23 @@ export class DocumentsController {
   async findOne(@Param('id') id: string, @Request() req: AuthRequest) {
     // 열람 기록 비동기 (실패해도 무시)
     this.documentsService.recordView(id, req.user.sub).catch(() => {})
-    return this.documentsService.findOne(id, req.user.role)
+    return this.documentsService.findOne(id, req.user.role, {
+      sub: req.user.sub,
+      role: req.user.role,
+      isApiKey: req.user.isApiKey,
+      groupIds: req.user.groupIds,
+    })
+  }
+
+  @Get(':id/can-access')
+  @ApiOperation({ summary: 'RAG용 - 특정 문서 접근 가능 여부 확인' })
+  async canAccessDocument(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.documentsService.canAccessDocument(id, {
+      sub: req.user.sub,
+      role: req.user.role,
+      isApiKey: req.user.isApiKey,
+      groupIds: req.user.groupIds,
+    })
   }
 
   @Put(':id')

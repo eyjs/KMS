@@ -4,6 +4,7 @@ import {
   Get,
   Put,
   Patch,
+  Delete,
   Param,
   Body,
   UseGuards,
@@ -15,7 +16,7 @@ import { AuthService } from './auth.service'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { Roles } from './decorators/roles.decorator'
 import { RolesGuard } from './guards/roles.guard'
-import { LoginDto, RefreshTokenDto, CreateUserDto, UpdateUserRoleDto, CreateApiKeyDto, UpdateUserGroupsDto } from './dto/auth.dto'
+import { LoginDto, RefreshTokenDto, CreateUserDto, UpdateUserRoleDto, CreateApiKeyDto, UpdateUserGroupsDto, UpdateApiKeyGroupsDto } from './dto/auth.dto'
 
 @ApiTags('auth')
 @Controller('auth')
@@ -77,6 +78,15 @@ export class AuthController {
     return this.authService.toggleUserActive(id, req.user.sub)
   }
 
+  @Get('api-keys')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'API Key 목록 (ADMIN만)' })
+  async findAllApiKeys() {
+    return this.authService.findAllApiKeys()
+  }
+
   @Post('api-keys')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
@@ -87,7 +97,47 @@ export class AuthController {
       dto.name,
       dto.role,
       dto.expiresAt ? new Date(dto.expiresAt) : undefined,
+      dto.groupIds,
     )
+  }
+
+  @Patch('api-keys/:id/toggle-active')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'API Key 활성/비활성 토글 (ADMIN만)' })
+  async toggleApiKeyActive(@Param('id') id: string) {
+    return this.authService.toggleApiKeyActive(parseInt(id, 10))
+  }
+
+  @Delete('api-keys/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'API Key 삭제 (ADMIN만)' })
+  async deleteApiKey(@Param('id') id: string) {
+    return this.authService.deleteApiKey(parseInt(id, 10))
+  }
+
+  @Get('api-keys/:id/groups')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'API Key 소속 그룹 목록 (ADMIN만)' })
+  async getApiKeyGroups(@Param('id') id: string) {
+    return this.authService.getApiKeyGroups(parseInt(id, 10))
+  }
+
+  @Put('api-keys/:id/groups')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'API Key 소속 그룹 변경 (ADMIN만)' })
+  async updateApiKeyGroups(
+    @Param('id') id: string,
+    @Body() dto: UpdateApiKeyGroupsDto,
+  ) {
+    return this.authService.updateApiKeyGroups(parseInt(id, 10), dto.groupIds)
   }
 
   @Get('me')

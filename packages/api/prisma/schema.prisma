@@ -213,8 +213,29 @@ model ApiKey {
   createdAt  DateTime  @default(now()) @map("created_at")
   lastUsedAt DateTime? @map("last_used_at")
 
+  groupMemberships ApiKeyGroupMembership[]
+
   @@index([keyHash])
   @@map("api_keys")
+}
+
+// ============================================================
+// API Key-그룹 멤버십 (M:N)
+// ============================================================
+
+model ApiKeyGroupMembership {
+  id        String   @id @default(uuid()) @db.Uuid
+  apiKeyId  Int      @map("api_key_id")
+  groupId   String   @map("group_id") @db.Uuid
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  apiKey ApiKey          @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  group  PermissionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([apiKeyId, groupId])
+  @@index([apiKeyId])
+  @@index([groupId])
+  @@map("api_key_group_memberships")
 }
 
 // ============================================================
@@ -277,8 +298,9 @@ model PermissionGroup {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
-  memberships  UserGroupMembership[]
-  folderAccess GroupFolderAccess[]
+  memberships       UserGroupMembership[]
+  folderAccess      GroupFolderAccess[]
+  apiKeyMemberships ApiKeyGroupMembership[]
 
   @@map("permission_groups")
 }

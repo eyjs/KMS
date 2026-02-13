@@ -30,7 +30,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { isActive: true, role: true },
+      select: {
+        isActive: true,
+        role: true,
+        groupMemberships: {
+          where: { group: { isActive: true } },
+          select: { groupId: true },
+        },
+      },
     })
 
     if (!user || !user.isActive) {
@@ -38,6 +45,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // DB의 최신 역할을 사용 (토큰 발급 이후 역할 변경 반영)
-    return { sub: payload.sub, email: payload.email, role: user.role }
+    // 내부 사용자는 isApiKey: false, groupIds는 WRITE 권한 체크용으로 포함
+    return {
+      sub: payload.sub,
+      email: payload.email,
+      role: user.role,
+      isApiKey: false,
+      groupIds: user.groupMemberships.map((m) => m.groupId),
+    }
   }
 }

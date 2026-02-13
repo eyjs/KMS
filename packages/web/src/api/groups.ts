@@ -6,6 +6,8 @@ import type {
   CreateGroupDto,
   UpdateGroupDto,
   SetFolderAccessDto,
+  ApiKeyEntity,
+  UserRole,
 } from '@kms/shared'
 
 export const groupsApi = {
@@ -75,5 +77,33 @@ export const groupsApi = {
 
   updateUserGroups(userId: string, groupIds: string[]) {
     return client.put<PermissionGroupEntity[]>(`/auth/users/${userId}/groups`, { groupIds })
+  },
+
+  // ============================================================
+  // API Key 관리
+  // ============================================================
+
+  listApiKeys() {
+    return client.get<ApiKeyEntity[]>('/auth/api-keys')
+  },
+
+  createApiKey(data: { name: string; role: UserRole; expiresAt?: string; groupIds?: string[] }) {
+    return client.post<{ key: string; keyPrefix: string; name: string; role: string; groupIds?: string[] }>('/auth/api-keys', data)
+  },
+
+  toggleApiKeyActive(apiKeyId: string) {
+    return client.patch<{ id: number; isActive: boolean }>(`/auth/api-keys/${apiKeyId}/toggle-active`)
+  },
+
+  deleteApiKey(apiKeyId: string) {
+    return client.delete(`/auth/api-keys/${apiKeyId}`)
+  },
+
+  getApiKeyGroups(apiKeyId: string) {
+    return client.get<PermissionGroupEntity[]>(`/auth/api-keys/${apiKeyId}/groups`)
+  },
+
+  updateApiKeyGroups(apiKeyId: string, groupIds: string[]) {
+    return client.put<PermissionGroupEntity[]>(`/auth/api-keys/${apiKeyId}/groups`, { groupIds })
   },
 }
