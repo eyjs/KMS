@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger'
 import { PlacementsService } from './placements.service'
+import { PrismaService } from '../prisma/prisma.service'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
@@ -27,7 +28,10 @@ interface AuthRequest {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class PlacementsController {
-  constructor(private readonly placementsService: PlacementsService) {}
+  constructor(
+    private readonly placementsService: PlacementsService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get('documents/:id/placements')
   @ApiOperation({ summary: '문서의 배치 목록' })
@@ -48,10 +52,15 @@ export class PlacementsController {
     @Query('order') order?: string,
     @Query('page') page?: string,
     @Query('size') size?: string,
+    @Query('includeSubdomains') includeSubdomains?: string,
     @Request() req?: AuthRequest,
   ) {
+    let domainCodes: string | string[] = code
+    if (includeSubdomains === 'true') {
+      domainCodes = await this.getDescendantDomainCodes(code)
+    }
     return this.placementsService.findByDomain(
-      code,
+      domainCodes,
       {
         categoryId: categoryId ? parseInt(categoryId, 10) : undefined,
         lifecycle: lifecycle || undefined,
@@ -60,8 +69,34 @@ export class PlacementsController {
         page: parseInt(page ?? '1', 10),
         size: parseInt(size ?? '20', 10),
       },
-      req?.user.role ?? 'VIEWER',
+      req!.user.role,
     )
+  }
+
+  /** 해당 도메인 + 모든 하위 도메인 코드를 BFS로 수집 */
+  private async getDescendantDomainCodes(code: string): Promise<string[]> {
+    const domains = await this.prisma.domainMaster.findMany({
+      where: { isActive: true },
+      select: { code: true, parentCode: true },
+    })
+    const childrenMap = new Map<string, string[]>()
+    for (const d of domains) {
+      if (d.parentCode) {
+        const siblings = childrenMap.get(d.parentCode) ?? []
+        siblings.push(d.code)
+        childrenMap.set(d.parentCode, siblings)
+      }
+    }
+    const result: string[] = [code]
+    const queue = [code]
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      for (const child of childrenMap.get(current) ?? []) {
+        result.push(child)
+        queue.push(child)
+      }
+    }
+    return result
   }
 
   @Post('placements')

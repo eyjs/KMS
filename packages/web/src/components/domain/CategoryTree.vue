@@ -28,8 +28,8 @@
     >
       <template #default="{ node, data }">
         <span class="tree-node">
-          <span>{{ node.label }}</span>
-          <span v-if="editable" class="tree-actions">
+          <span :class="{ 'domain-group-label': data.isDomainGroup }">{{ node.label }}</span>
+          <span v-if="editable && !data.isDomainGroup" class="tree-actions">
             <el-button size="small" text @click.stop="addChild(data)" title="하위 추가">
               <el-icon><Plus /></el-icon>
             </el-button>
@@ -108,6 +108,7 @@ import { ref, watch, computed } from 'vue'
 import { Plus, Delete, Edit, Rank } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { categoriesApi } from '@/api/categories'
+import { useDomainStore } from '@/stores/domain'
 import type { DomainCategoryEntity } from '@kms/shared'
 
 const props = defineProps<{
@@ -119,6 +120,7 @@ const emit = defineEmits<{
   select: [categoryId: number | null]
 }>()
 
+const domainStore = useDomainStore()
 const categories = ref<DomainCategoryEntity[]>([])
 const selectedId = ref<number | null>(null)
 const showAddDialog = ref(false)
@@ -130,6 +132,7 @@ interface TreeItem {
   id: number
   label: string
   children?: TreeItem[]
+  isDomainGroup?: boolean
 }
 
 function toTree(cats: DomainCategoryEntity[]): TreeItem[] {
@@ -140,7 +143,42 @@ function toTree(cats: DomainCategoryEntity[]): TreeItem[] {
   }))
 }
 
-const treeData = computed(() => toTree(categories.value))
+/** 여러 도메인의 카테고리가 있으면 도메인별 그룹 노드로 감싼다 */
+const treeData = computed(() => {
+  if (categories.value.length === 0) return []
+
+  // 모든 카테고리가 같은 도메인이면 그룹핑 불필요
+  const domainCodes = new Set(categories.value.map((c) => c.domainCode))
+  if (domainCodes.size <= 1) return toTree(categories.value)
+
+  // 도메인별로 그룹핑
+  const grouped = new Map<string, DomainCategoryEntity[]>()
+  for (const c of categories.value) {
+    const arr = grouped.get(c.domainCode) ?? []
+    arr.push(c)
+    grouped.set(c.domainCode, arr)
+  }
+
+  const result: TreeItem[] = []
+  for (const [code, cats] of grouped) {
+    const domainName = domainStore.domainsFlat.find((d) => d.code === code)?.displayName ?? code
+    result.push({
+      id: -Math.abs(hashCode(code)),
+      label: domainName,
+      children: toTree(cats),
+      isDomainGroup: true,
+    })
+  }
+  return result
+})
+
+function hashCode(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0
+  }
+  return h || 1
+}
 
 async function loadCategories() {
   if (!props.domainCode) return
@@ -163,6 +201,7 @@ function selectAll() {
 }
 
 function onNodeClick(data: TreeItem) {
+  if (data.isDomainGroup) return
   selectedId.value = data.id
   emit('select', data.id)
 }
@@ -355,6 +394,13 @@ defineExpose({ reload: loadCategories })
 .all-item.active {
   color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
+}
+.domain-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 .empty-hint {
   text-align: center;

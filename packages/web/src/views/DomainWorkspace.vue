@@ -35,6 +35,16 @@ const drawerNodeId = ref<string | null>(null)
 
 const isAdmin = computed(() => auth.hasMinRole('ADMIN'))
 
+// 현재 도메인이 하위 도메인을 가지는지 확인
+const hasSubdomains = computed(() =>
+  domainStore.domainsFlat.some((d) => d.parentCode === domainCode.value),
+)
+
+// 카테고리 미선택(전체) + 하위 도메인 존재 시 하위 문서 포함
+const includeSubdomains = computed(() =>
+  selectedCategoryId.value === null && hasSubdomains.value,
+)
+
 watch(domainCode, (code) => {
   if (code) {
     domainStore.setCurrentDomain(code)
@@ -206,6 +216,7 @@ onUnmounted(() => {
               ref="docTableRef"
               :domain-code="domainCode"
               :category-id="selectedCategoryId"
+              :include-subdomains="includeSubdomains"
               @select="handleDocSelect"
               @dblclick="handleDocDblClick"
               @action="handleDocAction"

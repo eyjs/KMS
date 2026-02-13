@@ -38,7 +38,7 @@ export class PlacementsService {
   }
 
   async findByDomain(
-    domainCode: string,
+    domainCode: string | string[],
     options: {
       categoryId?: number | null
       lifecycle?: string
@@ -56,7 +56,7 @@ export class PlacementsService {
       .map(([name]) => name)
 
     const where = {
-      domainCode,
+      domainCode: Array.isArray(domainCode) ? { in: domainCode } : domainCode,
       ...(categoryId !== undefined && categoryId !== null && { categoryId }),
       document: {
         isDeleted: false,

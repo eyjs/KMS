@@ -13,6 +13,7 @@ const router = useRouter()
 const props = defineProps<{
   domainCode: string
   categoryId?: number | null
+  includeSubdomains?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -76,6 +77,9 @@ async function fetchDocuments() {
     }
     if (props.categoryId != null) {
       params.categoryId = props.categoryId
+    }
+    if (props.includeSubdomains) {
+      params.includeSubdomains = 'true'
     }
     const { data } = await placementsApi.getByDomain(props.domainCode, params)
     documents.value = data.data
@@ -142,7 +146,7 @@ async function handleBulkTransition(lifecycle: string) {
 }
 
 watch(
-  () => [props.domainCode, props.categoryId],
+  () => [props.domainCode, props.categoryId, props.includeSubdomains],
   () => {
     page.value = 1
     fetchDocuments()
