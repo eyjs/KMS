@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core'
-import { ValidationPipe } from '@nestjs/common'
+import { Logger, ValidationPipe } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { AppModule } from './app.module'
@@ -9,6 +9,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
   const config = app.get(ConfigService)
+  const logger = new Logger('Bootstrap')
 
   // Global prefix
   app.setGlobalPrefix('api')
@@ -43,8 +44,8 @@ async function bootstrap() {
 
   const port = config.get('API_PORT', 3000)
   await app.listen(port)
-  console.log(`KMS API running on http://localhost:${port}`)
-  console.log(`Swagger docs: http://localhost:${port}/api/docs`)
+  logger.log(`KMS API running on http://localhost:${port}`)
+  logger.log(`Swagger docs: http://localhost:${port}/api/docs`)
 }
 
 bootstrap()
