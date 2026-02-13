@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { taxonomyApi } from '@/api/taxonomy'
 import { useDomainStore } from '@/stores/domain'
-import { DOMAIN_MAX_DEPTH, DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
+import { DOMAIN_LEVEL_LABELS, DOMAIN_GUIDANCE } from '@kms/shared'
 import type { DomainMasterEntity, CreateDomainDto, UpdateDomainDto } from '@kms/shared'
 
 const domainStore = useDomainStore()
@@ -18,25 +18,9 @@ onMounted(async () => {
   }
 })
 
-// 도메인 깊이 계산
-function getDomainDepth(code: string): number {
-  let depth = 0
-  let current = domainStore.domainsFlat.find((d) => d.code === code)
-  while (current?.parentCode) {
-    depth++
-    current = domainStore.domainsFlat.find((d) => d.code === current!.parentCode)
-  }
-  return depth
-}
-
-function canAddChild(domain: DomainMasterEntity): boolean {
-  return getDomainDepth(domain.code) + 1 < DOMAIN_MAX_DEPTH
-}
-
 function getNewDomainLevelLabel(): string {
-  if (!formData.value.parentCode) return DOMAIN_LEVEL_LABELS[0] ?? '도메인'
-  const depth = getDomainDepth(formData.value.parentCode) + 1
-  return DOMAIN_LEVEL_LABELS[depth] ?? '도메인'
+  // 하위 도메인 차단됨, 항상 루트 도메인
+  return DOMAIN_LEVEL_LABELS[0] ?? '도메인'
 }
 
 // ============================================================
@@ -65,24 +49,6 @@ function openCreateDialog() {
     description: '',
     sortOrder: 0,
     parentCode: null,
-  }
-  dialogVisible.value = true
-}
-
-function openCreateChildDialog(parent: DomainMasterEntity) {
-  if (!canAddChild(parent)) {
-    const maxLabel = DOMAIN_LEVEL_LABELS[DOMAIN_MAX_DEPTH - 1] ?? '최하위'
-    ElMessage.warning(`도메인은 "${maxLabel}" 단계까지 가능합니다.`)
-    return
-  }
-  dialogMode.value = 'create'
-  showAdvanced.value = false
-  formData.value = {
-    code: '',
-    displayName: '',
-    description: '',
-    sortOrder: 0,
-    parentCode: parent.code,
   }
   dialogVisible.value = true
 }
@@ -141,7 +107,7 @@ async function handleDialogSubmit() {
 async function handleDelete(domain: DomainMasterEntity) {
   try {
     await ElMessageBox.confirm(
-      `"${domain.displayName}" 도메인을 삭제하시겠습니까?\n하위 도메인이 있으면 함께 삭제됩니다.`,
+      `"${domain.displayName}" 도메인을 삭제하시겠습니까?\n도메인 내 폴더도 함께 삭제됩니다.`,
       '도메인 삭제',
       { confirmButtonText: '삭제', cancelButtonText: '취소', type: 'warning' },
     )
@@ -204,20 +170,8 @@ async function handleDelete(domain: DomainMasterEntity) {
           </template>
         </el-table-column>
         <el-table-column prop="sortOrder" label="순서" width="60" align="center" />
-        <el-table-column label="" width="200" align="center">
+        <el-table-column label="" width="140" align="center">
           <template #default="{ row }">
-            <el-tooltip
-              v-if="!canAddChild(row)"
-              :content="`최대 깊이(${DOMAIN_MAX_DEPTH}단계)에 도달했습니다`"
-              placement="top"
-            >
-              <el-button text size="small" type="info" disabled>
-                하위 추가
-              </el-button>
-            </el-tooltip>
-            <el-button v-else text size="small" type="success" @click.stop="openCreateChildDialog(row)">
-              하위 추가
-            </el-button>
             <el-button text size="small" type="primary" @click.stop="openEditDialog(row)">
               수정
             </el-button>

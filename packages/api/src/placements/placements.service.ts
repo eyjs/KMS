@@ -14,6 +14,62 @@ import type { SecurityLevel, UserRole, DocumentPlacementEntity, BulkPlacementRes
 export class PlacementsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ============================================================
+  // 배치 코드 자동 생성
+  // ============================================================
+
+  /**
+   * 배치 코드 자동 생성
+   * 폴더 있음: {폴더코드}/DOC-001
+   * 폴더 없음: {도메인코드}/DOC-001
+   *
+   * 참고: 동시성 문제는 create() 메서드에서 재시도 로직으로 처리
+   */
+  async generatePlacementCode(domainCode: string, categoryId: number | null): Promise<string> {
+    let prefix: string
+
+    if (categoryId) {
+      const category = await this.prisma.domainCategory.findUnique({
+        where: { id: categoryId },
+        select: { code: true },
+      })
+      prefix = category?.code ?? domainCode
+    } else {
+      prefix = domainCode
+    }
+
+    // 해당 경로의 다음 순번
+    const count = await this.prisma.documentPlacement.count({
+      where: { placementCode: { startsWith: `${prefix}/DOC-` } },
+    })
+    const seq = String(count + 1).padStart(3, '0')
+
+    return `${prefix}/DOC-${seq}`
+  }
+
+  /**
+   * 배치 코드 생성 (재시도 로직 포함)
+   */
+  async generatePlacementCodeWithRetry(
+    domainCode: string,
+    categoryId: number | null,
+    maxRetries = 3,
+  ): Promise<string> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const code = await this.generatePlacementCode(domainCode, categoryId)
+      const existing = await this.prisma.documentPlacement.findUnique({
+        where: { placementCode: code },
+      })
+      if (!existing) return code
+      // 코드 중복이면 재시도
+    }
+    // 최종 폴백: 타임스탬프 기반 유니크 코드
+    const prefix = categoryId
+      ? (await this.prisma.domainCategory.findUnique({ where: { id: categoryId }, select: { code: true } }))?.code ?? domainCode
+      : domainCode
+    return `${prefix}/DOC-${Date.now()}`
+  }
+
   async findByDocument(documentId: string, userRole: UserRole): Promise<DocumentPlacementEntity[]> {
     const doc = await this.prisma.document.findFirst({
       where: { id: documentId, isDeleted: false },
@@ -28,7 +84,7 @@ export class PlacementsService {
       where: { documentId },
       include: {
         domain: { select: { displayName: true } },
-        category: { select: { name: true } },
+        category: { select: { name: true, code: true } },
         user: { select: { name: true } },
       },
       orderBy: { placedAt: 'desc' },
@@ -157,15 +213,18 @@ export class PlacementsService {
       throw new BadRequestException(`유효하지 않은 도메인입니다: ${data.domainCode}`)
     }
 
-    // 카테고리 확인
+    // 폴더 확인
     if (data.categoryId) {
       const category = await this.prisma.domainCategory.findUnique({
         where: { id: data.categoryId },
       })
       if (!category || category.domainCode !== data.domainCode) {
-        throw new BadRequestException('카테고리가 해당 도메인에 존재하지 않습니다')
+        throw new BadRequestException('폴더가 해당 도메인에 존재하지 않습니다')
       }
     }
+
+    // 배치 코드 자동 생성
+    const placementCode = await this.generatePlacementCode(data.domainCode, data.categoryId ?? null)
 
     try {
       const placement = await this.prisma.documentPlacement.create({
@@ -173,13 +232,14 @@ export class PlacementsService {
           documentId: data.documentId,
           domainCode: data.domainCode,
           categoryId: data.categoryId ?? null,
+          placementCode,
           placedBy: userId,
           alias: data.alias ?? null,
           note: data.note ?? null,
         },
         include: {
           domain: { select: { displayName: true } },
-          category: { select: { name: true } },
+          category: { select: { name: true, code: true } },
           user: { select: { name: true } },
         },
       })
@@ -214,7 +274,7 @@ export class PlacementsService {
         where: { id: data.categoryId },
       })
       if (!category || category.domainCode !== placement.domainCode) {
-        throw new BadRequestException('카테고리가 해당 도메인에 존재하지 않습니다')
+        throw new BadRequestException('폴더가 해당 도메인에 존재하지 않습니다')
       }
     }
 
@@ -227,7 +287,7 @@ export class PlacementsService {
       },
       include: {
         domain: { select: { displayName: true } },
-        category: { select: { name: true } },
+        category: { select: { name: true, code: true } },
         user: { select: { name: true } },
       },
     })
@@ -276,12 +336,13 @@ export class PlacementsService {
     documentId: string
     domainCode: string
     categoryId: number | null
+    placementCode: string | null
     placedBy: string | null
     placedAt: Date
     alias: string | null
     note: string | null
     domain: { displayName: string }
-    category: { name: string } | null
+    category: { name: string; code: string } | null
     user: { name: string } | null
   }): DocumentPlacementEntity {
     return {
@@ -291,6 +352,8 @@ export class PlacementsService {
       domainName: p.domain.displayName,
       categoryId: p.categoryId,
       categoryName: p.category?.name ?? null,
+      categoryCode: p.category?.code ?? null,
+      placementCode: p.placementCode,
       placedBy: p.placedBy,
       placedByName: p.user?.name ?? null,
       placedAt: p.placedAt.toISOString(),
@@ -328,15 +391,20 @@ export class PlacementsService {
       throw new BadRequestException(`유효하지 않은 도메인입니다: ${domainCode}`)
     }
 
-    // 카테고리 확인
+    // 폴더 확인
+    let folderCode: string | null = null
     if (categoryId) {
       const category = await this.prisma.domainCategory.findUnique({
         where: { id: categoryId },
       })
       if (!category || category.domainCode !== domainCode) {
-        throw new BadRequestException('카테고리가 해당 도메인에 존재하지 않습니다')
+        throw new BadRequestException('폴더가 해당 도메인에 존재하지 않습니다')
       }
+      folderCode = category.code
     }
+
+    // 배치 코드 prefix 결정
+    const codePrefix = folderCode ?? domainCode
 
     // 1. 문서 일괄 조회
     const docs = await this.prisma.document.findMany({
@@ -380,23 +448,36 @@ export class PlacementsService {
       validDocs.push(docId)
     }
 
-    // 4. 배치 단위로 트랜잭션 처리 (500개씩)
+    // 4. 현재 시퀀스 조회 (배치 코드 생성용)
+    const existingCount = await this.prisma.documentPlacement.count({
+      where: { placementCode: { startsWith: `${codePrefix}/DOC-` } },
+    })
+    let nextSeq = existingCount + 1
+
+    // 5. 배치 단위로 트랜잭션 처리 (500개씩)
     const BATCH_SIZE = 500
     for (let i = 0; i < validDocs.length; i += BATCH_SIZE) {
       const batch = validDocs.slice(i, i + BATCH_SIZE)
+
+      // 배치 내 각 문서에 순번 부여
+      const batchData = batch.map((docId) => {
+        const seq = String(nextSeq++).padStart(3, '0')
+        return {
+          documentId: docId,
+          domainCode,
+          categoryId: categoryId ?? null,
+          placementCode: `${codePrefix}/DOC-${seq}`,
+          placedBy: userId,
+          alias: null,
+          note: null,
+        }
+      })
 
       try {
         await this.prisma.$transaction(async (tx) => {
           // 배치 생성
           await tx.documentPlacement.createMany({
-            data: batch.map((docId) => ({
-              documentId: docId,
-              domainCode,
-              categoryId: categoryId ?? null,
-              placedBy: userId,
-              alias: null,
-              note: null,
-            })),
+            data: batchData,
             skipDuplicates: true,
           })
 
@@ -416,11 +497,13 @@ export class PlacementsService {
         // 배치 전체 실패 시 개별 처리로 폴백
         for (const docId of batch) {
           try {
+            const code = await this.generatePlacementCode(domainCode, categoryId ?? null)
             await this.prisma.documentPlacement.create({
               data: {
                 documentId: docId,
                 domainCode,
                 categoryId: categoryId ?? null,
+                placementCode: code,
                 placedBy: userId,
                 alias: null,
                 note: null,

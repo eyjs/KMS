@@ -63,6 +63,12 @@ const router = createRouter({
       meta: { roles: ['ADMIN'] },
     },
     {
+      path: '/admin/permissions',
+      name: 'AdminPermissions',
+      component: () => import('@/views/AdminPermissionsView.vue'),
+      meta: { roles: ['ADMIN'] },
+    },
+    {
       path: '/admin/feedback',
       name: 'AdminFeedback',
       component: () => import('@/views/AdminFeedbackView.vue'),

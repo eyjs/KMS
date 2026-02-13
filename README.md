@@ -85,6 +85,7 @@
 - 외부 API Key 인증
 - 업무 역할 기반 접근 제어 (직급 무관)
 - 문서 보안 등급별 접근 제한
+- **권한 그룹 시스템** — 그룹 기반 폴더 접근 권한 (READ/WRITE)
 
 ### 피드백
 - 플로팅 버튼으로 즉시 피드백 전송
@@ -114,6 +115,21 @@
 | CONFIDENTIAL | 대외비(2급) |
 | SECRET | 기밀(1급) |
 
+### 폴더 권한 그룹
+
+사용자를 그룹으로 묶어 폴더별 접근 권한을 관리합니다.
+
+| 권한 | 설명 |
+|------|------|
+| READ | 문서 열람, 다운로드 |
+| WRITE | 문서 배치, 이동, 삭제 |
+
+- 한 사용자가 여러 그룹에 속할 수 있음 (M:N)
+- 그룹별로 폴더 + 권한 수준(READ/WRITE) 지정
+- 하위 폴더 포함 옵션 (includeChildren)
+- Permissive 모드: 가장 높은 권한이 적용됨
+- ADMIN은 모든 폴더에 WRITE 권한
+
 ---
 
 ## 화면 구성
@@ -127,6 +143,7 @@
 | `/d/:code/compare` | 문서 비교 | DocumentExplorer + 관계 그래프 |
 | `/admin/domains` | 도메인 관리 | 도메인 트리 CRUD |
 | `/admin/users` | 사용자 관리 | 역할 변경, 활성화/비활성화 |
+| `/admin/permissions` | 권한 관리 | 권한 그룹 + 사용자 그룹 멤버십 + 폴더 권한 |
 | `/admin/feedback` | 피드백 관리 | 피드백 목록 + 상태 관리 |
 | `/login` | 로그인 | JWT 인증 |
 
@@ -145,6 +162,10 @@
 | `document_history` | 변경 이력 (액션 + JSON diff) |
 | `feedback` | 사용자 피드백 |
 | `api_keys` | 외부 API 인증 키 |
+| `permission_groups` | 권한 그룹 (폴더 접근 권한 관리) |
+| `user_group_memberships` | 사용자-그룹 멤버십 (M:N) |
+| `group_folder_access` | 그룹-폴더 권한 (READ/WRITE) |
+| `document_versions` | 문서 버전 이력 |
 
 주요 제약조건:
 - **파일 중복 방지**: `documents.file_hash` UNIQUE
@@ -180,6 +201,7 @@
 │   │   │   ├── relations/           # 관계 CRUD (순환 방지)
 │   │   │   ├── taxonomy/            # 도메인 마스터 데이터 API
 │   │   │   ├── feedback/            # 사용자 피드백
+│   │   │   ├── groups/              # 권한 그룹 관리 (멤버 + 폴더 권한)
 │   │   │   └── common/              # 필터, 인터셉터
 │   │   └── prisma/
 │   │       ├── schema.prisma        # DB 스키마

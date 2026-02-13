@@ -5,6 +5,9 @@ import {
   IsInt,
   MaxLength,
   Min,
+  IsIn,
+  IsArray,
+  IsUUID,
 } from 'class-validator'
 
 export class CreateCategoryDto {
@@ -43,4 +46,21 @@ export class MoveCategoryDto {
   @IsOptional()
   @IsInt()
   parentId?: number | null
+}
+
+export class UpdateCategoryPermissionsDto {
+  @IsNotEmpty()
+  @IsString()
+  @IsIn(['INHERIT', 'RESTRICTED', 'PUBLIC'])
+  accessLevel!: 'INHERIT' | 'RESTRICTED' | 'PUBLIC'
+
+  @IsOptional()
+  @IsArray()
+  @IsIn(['VIEWER', 'EDITOR', 'REVIEWER', 'APPROVER', 'ADMIN'], { each: true })
+  allowedRoles?: string[] | null
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  allowedUserIds?: string[] | null
 }

@@ -3,13 +3,14 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import * as bcrypt from 'bcrypt'
 import * as crypto from 'crypto'
 import { PrismaService } from '../prisma/prisma.service'
-import type { UserRole } from '@kms/shared'
+import type { UserRole, PermissionGroupEntity } from '@kms/shared'
 
 interface JwtPayload {
   sub: string
@@ -169,5 +170,76 @@ export class AuthService {
       refreshToken,
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
     }
+  }
+
+  // ============================================================
+  // 사용자 그룹 관리
+  // ============================================================
+
+  async getUserGroups(userId: string): Promise<PermissionGroupEntity[]> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      throw new NotFoundException('사용자를 찾을 수 없습니다')
+    }
+
+    const memberships = await this.prisma.userGroupMembership.findMany({
+      where: { userId },
+      include: {
+        group: {
+          include: {
+            _count: {
+              select: {
+                memberships: true,
+                folderAccess: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    return memberships.map((m) => ({
+      id: m.group.id,
+      name: m.group.name,
+      description: m.group.description,
+      isActive: m.group.isActive,
+      memberCount: m.group._count.memberships,
+      folderCount: m.group._count.folderAccess,
+      createdAt: m.group.createdAt.toISOString(),
+      updatedAt: m.group.updatedAt.toISOString(),
+    }))
+  }
+
+  async updateUserGroups(userId: string, groupIds: string[]): Promise<PermissionGroupEntity[]> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      throw new NotFoundException('사용자를 찾을 수 없습니다')
+    }
+
+    // 존재하지 않는 그룹 ID가 있는지 확인
+    if (groupIds.length > 0) {
+      const existingGroups = await this.prisma.permissionGroup.findMany({
+        where: { id: { in: groupIds } },
+        select: { id: true },
+      })
+      const existingIds = new Set(existingGroups.map((g) => g.id))
+      const invalidIds = groupIds.filter((id) => !existingIds.has(id))
+      if (invalidIds.length > 0) {
+        throw new BadRequestException(`존재하지 않는 그룹 ID: ${invalidIds.join(', ')}`)
+      }
+    }
+
+    // 트랜잭션: 기존 멤버십 삭제 후 새로 생성
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userGroupMembership.deleteMany({ where: { userId } })
+
+      if (groupIds.length > 0) {
+        await tx.userGroupMembership.createMany({
+          data: groupIds.map((groupId) => ({ userId, groupId })),
+        })
+      }
+    })
+
+    return this.getUserGroups(userId)
   }
 }

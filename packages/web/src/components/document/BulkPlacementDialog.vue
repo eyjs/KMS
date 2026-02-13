@@ -28,7 +28,7 @@ const selectedDomain = computed(() =>
   domainStore.domainsFlat.find((d) => d.code === selectedDomainCode.value),
 )
 
-// 도메인 선택 시 카테고리 로드
+// 도메인 선택 시 폴더 로드
 watch(selectedDomainCode, async (code) => {
   selectedCategoryId.value = undefined
   categories.value = []
@@ -96,7 +96,7 @@ async function handleSubmit() {
   }
 }
 
-// 카테고리 트리를 el-cascader용 데이터로 변환
+// 폴더 트리를 el-cascader용 데이터로 변환
 interface CascaderNode {
   value: number
   label: string
@@ -180,13 +180,13 @@ const categoryTree = computed(() => buildCategoryTree(categories.value))
         </el-select>
       </el-form-item>
 
-      <el-form-item v-if="categoryTree.length > 0" label="카테고리 (선택)">
+      <el-form-item v-if="categoryTree.length > 0" label="폴더 (선택)">
         <el-cascader
           v-model="selectedCategoryId"
           :options="categoryTree"
           :props="{ checkStrictly: true, emitPath: false }"
           clearable
-          placeholder="카테고리 선택 (선택사항)"
+          placeholder="폴더 선택 (선택사항)"
           style="width: 100%"
           :loading="loadingCategories"
         />

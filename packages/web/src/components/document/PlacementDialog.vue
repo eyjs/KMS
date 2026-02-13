@@ -19,7 +19,7 @@
         />
       </el-form-item>
 
-      <el-form-item label="카테고리 (선택)">
+      <el-form-item label="폴더 (선택)">
         <el-tree-select
           v-model="form.categoryId"
           :data="categoryTreeData"

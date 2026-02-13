@@ -1,4 +1,4 @@
-import type { Lifecycle, RelationType, SecurityLevel, UserRole } from './types'
+import type { FolderPermission, Lifecycle, RelationType, SecurityLevel, UserRole } from './types'
 
 // ============================================================
 // 라이프사이클 전환 규칙
@@ -227,4 +227,31 @@ export const DOMAIN_GUIDANCE = {
     correct: ['일반', '경영/관리', '기술', '영업', '연구개발', '정산'],
     wrong: ['영업본부', '법인영업부', '대기업팀', 'A회사', 'B상품'],
   },
+}
+
+// ============================================================
+// 폴더 접근 권한 라벨 (Phase 2)
+// ============================================================
+
+export const FOLDER_ACCESS_LABELS: Record<string, string> = {
+  INHERIT: '상위 폴더 상속',
+  RESTRICTED: '제한됨',
+  PUBLIC: '전체 공개',
+}
+
+// ============================================================
+// 폴더 권한 라벨 (권한 그룹용)
+// ============================================================
+
+export const FOLDER_PERMISSION_LABELS: Record<FolderPermission, string> = {
+  NONE: '접근 불가',
+  READ: '읽기',
+  WRITE: '쓰기',
+}
+
+/** 폴더 권한 수준 (비교용) */
+export const FOLDER_PERMISSION_ORDER: Record<FolderPermission, number> = {
+  NONE: 0,
+  READ: 1,
+  WRITE: 2,
 }

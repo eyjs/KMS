@@ -33,8 +33,16 @@ export const FileType = {
 export type FileType = (typeof FileType)[keyof typeof FileType]
 
 // ============================================================
-// 권한 체계 (문서 등급 + 사용자 역할)
+// 권한 체계 (문서 등급 + 사용자 역할 + 폴더 권한)
 // ============================================================
+
+/** 폴더 권한 수준 */
+export const FolderPermission = {
+  NONE: 'NONE',
+  READ: 'READ',
+  WRITE: 'WRITE',
+} as const
+export type FolderPermission = (typeof FolderPermission)[keyof typeof FolderPermission]
 
 /** 문서 보안 등급 (숫자가 높을수록 높은 등급) */
 export const SecurityLevel = {
@@ -96,12 +104,19 @@ export interface DocumentEntity {
   relationCount?: number
 }
 
+/** 폴더 접근 권한 수준 */
+export type FolderAccessLevel = 'INHERIT' | 'RESTRICTED' | 'PUBLIC'
+
 export interface DomainCategoryEntity {
   id: number
+  code: string                              // 불변 코드 (자동 채번, 예: GA-F01)
   domainCode: string
   parentId: number | null
-  name: string
+  name: string                              // 표시명 (변경 가능)
   sortOrder: number
+  accessLevel: FolderAccessLevel            // 접근 권한 수준
+  allowedRoles: string[] | null             // RESTRICTED 시 허용 역할
+  allowedUserIds: string[] | null           // RESTRICTED 시 허용 사용자 ID
   children?: DomainCategoryEntity[]
   createdAt: string
 }
@@ -113,6 +128,8 @@ export interface DocumentPlacementEntity {
   domainName?: string
   categoryId: number | null
   categoryName: string | null
+  categoryCode: string | null               // 폴더 코드 (불변)
+  placementCode: string | null              // 경로 기반 배치 코드 (예: GA-F01/DOC-001)
   placedBy: string | null
   placedByName: string | null
   placedAt: string
@@ -261,6 +278,12 @@ export interface UpdateCategoryDto {
   sortOrder?: number
 }
 
+export interface UpdateCategoryPermissionsDto {
+  accessLevel: FolderAccessLevel
+  allowedRoles?: string[] | null
+  allowedUserIds?: string[] | null
+}
+
 export interface CreatePlacementDto {
   documentId: string
   domainCode: string
@@ -390,4 +413,71 @@ export interface GlobalGraphResponse {
   nodes: GraphNode[]
   edges: GraphEdge[]
   hasMore: boolean
+}
+
+// ============================================================
+// 권한 그룹
+// ============================================================
+
+export interface PermissionGroupEntity {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+  memberCount?: number
+  folderCount?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UserGroupMembershipEntity {
+  id: string
+  userId: string
+  groupId: string
+  joinedAt: string
+  user?: Pick<UserEntity, 'id' | 'name' | 'email'>
+  group?: Pick<PermissionGroupEntity, 'id' | 'name'>
+}
+
+export interface GroupFolderAccessEntity {
+  id: string
+  groupId: string
+  categoryId: number
+  accessType: 'READ' | 'WRITE'
+  includeChildren: boolean
+  grantedAt: string
+  groupName?: string
+  folderName?: string
+  folderCode?: string
+  folderPath?: string
+  domainCode?: string
+}
+
+// ============================================================
+// 권한 그룹 DTO
+// ============================================================
+
+export interface CreateGroupDto {
+  name: string
+  description?: string
+}
+
+export interface UpdateGroupDto {
+  name?: string
+  description?: string
+  isActive?: boolean
+}
+
+export interface SetFolderAccessDto {
+  categoryId: number
+  accessType: 'READ' | 'WRITE'
+  includeChildren?: boolean
+}
+
+export interface AddGroupMemberDto {
+  userId: string
+}
+
+export interface UpdateUserGroupsDto {
+  groupIds: string[]
 }

@@ -62,3 +62,9 @@ export class CreateApiKeyDto {
   @IsDateString()
   expiresAt?: string
 }
+
+export class UpdateUserGroupsDto {
+  @ApiProperty({ description: '그룹 ID 목록', type: [String] })
+  @IsNotEmpty()
+  groupIds!: string[]
+}

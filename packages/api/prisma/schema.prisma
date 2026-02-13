@@ -28,6 +28,7 @@ model User {
   feedbacks          Feedback[]
   placedDocuments    DocumentPlacement[] @relation("PlacedBy")
   uploadedVersions   DocumentVersion[]   @relation("VersionUploadedBy")
+  groupMemberships   UserGroupMembership[]
 
   @@map("users")
 }
@@ -60,17 +61,22 @@ model DomainMaster {
 // ============================================================
 
 model DomainCategory {
-  id         Int      @id @default(autoincrement())
-  domainCode String   @map("domain_code") @db.VarChar(20)
-  parentId   Int?     @map("parent_id")
-  name       String   @db.VarChar(100)
-  sortOrder  Int      @default(0) @map("sort_order")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id             Int      @id @default(autoincrement())
+  code           String   @unique @db.VarChar(50)                    // 불변 코드 (자동 채번, 예: GA-F01)
+  domainCode     String   @map("domain_code") @db.VarChar(20)
+  parentId       Int?     @map("parent_id")
+  name           String   @db.VarChar(100)                           // 표시명 (변경 가능)
+  sortOrder      Int      @default(0) @map("sort_order")
+  accessLevel    String   @default("INHERIT") @map("access_level") @db.VarChar(20)  // INHERIT, RESTRICTED, PUBLIC
+  allowedRoles   String[] @default([]) @map("allowed_roles")         // RESTRICTED 시 허용 역할
+  allowedUserIds String[] @default([]) @map("allowed_user_ids") @db.Uuid  // RESTRICTED 시 허용 사용자 ID
+  createdAt      DateTime @default(now()) @map("created_at")
 
-  domain     DomainMaster       @relation(fields: [domainCode], references: [code], onDelete: Cascade)
-  parent     DomainCategory?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children   DomainCategory[]   @relation("CategoryTree")
-  placements DocumentPlacement[]
+  domain      DomainMaster        @relation(fields: [domainCode], references: [code], onDelete: Cascade)
+  parent      DomainCategory?     @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    DomainCategory[]    @relation("CategoryTree")
+  placements  DocumentPlacement[]
+  groupAccess GroupFolderAccess[]
 
   @@unique([domainCode, parentId, name])
   @@index([domainCode])
@@ -83,14 +89,15 @@ model DomainCategory {
 // ============================================================
 
 model DocumentPlacement {
-  id         String   @id @default(uuid()) @db.Uuid
-  documentId String   @map("document_id") @db.Uuid
-  domainCode String   @map("domain_code") @db.VarChar(20)
-  categoryId Int?     @map("category_id")
-  placedBy   String?  @map("placed_by") @db.Uuid
-  placedAt   DateTime @default(now()) @map("placed_at")
-  alias      String?  @db.VarChar(200)
-  note       String?  @db.VarChar(500)
+  id            String   @id @default(uuid()) @db.Uuid
+  documentId    String   @map("document_id") @db.Uuid
+  domainCode    String   @map("domain_code") @db.VarChar(20)
+  categoryId    Int?     @map("category_id")
+  placementCode String?  @unique @map("placement_code") @db.VarChar(100)  // 경로 기반 배치 코드 (예: GA-F01/DOC-001)
+  placedBy      String?  @map("placed_by") @db.Uuid
+  placedAt      DateTime @default(now()) @map("placed_at")
+  alias         String?  @db.VarChar(200)
+  note          String?  @db.VarChar(500)
 
   document Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
   domain   DomainMaster    @relation(fields: [domainCode], references: [code], onDelete: Cascade)
@@ -256,4 +263,62 @@ model Feedback {
   @@index([status])
   @@index([createdAt])
   @@map("feedback")
+}
+
+// ============================================================
+// 권한 그룹
+// ============================================================
+
+model PermissionGroup {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  memberships  UserGroupMembership[]
+  folderAccess GroupFolderAccess[]
+
+  @@map("permission_groups")
+}
+
+// ============================================================
+// 사용자-그룹 멤버십 (M:N)
+// ============================================================
+
+model UserGroupMembership {
+  id       String   @id @default(uuid()) @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  groupId  String   @map("group_id") @db.Uuid
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group PermissionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
+  @@map("user_group_memberships")
+}
+
+// ============================================================
+// 그룹-폴더 권한 (M:N, 권한 수준 포함)
+// ============================================================
+
+model GroupFolderAccess {
+  id              String   @id @default(uuid()) @db.Uuid
+  groupId         String   @map("group_id") @db.Uuid
+  categoryId      Int      @map("category_id")
+  accessType      String   @map("access_type") @db.VarChar(10) // READ | WRITE
+  includeChildren Boolean  @default(true) @map("include_children")
+  grantedAt       DateTime @default(now()) @map("granted_at")
+
+  group    PermissionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  category DomainCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, categoryId])
+  @@index([groupId])
+  @@index([categoryId])
+  @@map("group_folder_access")
 }

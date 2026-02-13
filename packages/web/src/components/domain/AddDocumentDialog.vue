@@ -29,7 +29,7 @@ const emit = defineEmits<{
 // 탭: upload(새 파일) | existing(기존 문서)
 const activeTab = ref<'upload' | 'existing'>('upload')
 
-// 카테고리
+// 폴더
 const categories = ref<DomainCategoryEntity[]>([])
 const selectedCategoryId = ref<number | null>(null)
 const loadingCategories = ref(false)
@@ -151,7 +151,7 @@ async function submitPlacement() {
   }
 }
 
-// 카테고리 트리 데이터
+// 폴더 트리 데이터
 interface CascaderNode {
   value: number
   label: string
@@ -203,10 +203,10 @@ watch(
       uploadForm.value = { securityLevel: 'INTERNAL', validUntil: '' }
       // 기존 문서 탭 초기화
       selectedDocIds.value = []
-      // 카테고리 초기화
+      // 폴더 초기화
       selectedCategoryId.value = null
 
-      // 카테고리 로드
+      // 폴더 로드
       loadingCategories.value = true
       try {
         const res = await categoriesApi.getByDomain(props.domainCode)
@@ -239,8 +239,8 @@ watch(
       </div>
     </div>
 
-    <!-- 카테고리 선택 (공통) -->
-    <el-form-item v-if="categoryTree.length > 0" label="카테고리 (선택)" style="margin-bottom: 16px">
+    <!-- 폴더 선택 (공통) -->
+    <el-form-item v-if="categoryTree.length > 0" label="폴더 (선택)" style="margin-bottom: 16px">
       <el-cascader
         v-model="selectedCategoryId"
         :options="categoryTree"

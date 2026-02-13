@@ -8,6 +8,7 @@ import { TaxonomyModule } from './taxonomy/taxonomy.module'
 import { CategoriesModule } from './categories/categories.module'
 import { PlacementsModule } from './placements/placements.module'
 import { FeedbackModule } from './feedback/feedback.module'
+import { GroupsModule } from './groups/groups.module'
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { FeedbackModule } from './feedback/feedback.module'
     PlacementsModule,
     RelationsModule,
     FeedbackModule,
+    GroupsModule,
   ],
 })
 export class AppModule {}

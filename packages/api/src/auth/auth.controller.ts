@@ -2,18 +2,20 @@ import {
   Controller,
   Post,
   Get,
+  Put,
   Patch,
   Param,
   Body,
   UseGuards,
   Request,
+  ParseUUIDPipe,
 } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger'
 import { AuthService } from './auth.service'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { Roles } from './decorators/roles.decorator'
 import { RolesGuard } from './guards/roles.guard'
-import { LoginDto, RefreshTokenDto, CreateUserDto, UpdateUserRoleDto, CreateApiKeyDto } from './dto/auth.dto'
+import { LoginDto, RefreshTokenDto, CreateUserDto, UpdateUserRoleDto, CreateApiKeyDto, UpdateUserGroupsDto } from './dto/auth.dto'
 
 @ApiTags('auth')
 @Controller('auth')
@@ -94,5 +96,26 @@ export class AuthController {
   @ApiOperation({ summary: '현재 사용자 정보' })
   async me(@Request() req: { user: { sub: string; email: string; role: string } }) {
     return req.user
+  }
+
+  @Get('users/:id/groups')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '사용자 소속 그룹 목록 (ADMIN만)' })
+  async getUserGroups(@Param('id', ParseUUIDPipe) id: string) {
+    return this.authService.getUserGroups(id)
+  }
+
+  @Put('users/:id/groups')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '사용자 소속 그룹 변경 (ADMIN만)' })
+  async updateUserGroups(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateUserGroupsDto,
+  ) {
+    return this.authService.updateUserGroups(id, dto.groupIds)
   }
 }

@@ -216,6 +216,10 @@ async function submitFeedback() {
             <el-icon><component is="User" /></el-icon>
             <template #title><span>사용자 관리</span></template>
           </el-menu-item>
+          <el-menu-item index="/admin/permissions">
+            <el-icon><component is="Lock" /></el-icon>
+            <template #title><span>권한 관리</span></template>
+          </el-menu-item>
           <el-menu-item index="/admin/feedback">
             <el-icon><component is="ChatDotRound" /></el-icon>
             <template #title><span>피드백 관리</span></template>

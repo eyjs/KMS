@@ -1,13 +1,13 @@
 <template>
   <div class="category-tree">
     <div class="tree-header">
-      <span class="tree-title">카테고리</span>
-      <el-button v-if="editable" size="small" text type="primary" @click="addRoot">
+      <span class="tree-title">폴더</span>
+      <el-button v-if="editable" size="small" text type="primary" @click="addRoot" title="새 폴더">
         <el-icon><Plus /></el-icon>
       </el-button>
     </div>
 
-    <!-- "전체" 항목 — 카테고리가 있을 때만 표시 -->
+    <!-- "전체" 항목 — 폴더가 있을 때만 표시 -->
     <div
       v-if="treeData.length > 0"
       class="all-item"
@@ -30,16 +30,16 @@
         <span class="tree-node">
           <span :class="{ 'domain-group-label': data.isDomainGroup }">{{ node.label }}</span>
           <span v-if="editable && !data.isDomainGroup" class="tree-actions">
-            <el-button size="small" text @click.stop="addChild(data)" title="하위 추가">
+            <el-button size="small" text @click.stop="addChild(data)" title="하위 폴더 추가">
               <el-icon><Plus /></el-icon>
             </el-button>
-            <el-button size="small" text @click.stop="renameNode(data)" title="이름 변경">
+            <el-button size="small" text @click.stop="renameNode(data)" title="폴더 이름 변경">
               <el-icon><Edit /></el-icon>
             </el-button>
-            <el-button size="small" text @click.stop="moveNode(data)" title="이동">
+            <el-button size="small" text @click.stop="moveNode(data)" title="폴더 이동">
               <el-icon><Rank /></el-icon>
             </el-button>
-            <el-button size="small" text type="danger" @click.stop="removeNode(data)" title="삭제">
+            <el-button size="small" text type="danger" @click.stop="removeNode(data)" title="폴더 삭제">
               <el-icon><Delete /></el-icon>
             </el-button>
           </span>
@@ -48,14 +48,14 @@
     </el-tree>
 
     <div v-if="treeData.length === 0" class="empty-hint">
-      카테고리가 없습니다
+      폴더가 없습니다
     </div>
 
-    <!-- 카테고리 추가 다이얼로그 -->
-    <el-dialog v-model="showAddDialog" title="카테고리 추가" width="400px" destroy-on-close>
+    <!-- 폴더 추가 다이얼로그 -->
+    <el-dialog v-model="showAddDialog" title="새 폴더" width="400px" destroy-on-close>
       <el-form label-position="top">
-        <el-form-item label="이름">
-          <el-input v-model="newCategoryName" placeholder="카테고리 이름" maxlength="100" @keyup.enter="confirmAdd" />
+        <el-form-item label="폴더 이름">
+          <el-input v-model="newCategoryName" placeholder="폴더 이름" maxlength="100" @keyup.enter="confirmAdd" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -65,7 +65,7 @@
     </el-dialog>
 
     <!-- 이름 변경 다이얼로그 -->
-    <el-dialog v-model="showRenameDialog" title="카테고리 이름 변경" width="400px" destroy-on-close>
+    <el-dialog v-model="showRenameDialog" title="폴더 이름 변경" width="400px" destroy-on-close>
       <el-form label-position="top">
         <el-form-item label="새 이름">
           <el-input v-model="renameName" placeholder="새 이름" maxlength="100" @keyup.enter="confirmRename" />
@@ -78,7 +78,7 @@
     </el-dialog>
 
     <!-- 이동 다이얼로그 -->
-    <el-dialog v-model="showMoveDialog" title="카테고리 이동" width="400px" destroy-on-close>
+    <el-dialog v-model="showMoveDialog" title="폴더 이동" width="400px" destroy-on-close>
       <el-form label-position="top">
         <el-form-item label="이동 대상">
           <el-tree-select
@@ -226,7 +226,7 @@ async function confirmAdd() {
       name: newCategoryName.value.trim(),
       parentId: addParentId.value ?? undefined,
     })
-    ElMessage.success('카테고리가 추가되었습니다')
+    ElMessage.success('폴더가 추가되었습니다')
     showAddDialog.value = false
     await loadCategories()
   } catch (err: unknown) {
@@ -240,8 +240,8 @@ async function confirmAdd() {
 async function removeNode(data: TreeItem) {
   try {
     await ElMessageBox.confirm(
-      `"${data.label}" 카테고리를 삭제하시겠습니까? 하위 카테고리도 함께 삭제됩니다.`,
-      '카테고리 삭제',
+      `"${data.label}" 폴더를 삭제하시겠습니까? 하위 폴더도 함께 삭제됩니다.`,
+      '폴더 삭제',
       { type: 'warning' },
     )
     await categoriesApi.remove(data.id)
