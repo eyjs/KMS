@@ -3,6 +3,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { documentsApi } from '@/api/documents'
+import { client } from '@/api/client'
 
 const props = defineProps<{
   documentId: string
@@ -24,10 +25,8 @@ async function loadMarkdown() {
   error.value = null
   try {
     if (props.previewUrl) {
-      const resp = await fetch(props.previewUrl, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
-      })
-      content.value = await resp.text()
+      const { data } = await client.get(props.previewUrl, { responseType: 'blob' })
+      content.value = await (data as Blob).text()
     } else {
       const { data } = await documentsApi.previewFile(props.documentId)
       content.value = await (data as Blob).text()

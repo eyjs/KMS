@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { documentsApi } from '@/api/documents'
+import { client } from '@/api/client'
 
 const props = defineProps<{
   documentId: string
@@ -20,12 +21,8 @@ async function loadPdf() {
   }
   try {
     if (props.previewUrl) {
-      // 직접 URL이 제공된 경우 (버전 미리보기 등)
-      const resp = await fetch(props.previewUrl, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
-      })
-      const pdfBlob = await resp.blob()
-      objectUrl.value = URL.createObjectURL(pdfBlob)
+      const { data } = await client.get(props.previewUrl, { responseType: 'blob' })
+      objectUrl.value = URL.createObjectURL(data as Blob)
     } else {
       const { data } = await documentsApi.previewFile(props.documentId)
       const pdfBlob = new Blob([data], { type: 'application/pdf' })

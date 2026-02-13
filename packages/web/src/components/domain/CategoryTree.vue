@@ -7,6 +7,16 @@
       </el-button>
     </div>
 
+    <!-- "전체" 항목 — 카테고리가 있을 때만 표시 -->
+    <div
+      v-if="treeData.length > 0"
+      class="all-item"
+      :class="{ active: selectedId === null }"
+      @click="selectAll"
+    >
+      전체
+    </div>
+
     <el-tree
       :data="treeData"
       :props="{ label: 'label', children: 'children' }"
@@ -146,6 +156,11 @@ watch(() => props.domainCode, () => {
   selectedId.value = null
   loadCategories()
 }, { immediate: true })
+
+function selectAll() {
+  selectedId.value = null
+  emit('select', null)
+}
 
 function onNodeClick(data: TreeItem) {
   selectedId.value = data.id
@@ -325,6 +340,21 @@ defineExpose({ reload: loadCategories })
 }
 .tree-node:hover .tree-actions {
   display: inline-flex;
+}
+.all-item {
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-bottom: 2px;
+  color: var(--el-text-color-regular);
+}
+.all-item:hover {
+  background: var(--el-fill-color-light);
+}
+.all-item.active {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 .empty-hint {
   text-align: center;

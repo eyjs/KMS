@@ -199,8 +199,7 @@ export const documentsApi = {
   },
 
   getVersionPreviewUrl(id: string, versionId: string): string {
-    const baseURL = client.defaults.baseURL || '/api'
-    return `${baseURL}/documents/${id}/versions/${versionId}/preview`
+    return `/documents/${id}/versions/${versionId}/preview`
   },
 
   getAuditLog(params: { action?: string; userId?: string; dateFrom?: string; dateTo?: string; page?: number; size?: number }) {

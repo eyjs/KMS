@@ -451,54 +451,58 @@ export class DocumentsService {
 
     const fileHash = this.calculateFileHash(file.path)
     const isReplace = !!doc.filePath
-
-    // 기존 파일이 있으면 → document_versions에 아카이빙
-    if (isReplace && doc.filePath && doc.fileName && doc.fileType && doc.fileSize) {
-      await this.prisma.documentVersion.create({
-        data: {
-          documentId: id,
-          versionMajor: doc.versionMajor,
-          versionMinor: doc.versionMinor,
-          filePath: doc.filePath,
-          fileName: doc.fileName,
-          fileType: doc.fileType,
-          fileSize: doc.fileSize,
-          fileHash: doc.fileHash ?? '',
-          uploadedById: doc.updatedById ?? doc.createdById,
-        },
-      })
-    }
-
     const newMinor = isReplace ? doc.versionMinor + 1 : doc.versionMinor
 
-    const updated = await this.prisma.document.update({
-      where: { id },
-      data: {
-        filePath: file.path,
-        fileName: originalName,
-        fileType: ext,
-        fileSize: file.size,
-        fileHash,
-        versionMinor: newMinor,
-        updatedBy: { connect: { id: userId } },
-      },
-    })
+    // 아카이빙 + 업데이트 + 이력을 트랜잭션으로 묶어 데이터 정합성 보장
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 기존 파일이 있으면 → document_versions에 아카이빙
+      if (isReplace && doc.filePath && doc.fileName && doc.fileType && doc.fileSize) {
+        await tx.documentVersion.create({
+          data: {
+            documentId: id,
+            versionMajor: doc.versionMajor,
+            versionMinor: doc.versionMinor,
+            filePath: doc.filePath,
+            fileName: doc.fileName,
+            fileType: doc.fileType,
+            fileSize: doc.fileSize,
+            fileHash: doc.fileHash ?? '',
+            uploadedById: doc.updatedById ?? doc.createdById,
+          },
+        })
+      }
 
-    await this.prisma.documentHistory.create({
-      data: {
-        documentId: id,
-        action: isReplace ? 'FILE_REPLACE' : 'FILE_ATTACH',
-        changes: {
+      const result = await tx.document.update({
+        where: { id },
+        data: {
+          filePath: file.path,
           fileName: originalName,
           fileType: ext,
-          ...(isReplace && {
-            previousVersion: `v${doc.versionMajor}.${doc.versionMinor}`,
-            newVersion: `v${doc.versionMajor}.${newMinor}`,
-            previousFileName: doc.fileName,
-          }),
+          fileSize: file.size,
+          fileHash,
+          versionMinor: newMinor,
+          updatedBy: { connect: { id: userId } },
         },
-        userId,
-      },
+      })
+
+      await tx.documentHistory.create({
+        data: {
+          documentId: id,
+          action: isReplace ? 'FILE_REPLACE' : 'FILE_ATTACH',
+          changes: {
+            fileName: originalName,
+            fileType: ext,
+            ...(isReplace && {
+              previousVersion: `v${doc.versionMajor}.${doc.versionMinor}`,
+              newVersion: `v${doc.versionMajor}.${newMinor}`,
+              previousFileName: doc.fileName,
+            }),
+          },
+          userId,
+        },
+      })
+
+      return result
     })
 
     return this.formatDocument(updated)
