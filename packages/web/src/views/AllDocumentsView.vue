@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { documentsApi, type DocumentStats } from '@/api/documents'
 import BulkPlacementDialog from '@/components/document/BulkPlacementDialog.vue'
+import UploadDialog from '@/components/domain/UploadDialog.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import { LIFECYCLE_LABELS, SECURITY_LEVEL_LABELS } from '@kms/shared'
 import { ElMessage } from 'element-plus'
@@ -28,6 +29,10 @@ const sortOrder = ref<'asc' | 'desc'>('desc')
 // 선택
 const selectedIds = ref<string[]>([])
 const bulkPlacementVisible = ref(false)
+const selectingAll = ref(false)
+
+// 업로드
+const uploadVisible = ref(false)
 
 // 통계 카드
 const statCards = computed(() => {
@@ -136,6 +141,31 @@ function handleBulkPlacementSuccess() {
   loadStats()
 }
 
+function handleUploadSuccess() {
+  uploadVisible.value = false
+  loadDocuments()
+  loadStats()
+}
+
+// 미배치 문서 전체 선택 (대량 작업용)
+async function selectAllOrphans() {
+  selectingAll.value = true
+  try {
+    // 미배치 문서 ID 전체 조회 (최대 5000개)
+    const res = await documentsApi.list({
+      page: 1,
+      size: 5000,
+      orphan: true,
+    })
+    selectedIds.value = res.data.data.map((d) => d.id)
+    ElMessage.success(`${selectedIds.value.length.toLocaleString()}건 선택됨`)
+  } catch {
+    ElMessage.error('전체 선택 실패')
+  } finally {
+    selectingAll.value = false
+  }
+}
+
 function goToDocument(row: DocumentEntity) {
   // 배치된 도메인이 있으면 첫 번째 도메인으로, 없으면 _ (고아 문서)
   const firstPlacement = row.placements?.[0]
@@ -184,6 +214,10 @@ onMounted(() => {
         <el-button @click="loadDocuments" :loading="loading">
           <el-icon><component is="Refresh" /></el-icon>
           새로고침
+        </el-button>
+        <el-button type="primary" @click="uploadVisible = true">
+          <el-icon><component is="Upload" /></el-icon>
+          업로드
         </el-button>
       </div>
     </div>
@@ -236,6 +270,21 @@ onMounted(() => {
         일괄 배치
       </el-button>
     </div>
+
+    <!-- 전체 선택 안내 (미배치 대량 선택 지원) -->
+    <el-alert
+      v-if="selectedIds.length > 0 && stats && stats.orphan > selectedIds.length"
+      type="info"
+      :closable="false"
+      style="flex-shrink: 0"
+    >
+      <template #default>
+        현재 {{ selectedIds.length.toLocaleString() }}건 선택됨.
+        <el-button type="primary" link @click="selectAllOrphans" :loading="selectingAll">
+          미배치 문서 전체 선택 ({{ stats.orphan.toLocaleString() }}건)
+        </el-button>
+      </template>
+    </el-alert>
 
     <!-- 테이블 -->
     <div style="flex: 1; min-height: 0; overflow: hidden">
@@ -318,6 +367,12 @@ onMounted(() => {
       v-model:visible="bulkPlacementVisible"
       :document-ids="selectedIds"
       @success="handleBulkPlacementSuccess"
+    />
+
+    <!-- 업로드 다이얼로그 -->
+    <upload-dialog
+      v-model:visible="uploadVisible"
+      @uploaded="handleUploadSuccess"
     />
   </div>
 </template>
