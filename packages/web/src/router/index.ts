@@ -68,6 +68,12 @@ const router = createRouter({
       component: () => import('@/views/AdminFeedbackView.vue'),
       meta: { roles: ['ADMIN'] },
     },
+    {
+      path: '/admin/audit',
+      name: 'AdminAudit',
+      component: () => import('@/views/AdminAuditView.vue'),
+      meta: { roles: ['ADMIN'] },
+    },
     // 기존 라우트 리다이렉트
     {
       path: '/documents/:id',

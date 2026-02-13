@@ -66,10 +66,12 @@ const ISSUE_TABS = [
   { key: 'expired', label: '만료', emptyText: '만료된 문서가 없습니다', ctaLabel: '갱신', ctaType: 'danger' as const },
   { key: 'no_file', label: '파일없음', emptyText: '파일 미첨부 문서가 없습니다', ctaLabel: '파일 첨부', ctaType: 'primary' as const },
   { key: 'stale_draft', label: '임시저장 장기', emptyText: '장기 임시저장 문서가 없습니다', ctaLabel: '활성화', ctaType: 'success' as const },
+  { key: 'long_orphan', label: '장기 미배치', emptyText: '장기 미배치 문서가 없습니다', ctaLabel: '배치', ctaType: 'warning' as const },
+  { key: 'duplicate_name', label: '파일명 중복', emptyText: '파일명 중복 문서가 없습니다', ctaLabel: '확인', ctaType: 'danger' as const },
 ] as const
 
 const activeIssueTab = ref('warning')
-const issueCounts = ref<IssueCounts>({ warning: 0, expired: 0, noFile: 0, staleDraft: 0 })
+const issueCounts = ref<IssueCounts>({ warning: 0, expired: 0, noFile: 0, staleDraft: 0, longOrphan: 0, duplicateName: 0 })
 const issueDocuments = ref<DocumentEntity[]>([])
 const issueLoading = ref(false)
 const issuePage = ref(1)
@@ -82,12 +84,15 @@ function getIssueCount(key: string): number {
     case 'expired': return issueCounts.value.expired
     case 'no_file': return issueCounts.value.noFile
     case 'stale_draft': return issueCounts.value.staleDraft
+    case 'long_orphan': return issueCounts.value.longOrphan
+    case 'duplicate_name': return issueCounts.value.duplicateName
     default: return 0
   }
 }
 
 const totalIssues = computed(() =>
-  issueCounts.value.warning + issueCounts.value.expired + issueCounts.value.noFile + issueCounts.value.staleDraft,
+  issueCounts.value.warning + issueCounts.value.expired + issueCounts.value.noFile
+  + issueCounts.value.staleDraft + issueCounts.value.longOrphan + issueCounts.value.duplicateName,
 )
 
 const currentTab = computed(() =>

@@ -220,6 +220,10 @@ async function submitFeedback() {
             <el-icon><component is="ChatDotRound" /></el-icon>
             <template #title><span>피드백 관리</span></template>
           </el-menu-item>
+          <el-menu-item index="/admin/audit">
+            <el-icon><component is="Document" /></el-icon>
+            <template #title><span>감사 로그</span></template>
+          </el-menu-item>
         </template>
       </el-menu>
 
