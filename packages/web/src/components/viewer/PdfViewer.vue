@@ -4,6 +4,7 @@ import { documentsApi } from '@/api/documents'
 
 const props = defineProps<{
   documentId: string
+  previewUrl?: string
 }>()
 
 const objectUrl = ref<string | null>(null)
@@ -18,9 +19,18 @@ async function loadPdf() {
     objectUrl.value = null
   }
   try {
-    const { data } = await documentsApi.previewFile(props.documentId)
-    const pdfBlob = new Blob([data], { type: 'application/pdf' })
-    objectUrl.value = URL.createObjectURL(pdfBlob)
+    if (props.previewUrl) {
+      // 직접 URL이 제공된 경우 (버전 미리보기 등)
+      const resp = await fetch(props.previewUrl, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
+      })
+      const pdfBlob = await resp.blob()
+      objectUrl.value = URL.createObjectURL(pdfBlob)
+    } else {
+      const { data } = await documentsApi.previewFile(props.documentId)
+      const pdfBlob = new Blob([data], { type: 'application/pdf' })
+      objectUrl.value = URL.createObjectURL(pdfBlob)
+    }
   } catch {
     error.value = 'PDF 로드에 실패했습니다'
   } finally {
@@ -28,7 +38,7 @@ async function loadPdf() {
   }
 }
 
-watch(() => props.documentId, loadPdf)
+watch(() => [props.documentId, props.previewUrl], loadPdf)
 onMounted(loadPdf)
 onUnmounted(() => {
   if (objectUrl.value) {

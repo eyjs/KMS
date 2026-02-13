@@ -142,6 +142,9 @@ export const ACTION_LABELS: Record<string, string> = {
   LIFECYCLE_CHANGE: '상태 변경',
   DELETE: '삭제',
   FILE_ATTACH: '파일 첨부',
+  FILE_REPLACE: '파일 교체',
+  VIEW: '열람',
+  DOWNLOAD: '다운로드',
   RELATION_ADD: '관계 추가',
   RELATION_REMOVE: '관계 삭제',
   SECURITY_CHANGE: '보안등급 변경',
@@ -155,11 +158,36 @@ export const ACTION_TAG_TYPES: Record<string, string> = {
   LIFECYCLE_CHANGE: 'warning',
   DELETE: 'danger',
   FILE_ATTACH: 'primary',
+  FILE_REPLACE: 'warning',
+  VIEW: 'info',
+  DOWNLOAD: 'info',
   RELATION_ADD: 'success',
   RELATION_REMOVE: 'danger',
   SECURITY_CHANGE: 'warning',
   PLACEMENT_ADD: 'success',
   PLACEMENT_REMOVE: 'danger',
+}
+
+// ============================================================
+// 이슈 유형 라벨 + 태그 타입
+// ============================================================
+
+export const ISSUE_LABELS: Record<string, string> = {
+  warning: '갱신필요',
+  expired: '만료',
+  no_file: '파일없음',
+  stale_draft: '임시저장 장기',
+  long_orphan: '장기 미배치',
+  duplicate_name: '파일명 중복',
+}
+
+export const ISSUE_TAG_TYPES: Record<string, string> = {
+  warning: 'warning',
+  expired: 'danger',
+  no_file: 'primary',
+  stale_draft: 'info',
+  long_orphan: 'warning',
+  duplicate_name: 'danger',
 }
 
 // ============================================================

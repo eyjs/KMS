@@ -85,7 +85,7 @@ export class UpdateDocumentDto {
   rowVersion!: number
 }
 
-const VALID_ISSUE_TYPES = ['warning', 'expired', 'no_file', 'stale_draft'] as const
+const VALID_ISSUE_TYPES = ['warning', 'expired', 'no_file', 'stale_draft', 'long_orphan', 'duplicate_name'] as const
 
 export class IssueQueryDto {
   @ApiProperty({ enum: VALID_ISSUE_TYPES })

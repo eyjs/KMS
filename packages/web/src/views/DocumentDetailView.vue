@@ -15,9 +15,12 @@ import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
 import CsvViewer from '@/components/viewer/CsvViewer.vue'
 import DocumentTimeline from '@/components/document/DocumentTimeline.vue'
 import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
+import VersionHistoryDialog from '@/components/document/VersionHistoryDialog.vue'
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const replaceFileInput = ref<HTMLInputElement | null>(null)
 const attachLoading = ref(false)
+const versionDialogVisible = ref(false)
 
 const route = useRoute()
 const router = useRouter()
@@ -143,6 +146,45 @@ async function handleFileAttach(event: Event) {
     ElMessage.success('파일이 첨부되었습니다')
   } catch {
     ElMessage.error('파일 첨부에 실패했습니다')
+  } finally {
+    attachLoading.value = false
+    input.value = ''
+  }
+}
+
+function triggerFileReplace() {
+  replaceFileInput.value?.click()
+}
+
+async function handleFileReplace(event: Event) {
+  const input = event.target as HTMLInputElement
+  const f = input.files?.[0]
+  if (!f || !doc.value) return
+
+  const ext = f.name.split('.').pop()?.toLowerCase()
+  if (!ext || !['pdf', 'md', 'csv'].includes(ext)) {
+    ElMessage.error('PDF, Markdown, CSV 파일만 허용됩니다')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '기존 파일이 버전 이력으로 보관되고, 새 파일로 교체됩니다. 계속하시겠습니까?',
+      '파일 교체',
+      { type: 'warning' },
+    )
+  } catch {
+    input.value = ''
+    return
+  }
+
+  attachLoading.value = true
+  try {
+    const { data } = await documentsApi.attachFile(doc.value.id, f)
+    doc.value = data
+    ElMessage.success('파일이 교체되었습니다')
+  } catch {
+    ElMessage.error('파일 교체에 실패했습니다')
   } finally {
     attachLoading.value = false
     input.value = ''
@@ -419,7 +461,12 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
           <!-- 상세 정보 -->
           <div style="font-size: 13px; color: #606266">
             <p v-if="doc.docCode" style="margin: 8px 0"><strong>문서코드:</strong> <span style="font-family: monospace">{{ doc.docCode }}</span></p>
-            <p style="margin: 8px 0"><strong>버전:</strong> v{{ doc.versionMajor }}.{{ doc.versionMinor }}</p>
+            <p style="margin: 8px 0; display: flex; align-items: center; gap: 6px">
+              <strong>버전:</strong> v{{ doc.versionMajor }}.{{ doc.versionMinor }}
+              <el-button text size="small" type="primary" style="padding: 0; font-size: 12px" @click="versionDialogVisible = true">
+                이력 보기
+              </el-button>
+            </p>
             <p style="margin: 8px 0"><strong>형식:</strong> {{ doc.fileType?.toUpperCase() ?? '-' }}</p>
             <p style="margin: 8px 0"><strong>크기:</strong> {{ hasFile ? (doc.fileSize / 1024).toFixed(1) + ' KB' : '-' }}</p>
             <p style="margin: 8px 0"><strong>생성일:</strong> {{ new Date(doc.createdAt).toLocaleString('ko-KR') }}</p>
@@ -469,6 +516,17 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
             <el-button v-if="hasFile" type="primary" plain @click="handleDownload">
               다운로드
             </el-button>
+
+            <!-- 파일 교체 -->
+            <el-button
+              v-if="hasFile && auth.hasMinRole('EDITOR')"
+              plain
+              :loading="attachLoading"
+              @click="triggerFileReplace"
+            >
+              파일 교체
+            </el-button>
+            <input ref="replaceFileInput" type="file" accept=".pdf,.md,.csv" style="display: none" @change="handleFileReplace" />
 
             <!-- 상태 전환 버튼 그룹 -->
             <div v-if="getNextLifecycles(doc.lifecycle).length > 0" class="action-group">
@@ -673,6 +731,14 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
         <el-button type="primary" :loading="relationLoading" :disabled="!relationForm.targetId" @click="handleRelationSubmit">추가</el-button>
       </template>
     </el-dialog>
+
+    <!-- 버전 이력 다이얼로그 -->
+    <VersionHistoryDialog
+      v-if="doc"
+      v-model:visible="versionDialogVisible"
+      :document-id="doc.id"
+      :current-version="`v${doc.versionMajor}.${doc.versionMinor}`"
+    />
 
     <!-- 문서 정보 수정 다이얼로그 -->
     <el-dialog

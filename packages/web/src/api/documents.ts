@@ -37,6 +37,35 @@ export interface IssueCounts {
   expired: number
   noFile: number
   staleDraft: number
+  longOrphan: number
+  duplicateName: number
+}
+
+export interface AuditLogEntry {
+  id: string
+  documentId: string
+  fileName: string | null
+  docCode: string | null
+  action: string
+  changes: Record<string, unknown> | null
+  userId: string | null
+  userName: string | null
+  userEmail: string | null
+  createdAt: string
+}
+
+export interface AuditStats {
+  topViewed: Array<{
+    documentId: string
+    fileName: string | null
+    docCode: string | null
+    viewCount: number
+  }>
+  userActivity: Array<{
+    userId: string
+    userName: string
+    actionCount: number
+  }>
 }
 
 export const documentsApi = {
@@ -155,5 +184,30 @@ export const documentsApi = {
 
   getIssueCounts() {
     return client.get<IssueCounts>('/documents/issues/counts')
+  },
+
+  getVersions(id: string) {
+    return client.get<import('@kms/shared').DocumentVersionEntity[]>(`/documents/${id}/versions`)
+  },
+
+  downloadVersionFile(id: string, versionId: string) {
+    return client.get(`/documents/${id}/versions/${versionId}/file`, { responseType: 'blob' })
+  },
+
+  previewVersionFile(id: string, versionId: string) {
+    return client.get(`/documents/${id}/versions/${versionId}/preview`, { responseType: 'blob' })
+  },
+
+  getVersionPreviewUrl(id: string, versionId: string): string {
+    const baseURL = client.defaults.baseURL || '/api'
+    return `${baseURL}/documents/${id}/versions/${versionId}/preview`
+  },
+
+  getAuditLog(params: { action?: string; userId?: string; dateFrom?: string; dateTo?: string; page?: number; size?: number }) {
+    return client.get<import('@kms/shared').PaginatedResponse<AuditLogEntry>>('/documents/audit/log', { params })
+  },
+
+  getAuditStats() {
+    return client.get<AuditStats>('/documents/audit/stats')
   },
 }

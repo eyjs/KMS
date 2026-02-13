@@ -5,6 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
 import {
@@ -22,7 +23,7 @@ import type {
 import * as crypto from 'crypto'
 import * as fs from 'fs'
 
-type IssueType = 'warning' | 'expired' | 'no_file' | 'stale_draft'
+type IssueType = 'warning' | 'expired' | 'no_file' | 'stale_draft' | 'long_orphan' | 'duplicate_name'
 
 @Injectable()
 export class DocumentsService {
@@ -83,6 +84,16 @@ export class DocumentsService {
           lifecycle: 'DRAFT',
           updatedAt: { lt: new Date(Date.now() - 30 * 86400000) },
         }
+      case 'long_orphan':
+        return {
+          ...baseWhere,
+          placements: { none: {} },
+          lifecycle: { not: 'DEPRECATED' },
+          createdAt: { lt: new Date(Date.now() - 30 * 86400000) },
+        }
+      case 'duplicate_name':
+        // duplicate_name은 별도 쿼리로 처리 — 여기서는 baseWhere만 반환
+        return baseWhere
     }
   }
 
@@ -125,18 +136,12 @@ export class DocumentsService {
       throw new BadRequestException('허용되지 않는 파일 형식입니다')
     }
 
-    // SHA-256 해시 계산 + 중복 체크
+    // SHA-256 해시 계산 + 중복 체크 (documents + document_versions 모두)
     const fileHash = this.calculateFileHash(file.path)
-    const existing = await this.prisma.document.findFirst({
-      where: { fileHash, isDeleted: false },
-    })
+    const existing = await this.checkFileHashDuplicate(fileHash)
     if (existing) {
-      // 업로드된 파일 삭제
       try { fs.unlinkSync(file.path) } catch { /* 임시 파일 삭제 실패 무시 */ }
-
-      // 접근 가능한 경우에만 기존 문서 정보 노출
       const canSee = SecurityLevelGuard.canAccess(userRole, existing.securityLevel as SecurityLevel)
-
       throw new ConflictException({
         message: '동일한 파일이 이미 존재합니다',
         ...(canSee && {
@@ -445,6 +450,26 @@ export class DocumentsService {
     }
 
     const fileHash = this.calculateFileHash(file.path)
+    const isReplace = !!doc.filePath
+
+    // 기존 파일이 있으면 → document_versions에 아카이빙
+    if (isReplace && doc.filePath && doc.fileName && doc.fileType && doc.fileSize) {
+      await this.prisma.documentVersion.create({
+        data: {
+          documentId: id,
+          versionMajor: doc.versionMajor,
+          versionMinor: doc.versionMinor,
+          filePath: doc.filePath,
+          fileName: doc.fileName,
+          fileType: doc.fileType,
+          fileSize: doc.fileSize,
+          fileHash: doc.fileHash ?? '',
+          uploadedById: doc.updatedById ?? doc.createdById,
+        },
+      })
+    }
+
+    const newMinor = isReplace ? doc.versionMinor + 1 : doc.versionMinor
 
     const updated = await this.prisma.document.update({
       where: { id },
@@ -454,6 +479,7 @@ export class DocumentsService {
         fileType: ext,
         fileSize: file.size,
         fileHash,
+        versionMinor: newMinor,
         updatedBy: { connect: { id: userId } },
       },
     })
@@ -461,8 +487,16 @@ export class DocumentsService {
     await this.prisma.documentHistory.create({
       data: {
         documentId: id,
-        action: 'FILE_ATTACH',
-        changes: { fileName: originalName, fileType: ext },
+        action: isReplace ? 'FILE_REPLACE' : 'FILE_ATTACH',
+        changes: {
+          fileName: originalName,
+          fileType: ext,
+          ...(isReplace && {
+            previousVersion: `v${doc.versionMajor}.${doc.versionMinor}`,
+            newVersion: `v${doc.versionMajor}.${newMinor}`,
+            previousFileName: doc.fileName,
+          }),
+        },
         userId,
       },
     })
@@ -550,10 +584,16 @@ export class DocumentsService {
       )
     }
 
+    // DRAFT → ACTIVE: major 버전 증가
+    const versionBump = doc.lifecycle === 'DRAFT' && lifecycle === 'ACTIVE'
+      ? { versionMajor: doc.versionMajor + 1, versionMinor: 0 }
+      : {}
+
     const updated = await this.prisma.document.update({
       where: { id },
       data: {
         lifecycle,
+        ...versionBump,
         updatedBy: { connect: { id: userId } },
       },
     })
@@ -562,7 +602,13 @@ export class DocumentsService {
       data: {
         documentId: id,
         action: 'LIFECYCLE_CHANGE',
-        changes: { from: doc.lifecycle, to: lifecycle },
+        changes: {
+          from: doc.lifecycle,
+          to: lifecycle,
+          ...(versionBump.versionMajor !== undefined && {
+            newVersion: `v${versionBump.versionMajor}.0`,
+          }),
+        },
         userId,
       },
     })
@@ -811,6 +857,11 @@ export class DocumentsService {
   }
 
   async getIssueDocuments(type: IssueType, page: number, size: number, userRole: UserRole) {
+    // duplicate_name은 별도 쿼리
+    if (type === 'duplicate_name') {
+      return this.getDuplicateNameDocuments(page, size, userRole)
+    }
+
     const where = this.buildIssueWhere(type, this.getAllowedLevels(userRole))
 
     const [data, total] = await Promise.all([
@@ -832,13 +883,268 @@ export class DocumentsService {
 
   async getIssueCounts(userRole: UserRole) {
     const allowedLevels = this.getAllowedLevels(userRole)
-    const issueTypes: IssueType[] = ['warning', 'expired', 'no_file', 'stale_draft']
+    const issueTypes: IssueType[] = ['warning', 'expired', 'no_file', 'stale_draft', 'long_orphan']
 
-    const [warning, expired, noFile, staleDraft] = await Promise.all(
+    const counts = await Promise.all(
       issueTypes.map((t) => this.prisma.document.count({ where: this.buildIssueWhere(t, allowedLevels) })),
     )
 
-    return { warning, expired, noFile, staleDraft }
+    // duplicate_name: raw query
+    const dupResult = await this.prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*) as count FROM (
+        SELECT file_name FROM documents
+        WHERE is_deleted = false AND file_name IS NOT NULL
+          AND security_level IN (${Prisma.join(allowedLevels)})
+        GROUP BY file_name HAVING COUNT(*) > 1
+      ) sub
+    `
+    const duplicateName = Number(dupResult[0]?.count ?? 0)
+
+    return {
+      warning: counts[0],
+      expired: counts[1],
+      noFile: counts[2],
+      staleDraft: counts[3],
+      longOrphan: counts[4],
+      duplicateName,
+    }
+  }
+
+  /** 파일명 중복 문서 목록 */
+  private async getDuplicateNameDocuments(page: number, size: number, userRole: UserRole) {
+    const allowedLevels = this.getAllowedLevels(userRole)
+
+    // 중복 파일명 가져오기
+    const dupNames = await this.prisma.$queryRaw<Array<{ file_name: string }>>`
+      SELECT file_name FROM documents
+      WHERE is_deleted = false AND file_name IS NOT NULL
+        AND security_level IN (${Prisma.join(allowedLevels)})
+      GROUP BY file_name HAVING COUNT(*) > 1
+      ORDER BY file_name
+      LIMIT ${size} OFFSET ${(page - 1) * size}
+    `
+
+    if (dupNames.length === 0) {
+      return { data: [], meta: { total: 0, page, size, totalPages: 0 } }
+    }
+
+    const names = dupNames.map((r) => r.file_name)
+    const data = await this.prisma.document.findMany({
+      where: {
+        isDeleted: false,
+        fileName: { in: names },
+        securityLevel: { in: allowedLevels },
+      },
+      include: { _count: { select: { placements: true } } },
+      orderBy: { fileName: 'asc' },
+    })
+
+    const totalResult = await this.prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*) as count FROM (
+        SELECT file_name FROM documents
+        WHERE is_deleted = false AND file_name IS NOT NULL
+          AND security_level IN (${Prisma.join(allowedLevels)})
+        GROUP BY file_name HAVING COUNT(*) > 1
+      ) sub
+    `
+    const total = Number(totalResult[0]?.count ?? 0)
+
+    return {
+      data: data.map((d) => this.formatDocument(d)),
+      meta: { total, page, size, totalPages: Math.ceil(total / size) },
+    }
+  }
+
+  /** 파일 해시 중복 체크 — documents + document_versions 모두 체크 */
+  private async checkFileHashDuplicate(fileHash: string, excludeId?: string) {
+    const docWhere: Record<string, unknown> = { fileHash, isDeleted: false }
+    if (excludeId) docWhere.id = { not: excludeId }
+
+    const existing = await this.prisma.document.findFirst({
+      where: docWhere,
+      select: { id: true, docCode: true, fileName: true, securityLevel: true },
+    })
+    if (existing) return existing
+
+    // document_versions에서도 체크
+    const versionMatch = await this.prisma.documentVersion.findFirst({
+      where: { fileHash },
+      select: {
+        document: { select: { id: true, docCode: true, fileName: true, securityLevel: true } },
+      },
+    })
+    return versionMatch?.document ?? null
+  }
+
+  /** 버전 이력 목록 */
+  async getVersions(docId: string, userRole: UserRole) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id: docId, isDeleted: false },
+    })
+    if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
+    if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
+      throw new ForbiddenException('접근 권한이 없습니다')
+    }
+
+    const versions = await this.prisma.documentVersion.findMany({
+      where: { documentId: docId },
+      orderBy: [{ versionMajor: 'desc' }, { versionMinor: 'desc' }],
+      include: { uploadedBy: { select: { name: true } } },
+    })
+
+    return versions.map((v) => ({
+      id: v.id,
+      documentId: v.documentId,
+      versionMajor: v.versionMajor,
+      versionMinor: v.versionMinor,
+      fileName: v.fileName,
+      fileType: v.fileType,
+      fileSize: Number(v.fileSize),
+      fileHash: v.fileHash,
+      uploadedByName: v.uploadedBy?.name ?? null,
+      createdAt: v.createdAt.toISOString(),
+    }))
+  }
+
+  /** 이전 버전 파일 접근 (내부용) */
+  async findVersionInternal(docId: string, versionId: string, userRole: UserRole) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id: docId, isDeleted: false },
+    })
+    if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
+    if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
+      throw new ForbiddenException('접근 권한이 없습니다')
+    }
+
+    const version = await this.prisma.documentVersion.findFirst({
+      where: { id: versionId, documentId: docId },
+    })
+    if (!version) throw new NotFoundException('해당 버전을 찾을 수 없습니다')
+    return version
+  }
+
+  // ============================================================
+  // 감사 로그
+  // ============================================================
+
+  /** 문서 열람 기록 (5분 디바운스) */
+  async recordView(docId: string, userId: string) {
+    const recent = await this.prisma.documentHistory.findFirst({
+      where: {
+        documentId: docId,
+        userId,
+        action: 'VIEW',
+        createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+      },
+    })
+    if (recent) return // 5분 이내 중복 기록 방지
+
+    await this.prisma.documentHistory.create({
+      data: { documentId: docId, action: 'VIEW', userId },
+    })
+  }
+
+  /** 문서 다운로드 기록 */
+  async recordDownload(docId: string, userId: string) {
+    await this.prisma.documentHistory.create({
+      data: { documentId: docId, action: 'DOWNLOAD', userId },
+    })
+  }
+
+  /** 감사 로그 조회 */
+  async getAuditLog(query: {
+    action?: string
+    userId?: string
+    dateFrom?: string
+    dateTo?: string
+    page: number
+    size: number
+  }) {
+    const where: Record<string, unknown> = {}
+
+    if (query.action) where.action = query.action
+    if (query.userId) where.userId = query.userId
+    if (query.dateFrom || query.dateTo) {
+      where.createdAt = {
+        ...(query.dateFrom && { gte: new Date(query.dateFrom) }),
+        ...(query.dateTo && { lte: new Date(query.dateTo + 'T23:59:59.999Z') }),
+      }
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.documentHistory.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.size,
+        take: query.size,
+        include: {
+          document: { select: { fileName: true, docCode: true } },
+          user: { select: { name: true, email: true } },
+        },
+      }),
+      this.prisma.documentHistory.count({ where }),
+    ])
+
+    return {
+      data: data.map((h) => ({
+        id: h.id,
+        documentId: h.documentId,
+        fileName: h.document.fileName,
+        docCode: h.document.docCode,
+        action: h.action,
+        changes: h.changes,
+        userId: h.userId,
+        userName: h.user?.name ?? null,
+        userEmail: h.user?.email ?? null,
+        createdAt: h.createdAt.toISOString(),
+      })),
+      meta: { total, page: query.page, size: query.size, totalPages: Math.ceil(total / query.size) },
+    }
+  }
+
+  /** 감사 통계 — Top 10 조회 문서 + 사용자별 활동 */
+  async getAuditStats() {
+    const topViewed = await this.prisma.$queryRaw<Array<{
+      document_id: string
+      file_name: string | null
+      doc_code: string | null
+      view_count: bigint
+    }>>`
+      SELECT dh.document_id, d.file_name, d.doc_code, COUNT(*) as view_count
+      FROM document_history dh
+      JOIN documents d ON d.id = dh.document_id
+      WHERE dh.action = 'VIEW' AND d.is_deleted = false
+      GROUP BY dh.document_id, d.file_name, d.doc_code
+      ORDER BY view_count DESC
+      LIMIT 10
+    `
+
+    const userActivity = await this.prisma.$queryRaw<Array<{
+      user_id: string
+      user_name: string
+      action_count: bigint
+    }>>`
+      SELECT dh.user_id, u.name as user_name, COUNT(*) as action_count
+      FROM document_history dh
+      JOIN users u ON u.id = dh.user_id
+      GROUP BY dh.user_id, u.name
+      ORDER BY action_count DESC
+      LIMIT 10
+    `
+
+    return {
+      topViewed: topViewed.map((r) => ({
+        documentId: r.document_id,
+        fileName: r.file_name,
+        docCode: r.doc_code,
+        viewCount: Number(r.view_count),
+      })),
+      userActivity: userActivity.map((r) => ({
+        userId: r.user_id,
+        userName: r.user_name,
+        actionCount: Number(r.action_count),
+      })),
+    }
   }
 
   /** 문서 코드 자동 생성: DOC-{YYMM}-{NNN} */

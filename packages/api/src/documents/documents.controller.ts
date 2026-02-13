@@ -186,6 +186,34 @@ export class DocumentsController {
     return this.documentsService.getIssueCounts(req.user.role)
   }
 
+  @Get('audit/log')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: '감사 로그 조회 (ADMIN)' })
+  async getAuditLog(
+    @Query('action') action?: string,
+    @Query('userId') userId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('page') page?: string,
+    @Query('size') size?: string,
+  ) {
+    return this.documentsService.getAuditLog({
+      action,
+      userId,
+      dateFrom,
+      dateTo,
+      page: parseInt(page ?? '1', 10),
+      size: parseInt(size ?? '20', 10),
+    })
+  }
+
+  @Get('audit/stats')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: '감사 통계 (ADMIN)' })
+  async getAuditStats() {
+    return this.documentsService.getAuditStats()
+  }
+
   @Get('search')
   @ApiOperation({ summary: '통합 검색' })
   async search(
@@ -213,6 +241,8 @@ export class DocumentsController {
   @Get(':id')
   @ApiOperation({ summary: '문서 상세 조회' })
   async findOne(@Param('id') id: string, @Request() req: AuthRequest) {
+    // 열람 기록 비동기 (실패해도 무시)
+    this.documentsService.recordView(id, req.user.sub).catch(() => {})
     return this.documentsService.findOne(id, req.user.role)
   }
 
@@ -259,6 +289,34 @@ export class DocumentsController {
     return this.documentsService.getHistory(id, req.user.role)
   }
 
+  @Get(':id/versions')
+  @ApiOperation({ summary: '문서 버전 이력' })
+  async getVersions(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.documentsService.getVersions(id, req.user.role)
+  }
+
+  @Get(':id/versions/:versionId/file')
+  @ApiOperation({ summary: '이전 버전 파일 다운로드' })
+  async downloadVersionFile(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Request() req: AuthRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.serveVersionFile(id, versionId, req.user.role, res, 'attachment')
+  }
+
+  @Get(':id/versions/:versionId/preview')
+  @ApiOperation({ summary: '이전 버전 미리보기' })
+  async previewVersionFile(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Request() req: AuthRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.serveVersionFile(id, versionId, req.user.role, res, 'inline')
+  }
+
   @Get(':id/file')
   @ApiOperation({ summary: '파일 다운로드' })
   async downloadFile(
@@ -266,6 +324,8 @@ export class DocumentsController {
     @Request() req: AuthRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
+    // 다운로드 기록 비동기 (실패해도 무시)
+    this.documentsService.recordDownload(id, req.user.sub).catch(() => {})
     return this.serveFile(id, req.user.role, res, 'attachment')
   }
 
@@ -311,6 +371,37 @@ export class DocumentsController {
     res.set({
       'Content-Type': contentType,
       'Content-Disposition': `${disposition}; filename="${encodeURIComponent(doc.fileName ?? 'download')}"`,
+    })
+    return new StreamableFile(stream)
+  }
+
+  private async serveVersionFile(
+    docId: string,
+    versionId: string,
+    role: UserRole,
+    res: Response,
+    disposition: 'attachment' | 'inline',
+  ): Promise<StreamableFile> {
+    const version = await this.documentsService.findVersionInternal(docId, versionId, role)
+    if (!version.filePath) {
+      throw new NotFoundException('파일 경로를 찾을 수 없습니다')
+    }
+
+    const resolved = path.resolve(version.filePath)
+    if (!resolved.startsWith(this.storagePath)) {
+      throw new BadRequestException('허용되지 않는 파일 경로입니다')
+    }
+
+    if (!fs.existsSync(resolved)) {
+      throw new NotFoundException('파일이 존재하지 않습니다')
+    }
+
+    const stream = fs.createReadStream(resolved)
+    const ext = path.extname(version.fileName ?? '').toLowerCase()
+    const contentType = this.MIME_MAP[ext] ?? 'application/octet-stream'
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `${disposition}; filename="${encodeURIComponent(version.fileName ?? 'download')}"`,
     })
     return new StreamableFile(stream)
   }

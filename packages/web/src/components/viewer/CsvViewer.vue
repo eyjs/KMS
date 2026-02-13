@@ -4,6 +4,7 @@ import { documentsApi } from '@/api/documents'
 
 const props = defineProps<{
   documentId: string
+  previewUrl?: string
 }>()
 
 const rawContent = ref('')
@@ -51,8 +52,15 @@ async function loadCsv() {
   loading.value = true
   error.value = null
   try {
-    const { data } = await documentsApi.previewFile(props.documentId)
-    rawContent.value = await (data as Blob).text()
+    if (props.previewUrl) {
+      const resp = await fetch(props.previewUrl, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
+      })
+      rawContent.value = await resp.text()
+    } else {
+      const { data } = await documentsApi.previewFile(props.documentId)
+      rawContent.value = await (data as Blob).text()
+    }
   } catch {
     error.value = 'CSV 로드에 실패했습니다'
   } finally {
@@ -60,7 +68,7 @@ async function loadCsv() {
   }
 }
 
-watch(() => props.documentId, loadCsv)
+watch(() => [props.documentId, props.previewUrl], loadCsv)
 onMounted(loadCsv)
 </script>
 

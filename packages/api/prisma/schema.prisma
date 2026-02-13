@@ -27,6 +27,7 @@ model User {
   documentHistory    DocumentHistory[]
   feedbacks          Feedback[]
   placedDocuments    DocumentPlacement[] @relation("PlacedBy")
+  uploadedVersions   DocumentVersion[]   @relation("VersionUploadedBy")
 
   @@map("users")
 }
@@ -116,7 +117,7 @@ model Document {
   fileName           String?  @map("file_name")
   fileType           String?  @map("file_type") @db.VarChar(10)
   fileSize           BigInt?  @map("file_size")
-  fileHash           String?  @unique @map("file_hash") @db.VarChar(64)
+  fileHash           String?  @map("file_hash") @db.VarChar(64)
   versionMajor       Int      @default(1) @map("version_major")
   versionMinor       Int      @default(0) @map("version_minor")
   reviewedAt         DateTime? @map("reviewed_at")
@@ -134,6 +135,7 @@ model Document {
   targetRelations Relation[]        @relation("TargetDoc")
   history         DocumentHistory[]
   placements      DocumentPlacement[]
+  versions        DocumentVersion[]
 
   @@index([lifecycle])
   @@index([securityLevel])
@@ -204,6 +206,30 @@ model ApiKey {
 
   @@index([keyHash])
   @@map("api_keys")
+}
+
+// ============================================================
+// 문서 버전 이력
+// ============================================================
+
+model DocumentVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  documentId    String   @map("document_id") @db.Uuid
+  versionMajor  Int      @map("version_major")
+  versionMinor  Int      @map("version_minor")
+  filePath      String   @map("file_path")
+  fileName      String   @map("file_name")
+  fileType      String   @map("file_type") @db.VarChar(10)
+  fileSize      BigInt   @map("file_size")
+  fileHash      String   @map("file_hash") @db.VarChar(64)
+  uploadedById  String?  @map("uploaded_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploadedBy User?    @relation("VersionUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([documentId])
+  @@map("document_versions")
 }
 
 // ============================================================

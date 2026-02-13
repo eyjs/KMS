@@ -6,6 +6,7 @@ import { documentsApi } from '@/api/documents'
 
 const props = defineProps<{
   documentId: string
+  previewUrl?: string
 }>()
 
 const content = ref('')
@@ -22,8 +23,15 @@ async function loadMarkdown() {
   loading.value = true
   error.value = null
   try {
-    const { data } = await documentsApi.previewFile(props.documentId)
-    content.value = await (data as Blob).text()
+    if (props.previewUrl) {
+      const resp = await fetch(props.previewUrl, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
+      })
+      content.value = await resp.text()
+    } else {
+      const { data } = await documentsApi.previewFile(props.documentId)
+      content.value = await (data as Blob).text()
+    }
   } catch {
     error.value = 'Markdown 로드에 실패했습니다'
   } finally {
@@ -31,7 +39,7 @@ async function loadMarkdown() {
   }
 }
 
-watch(() => props.documentId, loadMarkdown)
+watch(() => [props.documentId, props.previewUrl], loadMarkdown)
 onMounted(loadMarkdown)
 </script>
 

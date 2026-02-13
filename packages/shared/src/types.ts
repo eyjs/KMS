@@ -120,6 +120,19 @@ export interface DocumentPlacementEntity {
   note: string | null
 }
 
+export interface DocumentVersionEntity {
+  id: string
+  documentId: string
+  versionMajor: number
+  versionMinor: number
+  fileName: string
+  fileType: string
+  fileSize: number
+  fileHash: string
+  uploadedByName: string | null
+  createdAt: string
+}
+
 export interface RelationEntity {
   id: string
   sourceId: string
