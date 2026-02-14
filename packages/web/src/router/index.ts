@@ -36,6 +36,11 @@ const router = createRouter({
       component: () => import('@/views/GlobalGraphView.vue'),
     },
     {
+      path: '/knowledge-graph',
+      name: 'KnowledgeGraph',
+      component: () => import('@/views/KnowledgeGraphView.vue'),
+    },
+    {
       path: '/d/:domainCode',
       name: 'DomainWorkspace',
       component: () => import('@/views/DomainWorkspace.vue'),
