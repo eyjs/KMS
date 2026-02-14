@@ -17,11 +17,15 @@ import CsvViewer from '@/components/viewer/CsvViewer.vue'
 import DocumentTimeline from '@/components/document/DocumentTimeline.vue'
 import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
 import VersionHistoryDialog from '@/components/document/VersionHistoryDialog.vue'
+import RelationPropertyDialog from '@/components/graph/RelationPropertyDialog.vue'
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const replaceFileInput = ref<HTMLInputElement | null>(null)
 const attachLoading = ref(false)
 const versionDialogVisible = ref(false)
+const propertyDialogVisible = ref(false)
+const selectedRelationId = ref<string | null>(null)
+const selectedRelationType = ref('')
 
 const route = useRoute()
 const router = useRouter()
@@ -612,16 +616,26 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
                   {{ rel.fileName }}
                 </span>
               </div>
-              <el-button
-                v-if="auth.hasMinRole('EDITOR')"
-                text
-                size="small"
-                type="danger"
-                style="flex-shrink: 0"
-                @click="handleRelationDelete(rel.id)"
-              >
-                삭제
-              </el-button>
+              <div style="display: flex; gap: 4px; flex-shrink: 0">
+                <el-button
+                  v-if="auth.hasMinRole('EDITOR')"
+                  text
+                  size="small"
+                  type="primary"
+                  @click="() => { selectedRelationId = rel.id; selectedRelationType = rel.type; propertyDialogVisible = true }"
+                >
+                  속성
+                </el-button>
+                <el-button
+                  v-if="auth.hasMinRole('EDITOR')"
+                  text
+                  size="small"
+                  type="danger"
+                  @click="handleRelationDelete(rel.id)"
+                >
+                  삭제
+                </el-button>
+              </div>
             </div>
           </div>
           <div v-else style="padding: 16px 0; text-align: center; color: #909399; font-size: 13px">
@@ -739,6 +753,14 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
       v-model:visible="versionDialogVisible"
       :document-id="doc.id"
       :current-version="`v${doc.versionMajor}.${doc.versionMinor}`"
+    />
+
+    <!-- 관계 속성 다이얼로그 (온톨로지) -->
+    <RelationPropertyDialog
+      v-model:visible="propertyDialogVisible"
+      :relation-id="selectedRelationId"
+      :relation-type="selectedRelationType"
+      @saved="() => { /* 필요시 관계 목록 갱신 */ }"
     />
 
     <!-- 문서 정보 수정 다이얼로그 -->
