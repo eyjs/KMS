@@ -7,6 +7,7 @@ import { AuthService } from './auth.service'
 import { JwtStrategy } from './strategies/jwt.strategy'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { ApiKeyGuard } from './guards/api-key.guard'
+import { JwtOrApiKeyGuard } from './guards/jwt-or-api-key.guard'
 import { RolesGuard } from './guards/roles.guard'
 import { SecurityLevelGuard } from './guards/security-level.guard'
 
@@ -34,9 +35,18 @@ import { SecurityLevelGuard } from './guards/security-level.guard'
     JwtStrategy,
     JwtAuthGuard,
     ApiKeyGuard,
+    JwtOrApiKeyGuard,
     RolesGuard,
     SecurityLevelGuard,
   ],
-  exports: [AuthService, JwtAuthGuard, ApiKeyGuard, RolesGuard, SecurityLevelGuard],
+  exports: [
+    AuthService,
+    JwtModule,
+    JwtAuthGuard,
+    ApiKeyGuard,
+    JwtOrApiKeyGuard,
+    RolesGuard,
+    SecurityLevelGuard,
+  ],
 })
 export class AuthModule {}
