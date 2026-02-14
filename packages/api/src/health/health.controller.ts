@@ -1,4 +1,5 @@
-import { Controller, Get } from '@nestjs/common'
+import { Controller, Get, Res } from '@nestjs/common'
+import { Response } from 'express'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { SkipThrottle } from '@nestjs/throttler'
 import { PrismaService } from '../prisma/prisma.service'
@@ -49,12 +50,14 @@ export class HealthController {
 
   @Get('ready')
   @ApiOperation({ summary: '레디니스 체크 (트래픽 수신 준비)' })
-  async ready() {
+  @ApiResponse({ status: 200, description: '준비 완료' })
+  @ApiResponse({ status: 503, description: '준비 안됨' })
+  async ready(@Res() res: Response) {
     try {
       await this.prisma.$queryRaw`SELECT 1`
-      return { status: 'ok' }
+      return res.status(200).json({ status: 'ok' })
     } catch {
-      return { status: 'error', message: 'Database not ready' }
+      return res.status(503).json({ status: 'error', message: 'Database not ready' })
     }
   }
 }
