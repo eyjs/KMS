@@ -650,3 +650,92 @@ export interface UpdateWebhookDto {
   events?: WebhookEvent[]
   isActive?: boolean
 }
+
+// ============================================================
+// 온톨로지: 관계 유형 마스터 (ADR-016 Phase 3)
+// ============================================================
+
+/** 관계 유형 정의 (메타데이터 포함) */
+export interface RelationTypeEntity {
+  code: string
+  label: string
+  labelKo: string
+  inverseCode: string | null
+  isBidirectional: boolean
+  requiresDomain: boolean
+  description: string | null
+  isActive: boolean
+  sortOrder: number
+  /** 역관계 정보 (조회 시 포함) */
+  inverse?: Pick<RelationTypeEntity, 'code' | 'label' | 'labelKo'>
+}
+
+/** 관계 속성 (의미 부여) */
+export interface RelationPropertyEntity {
+  id: string
+  relationId: string
+  key: string
+  value: string
+}
+
+/** 관계 + 속성 + 유형 메타데이터 */
+export interface RelationWithOntology extends RelationEntity {
+  /** 관계 유형 메타데이터 */
+  typeMetadata?: RelationTypeEntity
+  /** 관계 속성 (의미 부여) */
+  properties?: RelationPropertyEntity[]
+}
+
+/** 지식그래프 엣지 (온톨로지 포함) */
+export interface OntologyEdge extends KnowledgeGraphEdge {
+  /** 관계 유형 한국어 라벨 */
+  label: string
+  /** 양방향 여부 */
+  isBidirectional: boolean
+  /** 관계 속성 */
+  properties?: Record<string, string>
+}
+
+/** 온톨로지 지식그래프 응답 */
+export interface OntologyGraphResponse {
+  nodes: KnowledgeGraphNode[]
+  edges: OntologyEdge[]
+  /** 사용된 관계 유형들 (범례용) */
+  relationTypes: RelationTypeEntity[]
+  meta: {
+    startId: string
+    maxDepth: number
+    totalNodes: number
+    accessibleNodes: number
+  }
+}
+
+// ============================================================
+// 온톨로지 관계 속성 DTO
+// ============================================================
+
+/** 관계 속성 추가/수정 */
+export interface SetRelationPropertyDto {
+  key: string
+  value: string
+}
+
+/** 관계 생성 + 속성 동시 추가 */
+export interface CreateRelationWithPropertiesDto extends CreateRelationDto {
+  properties?: SetRelationPropertyDto[]
+}
+
+/** 미리 정의된 관계 속성 키 (프레임워크 표준) */
+export const RelationPropertyKey = {
+  /** 관계 강도 (1-10) */
+  STRENGTH: 'strength',
+  /** 관계 설정 이유 */
+  REASON: 'reason',
+  /** 관계 유효기간 */
+  VALID_UNTIL: 'validUntil',
+  /** 관계 신뢰도 (manual | auto | suggested) */
+  CONFIDENCE: 'confidence',
+  /** 관계 생성 방식 (user | system | ai) */
+  CREATED_BY_TYPE: 'createdByType',
+} as const
+export type RelationPropertyKey = (typeof RelationPropertyKey)[keyof typeof RelationPropertyKey]

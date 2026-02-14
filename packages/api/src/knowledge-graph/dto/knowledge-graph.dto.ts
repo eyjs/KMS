@@ -30,3 +30,20 @@ export class ExploreGraphQueryDto {
   @Max(500)
   maxNodes?: number = 100
 }
+
+/** 관계 속성 설정 DTO */
+export class SetRelationPropertyDto {
+  @ApiProperty({
+    description: '속성 키 (strength, reason, validUntil, confidence, createdByType)',
+    example: 'reason',
+  })
+  @IsString()
+  key!: string
+
+  @ApiProperty({
+    description: '속성 값',
+    example: '이 문서는 상위 정책 문서의 세부 구현 가이드입니다.',
+  })
+  @IsString()
+  value!: string
+}

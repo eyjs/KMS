@@ -8,6 +8,10 @@ import type {
   KnowledgeGraphNode,
   KnowledgeGraphEdge,
   KnowledgeGraphResponse,
+  OntologyEdge,
+  OntologyGraphResponse,
+  RelationTypeEntity,
+  RelationPropertyEntity,
 } from '@kms/shared'
 
 /** 인증된 사용자 정보 */
@@ -253,5 +257,174 @@ export class KnowledgeGraphService {
     return Object.entries(SECURITY_LEVEL_ORDER)
       .filter(([, level]) => level <= maxLevel)
       .map(([name]) => name)
+  }
+
+  // ============================================================
+  // 온톨로지 지식그래프 (ADR-016 Phase 3)
+  // ============================================================
+
+  /**
+   * 온톨로지 기반 지식그래프 탐색
+   * 관계 유형 메타데이터 + 관계 속성 포함
+   */
+  async exploreWithOntology(
+    startId: string,
+    userRole: UserRole,
+    authUser: AuthUser | undefined,
+    options: {
+      depth?: number
+      relationTypes?: RelationType[]
+      maxNodes?: number
+    } = {},
+  ): Promise<OntologyGraphResponse> {
+    // 기본 그래프 탐색
+    const baseResult = await this.explore(startId, userRole, authUser, options)
+
+    // 사용된 관계 유형 수집
+    const usedRelationTypes = new Set<string>()
+    for (const edge of baseResult.edges) {
+      usedRelationTypes.add(edge.relationType)
+    }
+
+    // 관계 유형 메타데이터 조회
+    const relationTypesData = await this.prisma.relationTypeMaster.findMany({
+      where: { code: { in: [...usedRelationTypes] }, isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    })
+
+    const typeMap = new Map<string, RelationTypeEntity>()
+    for (const rt of relationTypesData) {
+      typeMap.set(rt.code, {
+        code: rt.code,
+        label: rt.label,
+        labelKo: rt.labelKo,
+        inverseCode: rt.inverseCode,
+        isBidirectional: rt.isBidirectional,
+        requiresDomain: rt.requiresDomain,
+        description: rt.description,
+        isActive: rt.isActive,
+        sortOrder: rt.sortOrder,
+      })
+    }
+
+    // 관계 속성 일괄 조회
+    const edgeIds = baseResult.edges.map((e) => e.id)
+    const properties = await this.prisma.relationProperty.findMany({
+      where: { relationId: { in: edgeIds } },
+    })
+
+    const propMap = new Map<string, Record<string, string>>()
+    for (const prop of properties) {
+      const existing = propMap.get(prop.relationId) ?? {}
+      existing[prop.key] = prop.value
+      propMap.set(prop.relationId, existing)
+    }
+
+    // 온톨로지 엣지 변환
+    const ontologyEdges: OntologyEdge[] = baseResult.edges.map((edge) => {
+      const typeMeta = typeMap.get(edge.relationType)
+      return {
+        ...edge,
+        label: typeMeta?.labelKo ?? edge.relationType,
+        isBidirectional: typeMeta?.isBidirectional ?? false,
+        properties: propMap.get(edge.id),
+      }
+    })
+
+    return {
+      nodes: baseResult.nodes,
+      edges: ontologyEdges,
+      relationTypes: [...typeMap.values()],
+      meta: baseResult.meta,
+    }
+  }
+
+  // ============================================================
+  // 관계 유형 마스터 API
+  // ============================================================
+
+  /** 모든 관계 유형 조회 */
+  async getRelationTypes(): Promise<RelationTypeEntity[]> {
+    const types = await this.prisma.relationTypeMaster.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    })
+
+    return types.map((rt) => ({
+      code: rt.code,
+      label: rt.label,
+      labelKo: rt.labelKo,
+      inverseCode: rt.inverseCode,
+      isBidirectional: rt.isBidirectional,
+      requiresDomain: rt.requiresDomain,
+      description: rt.description,
+      isActive: rt.isActive,
+      sortOrder: rt.sortOrder,
+    }))
+  }
+
+  // ============================================================
+  // 관계 속성 API
+  // ============================================================
+
+  /** 관계 속성 조회 */
+  async getRelationProperties(relationId: string): Promise<RelationPropertyEntity[]> {
+    const properties = await this.prisma.relationProperty.findMany({
+      where: { relationId },
+    })
+    return properties.map((p) => ({
+      id: p.id,
+      relationId: p.relationId,
+      key: p.key,
+      value: p.value,
+    }))
+  }
+
+  /** 관계 속성 설정 (upsert) */
+  async setRelationProperty(
+    relationId: string,
+    key: string,
+    value: string,
+  ): Promise<RelationPropertyEntity> {
+    // 관계 존재 확인
+    const relation = await this.prisma.relation.findUnique({
+      where: { id: relationId },
+    })
+    if (!relation) {
+      throw new NotFoundException('관계를 찾을 수 없습니다')
+    }
+
+    const result = await this.prisma.relationProperty.upsert({
+      where: { relationId_key: { relationId, key } },
+      update: { value },
+      create: { relationId, key, value },
+    })
+
+    return {
+      id: result.id,
+      relationId: result.relationId,
+      key: result.key,
+      value: result.value,
+    }
+  }
+
+  /** 관계 속성 삭제 */
+  async deleteRelationProperty(relationId: string, key: string): Promise<void> {
+    await this.prisma.relationProperty.deleteMany({
+      where: { relationId, key },
+    })
+  }
+
+  /** 관계에 여러 속성 일괄 설정 */
+  async setRelationProperties(
+    relationId: string,
+    properties: Array<{ key: string; value: string }>,
+  ): Promise<RelationPropertyEntity[]> {
+    const results: RelationPropertyEntity[] = []
+    for (const prop of properties) {
+      const result = await this.setRelationProperty(relationId, prop.key, prop.value)
+      results.push(result)
+    }
+    return results
   }
 }

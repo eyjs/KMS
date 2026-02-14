@@ -165,16 +165,57 @@ model Relation {
   createdById  String?  @map("created_by") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at")
 
-  source    Document      @relation("SourceDoc", fields: [sourceId], references: [id], onDelete: Cascade)
-  target    Document      @relation("TargetDoc", fields: [targetId], references: [id], onDelete: Cascade)
-  createdBy User?         @relation("RelationCreatedBy", fields: [createdById], references: [id])
-  domain    DomainMaster? @relation("RelationDomain", fields: [domainCode], references: [code], onDelete: Cascade)
+  source     Document      @relation("SourceDoc", fields: [sourceId], references: [id], onDelete: Cascade)
+  target     Document      @relation("TargetDoc", fields: [targetId], references: [id], onDelete: Cascade)
+  createdBy  User?         @relation("RelationCreatedBy", fields: [createdById], references: [id])
+  domain     DomainMaster? @relation("RelationDomain", fields: [domainCode], references: [code], onDelete: Cascade)
+  properties RelationProperty[]
 
   // 유니크 제약은 마이그레이션 SQL에서 partial index로 처리
   @@index([sourceId])
   @@index([targetId])
   @@index([domainCode])
   @@map("relations")
+}
+
+// ============================================================
+// 온톨로지: 관계 유형 마스터 (ADR-016)
+// ============================================================
+
+model RelationTypeMaster {
+  code            String  @id @db.VarChar(30)            // PARENT_OF, CHILD_OF, ...
+  label           String  @db.VarChar(50)                // 영문 표시명
+  labelKo         String  @map("label_ko") @db.VarChar(50) // 한국어 표시명
+  inverseCode     String? @map("inverse_code") @db.VarChar(30) // 역관계 코드 (PARENT_OF ↔ CHILD_OF)
+  isBidirectional Boolean @default(false) @map("is_bidirectional") // SIBLING 같은 양방향
+  requiresDomain  Boolean @default(true) @map("requires_domain")   // 도메인 필수 여부
+  description     String? @db.VarChar(500)               // 관계 설명
+  isActive        Boolean @default(true) @map("is_active")
+  sortOrder       Int     @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // 역관계 참조
+  inverse   RelationTypeMaster? @relation("InverseRelation", fields: [inverseCode], references: [code])
+  inversedBy RelationTypeMaster[] @relation("InverseRelation")
+
+  @@map("relation_type_master")
+}
+
+// ============================================================
+// 온톨로지: 관계 속성 (ADR-016)
+// ============================================================
+
+model RelationProperty {
+  id         String   @id @default(uuid()) @db.Uuid
+  relationId String   @map("relation_id") @db.Uuid
+  key        String   @db.VarChar(50)  // strength, reason, validUntil, ...
+  value      String                    // 값 (JSON 또는 문자열)
+
+  relation Relation @relation(fields: [relationId], references: [id], onDelete: Cascade)
+
+  @@unique([relationId, key])
+  @@index([relationId])
+  @@map("relation_properties")
 }
 
 // ============================================================
