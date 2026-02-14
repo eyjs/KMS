@@ -14,6 +14,7 @@ import { FeedbackModule } from './feedback/feedback.module'
 import { GroupsModule } from './groups/groups.module'
 import { HealthModule } from './health/health.module'
 import { WebhooksModule } from './webhooks/webhooks.module'
+import { KnowledgeGraphModule } from './knowledge-graph/knowledge-graph.module'
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { WebhooksModule } from './webhooks/webhooks.module'
     FeedbackModule,
     GroupsModule,
     WebhooksModule,
+    KnowledgeGraphModule,
   ],
   providers: [
     {

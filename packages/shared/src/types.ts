@@ -553,6 +553,51 @@ export interface DocumentDetailQuery {
 }
 
 // ============================================================
+// 지식그래프 탐색 API (ADR-016 Phase 2)
+// ============================================================
+
+/** 지식그래프 노드 */
+export interface KnowledgeGraphNode {
+  id: string
+  docCode: string | null
+  fileName: string | null
+  fileType: FileType | null
+  lifecycle: Lifecycle
+  securityLevel: SecurityLevel
+  depth: number
+  accessible: boolean
+}
+
+/** 지식그래프 엣지 */
+export interface KnowledgeGraphEdge {
+  id: string
+  sourceId: string
+  targetId: string
+  relationType: RelationType
+  domainCode: string | null
+}
+
+/** 지식그래프 탐색 응답 */
+export interface KnowledgeGraphResponse {
+  nodes: KnowledgeGraphNode[]
+  edges: KnowledgeGraphEdge[]
+  meta: {
+    startId: string
+    maxDepth: number
+    totalNodes: number
+    accessibleNodes: number
+  }
+}
+
+/** 지식그래프 탐색 쿼리 */
+export interface KnowledgeGraphQuery {
+  startId: string
+  depth?: number
+  relationTypes?: RelationType[]
+  maxNodes?: number
+}
+
+// ============================================================
 // Webhook
 // ============================================================
 
