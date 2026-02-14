@@ -1,10 +1,15 @@
-import { Module } from '@nestjs/common'
+import { Module, forwardRef } from '@nestjs/common'
 import { MulterModule } from '@nestjs/platform-express'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { DocumentsController } from './documents.controller'
 import { DocumentsService } from './documents.service'
+import { DocumentsQueryService } from './documents-query.service'
+import { DocumentsAuditService } from './documents-audit.service'
+import { DocumentsExternalService } from './documents-external.service'
+import { DocumentsRelationsService } from './documents-relations.service'
 import { AuthModule } from '../auth/auth.module'
 import { CategoriesModule } from '../categories/categories.module'
+import { WebhooksModule } from '../webhooks/webhooks.module'
 import { diskStorage } from 'multer'
 import { v4 as uuid } from 'uuid'
 import * as path from 'path'
@@ -13,6 +18,7 @@ import * as path from 'path'
   imports: [
     AuthModule,
     CategoriesModule,
+    forwardRef(() => WebhooksModule),
     MulterModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -38,7 +44,13 @@ import * as path from 'path'
     }),
   ],
   controllers: [DocumentsController],
-  providers: [DocumentsService],
+  providers: [
+    DocumentsService,
+    DocumentsQueryService,
+    DocumentsAuditService,
+    DocumentsExternalService,
+    DocumentsRelationsService,
+  ],
   exports: [DocumentsService],
 })
 export class DocumentsModule {}

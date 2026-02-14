@@ -4,162 +4,132 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { SecurityLevelGuard } from '../auth/guards/security-level.guard'
 import { CategoriesService } from '../categories/categories.service'
-import {
-  LIFECYCLE_TRANSITIONS,
-  FRESHNESS_THRESHOLDS,
-  SECURITY_LEVEL_ORDER,
-} from '@kms/shared'
-import type {
-  Lifecycle,
-  SecurityLevel,
-  UserRole,
-  Freshness,
-  DocumentListQuery,
-} from '@kms/shared'
+import { WebhooksService } from '../webhooks/webhooks.service'
+import { DocumentsQueryService } from './documents-query.service'
+import { DocumentsAuditService } from './documents-audit.service'
+import { DocumentsExternalService, AuthUser } from './documents-external.service'
+import { DocumentsRelationsService } from './documents-relations.service'
+import { LIFECYCLE_TRANSITIONS } from '@kms/shared'
+import type { Lifecycle, SecurityLevel, UserRole, RelationType, WebhookEvent } from '@kms/shared'
 import * as crypto from 'crypto'
 import * as fs from 'fs'
 
-type IssueType = 'warning' | 'expired' | 'no_file' | 'stale_draft' | 'long_orphan' | 'duplicate_name'
-
-/** 인증된 사용자 정보 (JWT 또는 API Key) */
-export interface AuthUser {
-  sub: string
-  role: UserRole
-  isApiKey?: boolean
-  groupIds?: string[]
-}
+// Re-export for backward compatibility
+export { AuthUser } from './documents-external.service'
 
 @Injectable()
 export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly categoriesService: CategoriesService,
+    @Inject(forwardRef(() => WebhooksService))
+    private readonly webhooksService: WebhooksService,
+    private readonly queryService: DocumentsQueryService,
+    private readonly auditService: DocumentsAuditService,
+    private readonly externalService: DocumentsExternalService,
+    private readonly relationsService: DocumentsRelationsService,
   ) {}
 
-  /** 역할별 접근 가능 보안등급 목록 */
-  private getAllowedLevels(userRole: UserRole): string[] {
-    const maxLevel = SecurityLevelGuard.maxAccessLevel(userRole)
-    return Object.entries(SECURITY_LEVEL_ORDER)
-      .filter(([, level]) => level <= maxLevel)
-      .map(([name]) => name)
+  // ============================================================
+  // 쿼리 서비스 위임 (Proxy Methods)
+  // ============================================================
+
+  findAll(...args: Parameters<DocumentsQueryService['findAll']>) {
+    return this.queryService.findAll(...args)
   }
 
-  /**
-   * API Key가 문서에 접근 가능한지 확인
-   * 문서가 배치된 폴더 중 하나라도 그룹에서 접근 가능하면 허용
-   */
-  private async canApiKeyAccessDocument(
-    groupIds: string[],
-    placements: Array<{ categoryId: number | null }>,
-  ): Promise<boolean> {
-    if (!groupIds || groupIds.length === 0) {
-      return false
-    }
-
-    // 배치된 폴더가 없으면 접근 불가 (미배치 문서는 API Key로 접근 불가)
-    const categoryIds = placements
-      .map((p) => p.categoryId)
-      .filter((id): id is number => id !== null)
-
-    if (categoryIds.length === 0) {
-      return false
-    }
-
-    // 그룹이 접근 가능한 폴더 목록 조회
-    const accessibleFolderIds = await this.categoriesService.getAccessibleFolderIds(groupIds)
-
-    // 배치된 폴더 중 하나라도 접근 가능하면 허용
-    return categoryIds.some((id) => accessibleFolderIds.includes(id))
+  findMyDocuments(...args: Parameters<DocumentsQueryService['findMyDocuments']>) {
+    return this.queryService.findMyDocuments(...args)
   }
 
-  /** 이슈 유형별 Prisma where 조건 빌더 */
-  private buildIssueWhere(type: IssueType, allowedLevels: string[]) {
-    const baseWhere = {
-      isDeleted: false,
-      securityLevel: { in: allowedLevels },
-    }
-
-    const now = new Date()
-    const hotDate = new Date(Date.now() - FRESHNESS_THRESHOLDS.HOT * 86400000)
-    const warmDate = new Date(Date.now() - FRESHNESS_THRESHOLDS.WARM * 86400000)
-    const hotFromNow = new Date(Date.now() + FRESHNESS_THRESHOLDS.HOT * 86400000)
-
-    switch (type) {
-      case 'warning':
-        return {
-          ...baseWhere,
-          lifecycle: 'ACTIVE',
-          OR: [
-            { validUntil: { gte: now, lt: hotFromNow } },
-            { validUntil: null, reviewedAt: { lt: hotDate, gte: warmDate } },
-            { validUntil: null, reviewedAt: null, updatedAt: { lt: hotDate, gte: warmDate } },
-          ],
-        }
-      case 'expired':
-        return {
-          ...baseWhere,
-          lifecycle: 'ACTIVE',
-          OR: [
-            { validUntil: { lt: now } },
-            { validUntil: null, reviewedAt: { lt: warmDate } },
-            { validUntil: null, reviewedAt: null, updatedAt: { lt: warmDate } },
-          ],
-        }
-      case 'no_file':
-        return {
-          ...baseWhere,
-          filePath: null,
-          lifecycle: { not: 'DEPRECATED' },
-        }
-      case 'stale_draft':
-        return {
-          ...baseWhere,
-          lifecycle: 'DRAFT',
-          updatedAt: { lt: new Date(Date.now() - 30 * 86400000) },
-        }
-      case 'long_orphan':
-        return {
-          ...baseWhere,
-          placements: { none: {} },
-          lifecycle: { not: 'DEPRECATED' },
-          createdAt: { lt: new Date(Date.now() - 30 * 86400000) },
-        }
-      case 'duplicate_name':
-        // duplicate_name은 별도 쿼리로 처리 — 여기서는 baseWhere만 반환
-        return baseWhere
-    }
+  findOrphans(...args: Parameters<DocumentsQueryService['findOrphans']>) {
+    return this.queryService.findOrphans(...args)
   }
 
-  /** SHA-256 해시 계산 */
-  private calculateFileHash(filePath: string): string {
-    const buffer = fs.readFileSync(filePath)
-    return crypto.createHash('sha256').update(buffer).digest('hex')
+  search(...args: Parameters<DocumentsQueryService['search']>) {
+    return this.queryService.search(...args)
   }
 
-  /** 파일명 디코딩: latin1 → UTF-8, URL-encoded → UTF-8 */
-  private decodeFileName(originalname: string): string {
-    let name = Buffer.from(originalname, 'latin1').toString('utf8')
-    // URL 인코딩된 경우 추가 디코딩 (%XX 패턴)
-    if (/%[0-9A-Fa-f]{2}/.test(name)) {
-      try {
-        name = decodeURIComponent(name)
-      } catch {
-        // 디코딩 실패 시 원본 유지
-      }
-    }
-    return name
+  getStats(...args: Parameters<DocumentsQueryService['getStats']>) {
+    return this.queryService.getStats(...args)
   }
+
+  getIssueDocuments(...args: Parameters<DocumentsQueryService['getIssueDocuments']>) {
+    return this.queryService.getIssueDocuments(...args)
+  }
+
+  getIssueCounts(...args: Parameters<DocumentsQueryService['getIssueCounts']>) {
+    return this.queryService.getIssueCounts(...args)
+  }
+
+  // ============================================================
+  // 감사 서비스 위임 (Proxy Methods)
+  // ============================================================
+
+  getRecent(...args: Parameters<DocumentsAuditService['getRecent']>) {
+    return this.auditService.getRecent(...args)
+  }
+
+  recordView(...args: Parameters<DocumentsAuditService['recordView']>) {
+    return this.auditService.recordView(...args)
+  }
+
+  recordDownload(...args: Parameters<DocumentsAuditService['recordDownload']>) {
+    return this.auditService.recordDownload(...args)
+  }
+
+  getAuditLog(...args: Parameters<DocumentsAuditService['getAuditLog']>) {
+    return this.auditService.getAuditLog(...args)
+  }
+
+  getAuditStats() {
+    return this.auditService.getAuditStats()
+  }
+
+  // ============================================================
+  // 외부 API 서비스 위임 (Proxy Methods)
+  // ============================================================
+
+  getAccessibleDocumentIds(...args: Parameters<DocumentsExternalService['getAccessibleDocumentIds']>) {
+    return this.externalService.getAccessibleDocumentIds(...args)
+  }
+
+  getAccessibleDocumentsMetadata(...args: Parameters<DocumentsExternalService['getAccessibleDocumentsMetadata']>) {
+    return this.externalService.getAccessibleDocumentsMetadata(...args)
+  }
+
+  canAccessDocument(...args: Parameters<DocumentsExternalService['canAccessDocument']>) {
+    return this.externalService.canAccessDocument(...args)
+  }
+
+  getChanges(...args: Parameters<DocumentsExternalService['getChanges']>) {
+    return this.externalService.getChanges(...args)
+  }
+
+  getBulkMetadata(...args: Parameters<DocumentsExternalService['getBulkMetadata']>) {
+    return this.externalService.getBulkMetadata(...args)
+  }
+
+  // ============================================================
+  // 연관 문서 서비스 위임 (Proxy Methods)
+  // ============================================================
+
+  findRelatedDocuments(...args: Parameters<DocumentsRelationsService['findRelatedDocuments']>) {
+    return this.relationsService.findRelatedDocuments(...args)
+  }
+
+  // ============================================================
+  // 핵심 CRUD
+  // ============================================================
 
   async create(
-    data: {
-      securityLevel?: SecurityLevel
-      validUntil?: string
-    },
+    data: { securityLevel?: SecurityLevel; validUntil?: string },
     file: Express.Multer.File | null,
     userId: string,
     userRole: UserRole,
@@ -174,11 +144,10 @@ export class DocumentsService {
       throw new BadRequestException('허용되지 않는 파일 형식입니다')
     }
 
-    // SHA-256 해시 계산 + 중복 체크 (documents + document_versions 모두)
     const fileHash = this.calculateFileHash(file.path)
     const existing = await this.checkFileHashDuplicate(fileHash)
     if (existing) {
-      try { fs.unlinkSync(file.path) } catch { /* 임시 파일 삭제 실패 무시 */ }
+      try { fs.unlinkSync(file.path) } catch { /* ignore */ }
       const canSee = SecurityLevelGuard.canAccess(userRole, existing.securityLevel as SecurityLevel)
       throw new ConflictException({
         message: '동일한 파일이 이미 존재합니다',
@@ -190,7 +159,6 @@ export class DocumentsService {
       })
     }
 
-    // 문서 코드 생성: DOC-{YYMM}-{NNN}
     const createDocument = async (docCode: string) =>
       this.prisma.document.create({
         data: {
@@ -222,18 +190,20 @@ export class DocumentsService {
     if (!document) throw new BadRequestException('문서 코드 생성에 실패했습니다')
 
     await this.prisma.documentHistory.create({
-      data: {
-        documentId: document.id,
-        action: 'CREATE',
-        changes: { fileName: originalName },
-        userId,
-      },
+      data: { documentId: document.id, action: 'CREATE', changes: { fileName: originalName }, userId },
     })
 
-    return this.formatDocument(document)
+    this.webhooksService.dispatch('document.created' as WebhookEvent, {
+      documentId: document.id,
+      docCode: document.docCode,
+      fileName: originalName,
+      securityLevel: document.securityLevel,
+      lifecycle: document.lifecycle,
+    })
+
+    return this.queryService.formatDocument(document)
   }
 
-  /** 대량 업로드 */
   async bulkCreate(
     files: Express.Multer.File[],
     securityLevel: SecurityLevel | undefined,
@@ -252,12 +222,7 @@ export class DocumentsService {
     for (const file of files) {
       try {
         const doc = await this.create({ securityLevel }, file, userId, userRole)
-        results.push({
-          fileName: file.originalname,
-          success: true,
-          documentId: doc.id,
-          docCode: doc.docCode,
-        })
+        results.push({ fileName: file.originalname, success: true, documentId: doc.id, docCode: doc.docCode })
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : '알 수 없는 오류'
         const conflictData = err instanceof ConflictException
@@ -272,149 +237,15 @@ export class DocumentsService {
       }
     }
 
-    return {
-      succeeded: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
-      results,
-    }
+    return { succeeded: results.filter((r) => r.success).length, failed: results.filter((r) => !r.success).length, results }
   }
 
-  async findAll(query: DocumentListQuery, userRole: UserRole) {
-    const { domain, lifecycle, securityLevel, orphan, page = 1, size = 20, sort = 'createdAt', order = 'desc' } = query
-
-    const allowedLevels = this.getAllowedLevels(userRole)
-    const effectiveSecurityLevel = securityLevel && allowedLevels.includes(securityLevel)
-      ? { equals: securityLevel }
-      : { in: allowedLevels }
-
-    // 도메인 필터: placement 기반
-    let domainFilter = {}
-    if (domain) {
-      domainFilter = {
-        placements: { some: { domainCode: domain } },
-      }
-    }
-
-    // 고아 필터
-    let orphanFilter = {}
-    if (orphan) {
-      orphanFilter = {
-        placements: { none: {} },
-      }
-    }
-
-    const where = {
-      isDeleted: false,
-      ...domainFilter,
-      ...orphanFilter,
-      ...(lifecycle && { lifecycle }),
-      securityLevel: effectiveSecurityLevel,
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.document.findMany({
-        where,
-        include: {
-          _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
-          placements: {
-            select: { domainCode: true, domain: { select: { displayName: true } } },
-          },
-        },
-        orderBy: { [sort]: order },
-        skip: (page - 1) * size,
-        take: size,
-      }),
-      this.prisma.document.count({ where }),
-    ])
-
-    return {
-      data: data.map((d) => ({
-        ...this.formatDocument(d),
-        placements: d.placements.map((p) => ({
-          domainCode: p.domainCode,
-          domainName: p.domain.displayName,
-        })),
-      })),
-      meta: { total, page, size, totalPages: Math.ceil(total / size) },
-    }
-  }
-
-  /** 내가 올린 문서 목록 */
-  async findMyDocuments(userId: string, userRole: UserRole, page: number = 1, size: number = 20, orphan?: boolean | null) {
-    const where: Record<string, unknown> = {
-      createdById: userId,
-      isDeleted: false,
-    }
-
-    // 서버 사이드 배치 필터
-    if (orphan === true) {
-      where.placements = { none: {} }
-    } else if (orphan === false) {
-      where.placements = { some: {} }
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.document.findMany({
-        where,
-        include: {
-          _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
-          placements: {
-            include: {
-              domain: { select: { displayName: true } },
-              category: { select: { name: true } },
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * size,
-        take: size,
-      }),
-      this.prisma.document.count({ where }),
-    ])
-
-    return {
-      data: data.map((d) => ({
-        ...this.formatDocument(d),
-        placements: d.placements.map((p) => ({
-          domainCode: p.domainCode,
-          domainName: p.domain.displayName,
-          categoryName: p.category?.name ?? null,
-        })),
-      })),
-      meta: { total, page, size, totalPages: Math.ceil(total / size) },
-    }
-  }
-
-  /** 고아 문서 목록 */
-  async findOrphans(userRole: UserRole, page: number = 1, size: number = 20) {
-    const allowedLevels = this.getAllowedLevels(userRole)
-
-    const where = {
-      isDeleted: false,
-      securityLevel: { in: allowedLevels },
-      placements: { none: {} },
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.document.findMany({
-        where,
-        include: {
-          _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * size,
-        take: size,
-      }),
-      this.prisma.document.count({ where }),
-    ])
-
-    return {
-      data: data.map((d) => this.formatDocument(d)),
-      meta: { total, page, size, totalPages: Math.ceil(total / size) },
-    }
-  }
-
-  async findOne(id: string, userRole: UserRole, authUser?: AuthUser) {
+  async findOne(
+    id: string,
+    userRole: UserRole,
+    authUser?: AuthUser,
+    options?: { includeRelations?: boolean; relationDepth?: number; relationTypes?: RelationType[]; relationLimit?: number },
+  ) {
     const doc = await this.prisma.document.findFirst({
       where: { id, isDeleted: false },
       include: {
@@ -431,19 +262,15 @@ export class DocumentsService {
 
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
 
-    // 1. 신원등급 체크 (내부/외부 공통)
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
-      throw new ForbiddenException(
-        `이 문서는 ${doc.securityLevel} 등급입니다. 접근 권한이 없습니다.`,
-      )
+      throw new ForbiddenException(`이 문서는 ${doc.securityLevel} 등급입니다. 접근 권한이 없습니다.`)
     }
 
-    // 2. 외부 API Key인 경우에만 폴더 권한 체크
     if (authUser?.isApiKey) {
       if (!authUser.groupIds || authUser.groupIds.length === 0) {
         throw new ForbiddenException('API Key는 권한 그룹 소속이 필요합니다')
       }
-      const canAccess = await this.canApiKeyAccessDocument(
+      const canAccess = await this.externalService.canApiKeyAccessDocument(
         authUser.groupIds,
         doc.placements.map((p) => ({ categoryId: p.categoryId })),
       )
@@ -452,8 +279,8 @@ export class DocumentsService {
       }
     }
 
-    return {
-      ...this.formatDocument(doc),
+    const result: Record<string, unknown> = {
+      ...this.queryService.formatDocument(doc),
       placements: doc.placements.map((p) => ({
         id: p.id,
         documentId: p.documentId,
@@ -469,30 +296,35 @@ export class DocumentsService {
         note: p.note,
       })),
     }
+
+    if (options?.includeRelations) {
+      result.relations = await this.findRelatedDocuments(id, userRole, authUser, {
+        depth: options.relationDepth ?? 1,
+        types: options.relationTypes,
+        limit: options.relationLimit ?? 50,
+      })
+    }
+
+    return result
   }
 
-  /** 내부 전용 — filePath 포함하여 반환 */
   async findOneInternal(id: string, userRole: UserRole, authUser?: AuthUser) {
     const doc = await this.prisma.document.findFirst({
       where: { id, isDeleted: false },
-      include: {
-        placements: { select: { categoryId: true } },
-      },
+      include: { placements: { select: { categoryId: true } } },
     })
 
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
 
-    // 1. 신원등급 체크
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException('접근 권한이 없습니다')
     }
 
-    // 2. 외부 API Key인 경우에만 폴더 권한 체크
     if (authUser?.isApiKey) {
       if (!authUser.groupIds || authUser.groupIds.length === 0) {
         throw new ForbiddenException('API Key는 권한 그룹 소속이 필요합니다')
       }
-      const canAccess = await this.canApiKeyAccessDocument(authUser.groupIds, doc.placements)
+      const canAccess = await this.externalService.canApiKeyAccessDocument(authUser.groupIds, doc.placements)
       if (!canAccess) {
         throw new ForbiddenException('폴더 접근 권한이 없습니다')
       }
@@ -501,13 +333,22 @@ export class DocumentsService {
     return doc
   }
 
-  async attachFile(id: string, file: Express.Multer.File, userId: string, userRole: UserRole) {
-    const doc = await this.prisma.document.findFirst({
-      where: { id, isDeleted: false },
-    })
-
+  async getHistory(id: string, userRole: UserRole) {
+    const doc = await this.prisma.document.findFirst({ where: { id, isDeleted: false } })
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
+    if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
+      throw new ForbiddenException('접근 권한이 없습니다')
+    }
+    return this.auditService.getHistory(id)
+  }
 
+  // ============================================================
+  // 파일 관리
+  // ============================================================
+
+  async attachFile(id: string, file: Express.Multer.File, userId: string, userRole: UserRole) {
+    const doc = await this.prisma.document.findFirst({ where: { id, isDeleted: false } })
+    if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException('접근 권한이 없습니다')
     }
@@ -522,9 +363,7 @@ export class DocumentsService {
     const isReplace = !!doc.filePath
     const newMinor = isReplace ? doc.versionMinor + 1 : doc.versionMinor
 
-    // 아카이빙 + 업데이트 + 이력을 트랜잭션으로 묶어 데이터 정합성 보장
     const updated = await this.prisma.$transaction(async (tx) => {
-      // 기존 파일이 있으면 → document_versions에 아카이빙
       if (isReplace && doc.filePath && doc.fileName && doc.fileType && doc.fileSize) {
         await tx.documentVersion.create({
           data: {
@@ -574,17 +413,25 @@ export class DocumentsService {
       return result
     })
 
-    return this.formatDocument(updated)
+    this.webhooksService.dispatch('document.file_uploaded' as WebhookEvent, {
+      documentId: id,
+      docCode: updated.docCode,
+      fileName: originalName,
+      fileType: ext,
+      isReplace,
+      version: `v${updated.versionMajor}.${updated.versionMinor}`,
+    })
+
+    return this.queryService.formatDocument(updated)
   }
+
+  // ============================================================
+  // 수정/삭제/라이프사이클
+  // ============================================================
 
   async update(
     id: string,
-    data: {
-      securityLevel?: SecurityLevel
-      validUntil?: string | null
-      fileName?: string
-      rowVersion: number
-    },
+    data: { securityLevel?: SecurityLevel; validUntil?: string | null; fileName?: string; rowVersion: number },
     userId: string,
     userRole: UserRole,
   ) {
@@ -592,22 +439,16 @@ export class DocumentsService {
       where: { id, isDeleted: false },
       include: { _count: { select: { placements: true } } },
     })
-
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
-
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException('접근 권한이 없습니다')
     }
-
     if (doc.rowVersion !== data.rowVersion) {
       throw new ConflictException('다른 사용자가 수정했습니다. 새로고침 후 다시 시도하세요.')
     }
-
     if (data.securityLevel && data.securityLevel !== doc.securityLevel && userRole !== 'ADMIN') {
       throw new ForbiddenException('보안 등급 변경은 ADMIN만 가능합니다')
     }
-
-    // 파일명 변경: 업로더 또는 ADMIN만 가능
     if (data.fileName && data.fileName !== doc.fileName) {
       if (doc.createdById !== userId && userRole !== 'ADMIN') {
         throw new ForbiddenException('원본 파일명은 업로더 또는 관리자만 변경할 수 있습니다')
@@ -620,55 +461,44 @@ export class DocumentsService {
         updatedBy: { connect: { id: userId } },
         ...(data.securityLevel && { securityLevel: data.securityLevel }),
         ...(data.fileName && { fileName: data.fileName }),
-        ...(data.validUntil !== undefined && {
-          validUntil: data.validUntil ? new Date(data.validUntil) : null,
-        }),
+        ...(data.validUntil !== undefined && { validUntil: data.validUntil ? new Date(data.validUntil) : null }),
       },
       include: { _count: { select: { placements: true } } },
     })
 
     await this.prisma.documentHistory.create({
-      data: {
-        documentId: id,
-        action: 'UPDATE',
-        changes: { securityLevel: data.securityLevel, fileName: data.fileName },
-        userId,
-      },
+      data: { documentId: id, action: 'UPDATE', changes: { securityLevel: data.securityLevel, fileName: data.fileName }, userId },
     })
 
-    return this.formatDocument(updated)
+    this.webhooksService.dispatch('document.updated' as WebhookEvent, {
+      documentId: id,
+      docCode: updated.docCode,
+      fileName: updated.fileName,
+      changes: { securityLevel: data.securityLevel, fileName: data.fileName, validUntil: data.validUntil },
+    })
+
+    return this.queryService.formatDocument(updated)
   }
 
   async transitionLifecycle(id: string, lifecycle: Lifecycle, userId: string, userRole: UserRole) {
-    const doc = await this.prisma.document.findFirst({
-      where: { id, isDeleted: false },
-    })
-
+    const doc = await this.prisma.document.findFirst({ where: { id, isDeleted: false } })
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
-
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException('접근 권한이 없습니다')
     }
 
     const allowed = LIFECYCLE_TRANSITIONS[doc.lifecycle as Lifecycle]
     if (!allowed || !allowed.includes(lifecycle)) {
-      throw new BadRequestException(
-        `${doc.lifecycle} → ${lifecycle} 전환은 허용되지 않습니다`,
-      )
+      throw new BadRequestException(`${doc.lifecycle} → ${lifecycle} 전환은 허용되지 않습니다`)
     }
 
-    // DRAFT → ACTIVE: major 버전 증가
     const versionBump = doc.lifecycle === 'DRAFT' && lifecycle === 'ACTIVE'
       ? { versionMajor: doc.versionMajor + 1, versionMinor: 0 }
       : {}
 
     const updated = await this.prisma.document.update({
       where: { id },
-      data: {
-        lifecycle,
-        ...versionBump,
-        updatedBy: { connect: { id: userId } },
-      },
+      data: { lifecycle, ...versionBump, updatedBy: { connect: { id: userId } } },
     })
 
     await this.prisma.documentHistory.create({
@@ -678,382 +508,59 @@ export class DocumentsService {
         changes: {
           from: doc.lifecycle,
           to: lifecycle,
-          ...(versionBump.versionMajor !== undefined && {
-            newVersion: `v${versionBump.versionMajor}.0`,
-          }),
+          ...(versionBump.versionMajor !== undefined && { newVersion: `v${versionBump.versionMajor}.0` }),
         },
         userId,
       },
     })
 
-    return this.formatDocument(updated)
+    this.webhooksService.dispatch('document.lifecycle_changed' as WebhookEvent, {
+      documentId: id,
+      docCode: updated.docCode,
+      fileName: updated.fileName,
+      fromLifecycle: doc.lifecycle,
+      toLifecycle: lifecycle,
+    })
+
+    return this.queryService.formatDocument(updated)
   }
 
   async bulkTransitionLifecycle(ids: string[], lifecycle: Lifecycle, userId: string, userRole: UserRole) {
     const results: Array<{ id: string; success: boolean; error?: string }> = []
-
     for (const id of ids) {
       try {
         await this.transitionLifecycle(id, lifecycle, userId, userRole)
         results.push({ id, success: true })
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : '알 수 없는 오류'
-        results.push({ id, success: false, error: message })
+        results.push({ id, success: false, error: err instanceof Error ? err.message : '알 수 없는 오류' })
       }
     }
-
-    const succeeded = results.filter((r) => r.success).length
-    const failed = results.filter((r) => !r.success).length
-    return { succeeded, failed, results }
+    return { succeeded: results.filter((r) => r.success).length, failed: results.filter((r) => !r.success).length, results }
   }
 
   async softDelete(id: string, userId: string, userRole: UserRole) {
-    const doc = await this.prisma.document.findFirst({
-      where: { id, isDeleted: false },
-    })
-
+    const doc = await this.prisma.document.findFirst({ where: { id, isDeleted: false } })
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
-
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException('접근 권한이 없습니다')
     }
 
-    await this.prisma.document.update({
-      where: { id },
-      data: { isDeleted: true, updatedBy: { connect: { id: userId } } },
-    })
+    await this.prisma.document.update({ where: { id }, data: { isDeleted: true, updatedBy: { connect: { id: userId } } } })
+    await this.prisma.documentHistory.create({ data: { documentId: id, action: 'DELETE', userId } })
 
-    await this.prisma.documentHistory.create({
-      data: { documentId: id, action: 'DELETE', userId },
-    })
-  }
-
-  async getStats(userRole: UserRole) {
-    const allowedLevels = this.getAllowedLevels(userRole)
-    const where = { isDeleted: false, securityLevel: { in: allowedLevels } }
-
-    const [total, active, draft, deprecated, orphan] = await Promise.all([
-      this.prisma.document.count({ where }),
-      this.prisma.document.count({ where: { ...where, lifecycle: 'ACTIVE' } }),
-      this.prisma.document.count({ where: { ...where, lifecycle: 'DRAFT' } }),
-      this.prisma.document.count({ where: { ...where, lifecycle: 'DEPRECATED' } }),
-      this.prisma.document.count({ where: { ...where, placements: { none: {} } } }),
-    ])
-
-    // 도메인별 통계: placement 기반
-    const domains = await this.prisma.domainMaster.findMany({ where: { isActive: true } })
-    const byDomain = await Promise.all(
-      domains.map(async (d: { code: string; displayName: string }) => {
-        const dWhere = {
-          ...where,
-          placements: { some: { domainCode: d.code } },
-        }
-        const dTotal = await this.prisma.document.count({ where: dWhere })
-        return {
-          domain: d.code,
-          displayName: d.displayName,
-          total: dTotal,
-        }
-      }),
-    )
-
-    return {
-      total,
-      active,
-      draft,
-      deprecated,
-      orphan,
-      byDomain,
-    }
-  }
-
-  async getRecent(limit: number, userRole: UserRole) {
-    const allowedLevels = this.getAllowedLevels(userRole)
-
-    const histories = await this.prisma.documentHistory.findMany({
-      take: Math.min(limit, 50),
-      orderBy: { createdAt: 'desc' },
-      include: {
-        document: { select: { fileName: true, securityLevel: true, isDeleted: true } },
-        user: { select: { name: true } },
-      },
-    })
-
-    return histories
-      .filter((h: { document: { isDeleted: boolean; securityLevel: string } }) =>
-        !h.document.isDeleted && allowedLevels.includes(h.document.securityLevel),
-      )
-      .map((h: {
-        id: string; documentId: string; action: string; changes: unknown;
-        createdAt: Date; document: { fileName: string | null };
-        user: { name: string } | null;
-      }) => ({
-        id: h.id,
-        documentId: h.documentId,
-        fileName: h.document.fileName,
-        action: h.action,
-        changes: h.changes as Record<string, unknown> | null,
-        userName: h.user?.name ?? null,
-        createdAt: h.createdAt.toISOString(),
-      }))
-  }
-
-  async search(
-    params: { q?: string; domain?: string; lifecycle?: string; orphan?: boolean; page: number; size: number },
-    userRole: UserRole,
-  ) {
-    const allowedLevels = this.getAllowedLevels(userRole)
-    const { q, domain, lifecycle, orphan, page = 1, size = 20 } = params
-
-    // 도메인 필터: placement 기반
-    let domainFilter = {}
-    if (domain) {
-      domainFilter = {
-        placements: { some: { domainCode: domain } },
-      }
-    }
-
-    // 고아 필터
-    let orphanFilter = {}
-    if (orphan) {
-      orphanFilter = {
-        placements: { none: {} },
-      }
-    }
-
-    // 키워드: 파일명 또는 문서코드에서 검색
-    const keywordFilter = q ? {
-      OR: [
-        { fileName: { contains: q, mode: 'insensitive' as const } },
-        { docCode: { contains: q, mode: 'insensitive' as const } },
-      ],
-    } : {}
-
-    const where = {
-      isDeleted: false,
-      securityLevel: { in: allowedLevels },
-      ...keywordFilter,
-      ...domainFilter,
-      ...orphanFilter,
-      ...(lifecycle && { lifecycle }),
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.document.findMany({
-        where,
-        include: {
-          _count: { select: { sourceRelations: true, targetRelations: true, placements: true } },
-          placements: {
-            select: { domainCode: true, domain: { select: { displayName: true } } },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * size,
-        take: size,
-      }),
-      this.prisma.document.count({ where }),
-    ])
-
-    return {
-      data: data.map((d) => ({
-        ...this.formatDocument(d),
-        placements: d.placements.map((p) => ({
-          domainCode: p.domainCode,
-          domainName: p.domain.displayName,
-        })),
-      })),
-      meta: { total, page, size, totalPages: Math.ceil(total / size) },
-    }
-  }
-
-  async getHistory(id: string, userRole: UserRole) {
-    const doc = await this.prisma.document.findFirst({
-      where: { id, isDeleted: false },
-    })
-
-    if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
-
-    if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
-      throw new ForbiddenException('접근 권한이 없습니다')
-    }
-
-    const history = await this.prisma.documentHistory.findMany({
-      where: { documentId: id },
-      orderBy: { createdAt: 'desc' },
-      include: { user: { select: { name: true } } },
-    })
-
-    // 관계 이력의 targetId를 문서명/코드로 해석
-    const relationEntries = history.filter((h: { action: string; changes: unknown }) => {
-      const changes = h.changes as Record<string, unknown> | null
-      return (h.action === 'RELATION_ADD' || h.action === 'RELATION_REMOVE') && changes?.targetId
-    })
-
-    const targetIds = [...new Set(
-      relationEntries
-        .map((h: { changes: unknown }) => (h.changes as Record<string, unknown>)?.targetId as string)
-        .filter(Boolean),
-    )]
-
-    const targetDocMap = new Map<string, { fileName: string | null; docCode: string | null }>()
-    if (targetIds.length > 0) {
-      const targetDocs = await this.prisma.document.findMany({
-        where: { id: { in: targetIds } },
-        select: { id: true, fileName: true, docCode: true },
-      })
-      for (const td of targetDocs) {
-        targetDocMap.set(td.id, { fileName: td.fileName, docCode: td.docCode })
-      }
-    }
-
-    return history.map((h: { id: string; action: string; changes: unknown; createdAt: Date; user: { name: string } | null }) => {
-      const changes = h.changes as Record<string, unknown> | null
-      let enrichedChanges = changes
-
-      if ((h.action === 'RELATION_ADD' || h.action === 'RELATION_REMOVE') && changes?.targetId) {
-        const target = targetDocMap.get(changes.targetId as string)
-        enrichedChanges = {
-          ...changes,
-          targetFileName: target?.fileName ?? null,
-          targetDocCode: target?.docCode ?? null,
-        }
-      }
-
-      return {
-        id: h.id,
-        action: h.action,
-        changes: enrichedChanges,
-        userName: h.user?.name ?? null,
-        createdAt: h.createdAt.toISOString(),
-      }
+    this.webhooksService.dispatch('document.deleted' as WebhookEvent, {
+      documentId: id,
+      docCode: doc.docCode,
+      fileName: doc.fileName,
     })
   }
 
-  async getIssueDocuments(type: IssueType, page: number, size: number, userRole: UserRole) {
-    // duplicate_name은 별도 쿼리
-    if (type === 'duplicate_name') {
-      return this.getDuplicateNameDocuments(page, size, userRole)
-    }
+  // ============================================================
+  // 버전 관리
+  // ============================================================
 
-    const where = this.buildIssueWhere(type, this.getAllowedLevels(userRole))
-
-    const [data, total] = await Promise.all([
-      this.prisma.document.findMany({
-        where,
-        include: { _count: { select: { placements: true } } },
-        orderBy: { updatedAt: 'asc' },
-        skip: (page - 1) * size,
-        take: size,
-      }),
-      this.prisma.document.count({ where }),
-    ])
-
-    return {
-      data: data.map((d) => this.formatDocument(d)),
-      meta: { total, page, size, totalPages: Math.ceil(total / size) },
-    }
-  }
-
-  async getIssueCounts(userRole: UserRole) {
-    const allowedLevels = this.getAllowedLevels(userRole)
-    const issueTypes: IssueType[] = ['warning', 'expired', 'no_file', 'stale_draft', 'long_orphan']
-
-    const counts = await Promise.all(
-      issueTypes.map((t) => this.prisma.document.count({ where: this.buildIssueWhere(t, allowedLevels) })),
-    )
-
-    // duplicate_name: raw query
-    const dupResult = await this.prisma.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(*) as count FROM (
-        SELECT file_name FROM documents
-        WHERE is_deleted = false AND file_name IS NOT NULL
-          AND security_level IN (${Prisma.join(allowedLevels)})
-        GROUP BY file_name HAVING COUNT(*) > 1
-      ) sub
-    `
-    const duplicateName = Number(dupResult[0]?.count ?? 0)
-
-    return {
-      warning: counts[0],
-      expired: counts[1],
-      noFile: counts[2],
-      staleDraft: counts[3],
-      longOrphan: counts[4],
-      duplicateName,
-    }
-  }
-
-  /** 파일명 중복 문서 목록 */
-  private async getDuplicateNameDocuments(page: number, size: number, userRole: UserRole) {
-    const allowedLevels = this.getAllowedLevels(userRole)
-
-    // 중복 파일명 가져오기
-    const dupNames = await this.prisma.$queryRaw<Array<{ file_name: string }>>`
-      SELECT file_name FROM documents
-      WHERE is_deleted = false AND file_name IS NOT NULL
-        AND security_level IN (${Prisma.join(allowedLevels)})
-      GROUP BY file_name HAVING COUNT(*) > 1
-      ORDER BY file_name
-      LIMIT ${size} OFFSET ${(page - 1) * size}
-    `
-
-    if (dupNames.length === 0) {
-      return { data: [], meta: { total: 0, page, size, totalPages: 0 } }
-    }
-
-    const names = dupNames.map((r) => r.file_name)
-    const data = await this.prisma.document.findMany({
-      where: {
-        isDeleted: false,
-        fileName: { in: names },
-        securityLevel: { in: allowedLevels },
-      },
-      include: { _count: { select: { placements: true } } },
-      orderBy: { fileName: 'asc' },
-    })
-
-    const totalResult = await this.prisma.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(*) as count FROM (
-        SELECT file_name FROM documents
-        WHERE is_deleted = false AND file_name IS NOT NULL
-          AND security_level IN (${Prisma.join(allowedLevels)})
-        GROUP BY file_name HAVING COUNT(*) > 1
-      ) sub
-    `
-    const total = Number(totalResult[0]?.count ?? 0)
-
-    return {
-      data: data.map((d) => this.formatDocument(d)),
-      meta: { total, page, size, totalPages: Math.ceil(total / size) },
-    }
-  }
-
-  /** 파일 해시 중복 체크 — documents + document_versions 모두 체크 */
-  private async checkFileHashDuplicate(fileHash: string, excludeId?: string) {
-    const docWhere: Record<string, unknown> = { fileHash, isDeleted: false }
-    if (excludeId) docWhere.id = { not: excludeId }
-
-    const existing = await this.prisma.document.findFirst({
-      where: docWhere,
-      select: { id: true, docCode: true, fileName: true, securityLevel: true },
-    })
-    if (existing) return existing
-
-    // document_versions에서도 체크
-    const versionMatch = await this.prisma.documentVersion.findFirst({
-      where: { fileHash },
-      select: {
-        document: { select: { id: true, docCode: true, fileName: true, securityLevel: true } },
-      },
-    })
-    return versionMatch?.document ?? null
-  }
-
-  /** 버전 이력 목록 */
   async getVersions(docId: string, userRole: UserRole) {
-    const doc = await this.prisma.document.findFirst({
-      where: { id: docId, isDeleted: false },
-    })
+    const doc = await this.prisma.document.findFirst({ where: { id: docId, isDeleted: false } })
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException('접근 권한이 없습니다')
@@ -1079,293 +586,52 @@ export class DocumentsService {
     }))
   }
 
-  /** 이전 버전 파일 접근 (내부용) */
   async findVersionInternal(docId: string, versionId: string, userRole: UserRole) {
-    const doc = await this.prisma.document.findFirst({
-      where: { id: docId, isDeleted: false },
-    })
+    const doc = await this.prisma.document.findFirst({ where: { id: docId, isDeleted: false } })
     if (!doc) throw new NotFoundException('문서를 찾을 수 없습니다')
     if (!SecurityLevelGuard.canAccess(userRole, doc.securityLevel as SecurityLevel)) {
       throw new ForbiddenException('접근 권한이 없습니다')
     }
 
-    const version = await this.prisma.documentVersion.findFirst({
-      where: { id: versionId, documentId: docId },
-    })
+    const version = await this.prisma.documentVersion.findFirst({ where: { id: versionId, documentId: docId } })
     if (!version) throw new NotFoundException('해당 버전을 찾을 수 없습니다')
     return version
   }
 
   // ============================================================
-  // RAG용 접근 가능 문서 API
+  // 유틸리티
   // ============================================================
 
-  /**
-   * 현재 사용자(또는 API Key)가 접근 가능한 문서 ID 목록 반환
-   * RAG 벡터 검색 시 권한 필터로 사용
-   */
-  async getAccessibleDocumentIds(authUser: AuthUser): Promise<string[]> {
-    const allowedLevels = this.getAllowedLevels(authUser.role)
+  private calculateFileHash(filePath: string): string {
+    const buffer = fs.readFileSync(filePath)
+    return crypto.createHash('sha256').update(buffer).digest('hex')
+  }
 
-    // 내부 사용자: 신원등급 범위 내 모든 문서
-    if (!authUser.isApiKey) {
-      const docs = await this.prisma.document.findMany({
-        where: {
-          isDeleted: false,
-          securityLevel: { in: allowedLevels },
-        },
-        select: { id: true },
-      })
-      return docs.map((d) => d.id)
+  private decodeFileName(originalname: string): string {
+    let name = Buffer.from(originalname, 'latin1').toString('utf8')
+    if (/%[0-9A-Fa-f]{2}/.test(name)) {
+      try { name = decodeURIComponent(name) } catch { /* ignore */ }
     }
+    return name
+  }
 
-    // 외부 API Key: 그룹에 지정된 폴더 범위 내 문서만
-    if (!authUser.groupIds || authUser.groupIds.length === 0) {
-      return [] // 그룹 미소속 API Key는 문서 없음
-    }
+  private async checkFileHashDuplicate(fileHash: string, excludeId?: string) {
+    const docWhere: Record<string, unknown> = { fileHash, isDeleted: false }
+    if (excludeId) docWhere.id = { not: excludeId }
 
-    const accessibleFolderIds = await this.categoriesService.getAccessibleFolderIds(authUser.groupIds)
-    if (accessibleFolderIds.length === 0) {
-      return []
-    }
-
-    const docs = await this.prisma.document.findMany({
-      where: {
-        isDeleted: false,
-        securityLevel: { in: allowedLevels },
-        placements: { some: { categoryId: { in: accessibleFolderIds } } },
-      },
-      select: { id: true },
+    const existing = await this.prisma.document.findFirst({
+      where: docWhere,
+      select: { id: true, docCode: true, fileName: true, securityLevel: true },
     })
-    return docs.map((d) => d.id)
-  }
+    if (existing) return existing
 
-  /**
-   * 접근 가능 문서 메타데이터 반환 (캐싱/인덱싱용)
-   */
-  async getAccessibleDocumentsMetadata(authUser: AuthUser) {
-    const allowedLevels = this.getAllowedLevels(authUser.role)
-
-    let whereCondition: Prisma.DocumentWhereInput = {
-      isDeleted: false,
-      securityLevel: { in: allowedLevels },
-    }
-
-    // 외부 API Key: 그룹에 지정된 폴더 범위로 필터
-    if (authUser.isApiKey) {
-      if (!authUser.groupIds || authUser.groupIds.length === 0) {
-        return { documents: [] }
-      }
-
-      const accessibleFolderIds = await this.categoriesService.getAccessibleFolderIds(authUser.groupIds)
-      if (accessibleFolderIds.length === 0) {
-        return { documents: [] }
-      }
-
-      whereCondition = {
-        ...whereCondition,
-        placements: { some: { categoryId: { in: accessibleFolderIds } } },
-      }
-    }
-
-    const docs = await this.prisma.document.findMany({
-      where: whereCondition,
-      select: {
-        id: true,
-        docCode: true,
-        fileName: true,
-        securityLevel: true,
-        lifecycle: true,
-        placements: {
-          select: {
-            domainCode: true,
-            categoryId: true,
-            category: { select: { code: true, name: true } },
-          },
-        },
-      },
+    const versionMatch = await this.prisma.documentVersion.findFirst({
+      where: { fileHash },
+      select: { document: { select: { id: true, docCode: true, fileName: true, securityLevel: true } } },
     })
-
-    return {
-      documents: docs.map((d) => ({
-        id: d.id,
-        docCode: d.docCode,
-        fileName: d.fileName,
-        securityLevel: d.securityLevel,
-        lifecycle: d.lifecycle,
-        folders: d.placements.map((p) => ({
-          domainCode: p.domainCode,
-          categoryId: p.categoryId,
-          categoryCode: p.category?.code ?? null,
-          categoryName: p.category?.name ?? null,
-        })),
-      })),
-    }
+    return versionMatch?.document ?? null
   }
 
-  /**
-   * 특정 문서 접근 가능 여부 확인 (단건)
-   */
-  async canAccessDocument(docId: string, authUser: AuthUser): Promise<{ canAccess: boolean; reason?: string }> {
-    const doc = await this.prisma.document.findFirst({
-      where: { id: docId, isDeleted: false },
-      include: { placements: { select: { categoryId: true } } },
-    })
-
-    if (!doc) {
-      return { canAccess: false, reason: '문서를 찾을 수 없습니다' }
-    }
-
-    // 신원등급 체크
-    if (!SecurityLevelGuard.canAccess(authUser.role, doc.securityLevel as SecurityLevel)) {
-      return { canAccess: false, reason: '신원 등급이 부족합니다' }
-    }
-
-    // 내부 사용자: 신원등급만 통과하면 접근 허용
-    if (!authUser.isApiKey) {
-      return { canAccess: true }
-    }
-
-    // 외부 API Key: 그룹 및 폴더 권한 체크
-    if (!authUser.groupIds || authUser.groupIds.length === 0) {
-      return { canAccess: false, reason: 'API Key는 권한 그룹 소속이 필요합니다' }
-    }
-
-    const canAccess = await this.canApiKeyAccessDocument(authUser.groupIds, doc.placements)
-    if (!canAccess) {
-      return { canAccess: false, reason: '폴더 접근 권한이 없습니다' }
-    }
-
-    return { canAccess: true }
-  }
-
-  // ============================================================
-  // 감사 로그
-  // ============================================================
-
-  /** 문서 열람 기록 (디바운스) */
-  private static readonly VIEW_DEBOUNCE_MS = 5 * 60 * 1000 // 5분
-
-  async recordView(docId: string, userId: string) {
-    const recent = await this.prisma.documentHistory.findFirst({
-      where: {
-        documentId: docId,
-        userId,
-        action: 'VIEW',
-        createdAt: { gte: new Date(Date.now() - DocumentsService.VIEW_DEBOUNCE_MS) },
-      },
-    })
-    if (recent) return
-
-    await this.prisma.documentHistory.create({
-      data: { documentId: docId, action: 'VIEW', userId },
-    })
-  }
-
-  /** 문서 다운로드 기록 */
-  async recordDownload(docId: string, userId: string) {
-    await this.prisma.documentHistory.create({
-      data: { documentId: docId, action: 'DOWNLOAD', userId },
-    })
-  }
-
-  /** 감사 로그 조회 */
-  async getAuditLog(query: {
-    action?: string
-    userId?: string
-    dateFrom?: string
-    dateTo?: string
-    page: number
-    size: number
-  }) {
-    const where: Record<string, unknown> = {}
-
-    if (query.action) where.action = query.action
-    if (query.userId) where.userId = query.userId
-    if (query.dateFrom || query.dateTo) {
-      where.createdAt = {
-        ...(query.dateFrom && { gte: new Date(query.dateFrom) }),
-        ...(query.dateTo && { lte: new Date(query.dateTo + 'T23:59:59.999Z') }),
-      }
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.documentHistory.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (query.page - 1) * query.size,
-        take: query.size,
-        include: {
-          document: { select: { fileName: true, docCode: true } },
-          user: { select: { name: true, email: true } },
-        },
-      }),
-      this.prisma.documentHistory.count({ where }),
-    ])
-
-    return {
-      data: data.map((h) => ({
-        id: h.id,
-        documentId: h.documentId,
-        fileName: h.document.fileName,
-        docCode: h.document.docCode,
-        action: h.action,
-        changes: h.changes,
-        userId: h.userId,
-        userName: h.user?.name ?? null,
-        userEmail: h.user?.email ?? null,
-        createdAt: h.createdAt.toISOString(),
-      })),
-      meta: { total, page: query.page, size: query.size, totalPages: Math.ceil(total / query.size) },
-    }
-  }
-
-  /** 감사 통계 — Top 10 조회 문서 + 사용자별 활동 */
-  async getAuditStats() {
-    const topViewed = await this.prisma.$queryRaw<Array<{
-      document_id: string
-      file_name: string | null
-      doc_code: string | null
-      view_count: bigint
-    }>>`
-      SELECT dh.document_id, d.file_name, d.doc_code, COUNT(*) as view_count
-      FROM document_history dh
-      JOIN documents d ON d.id = dh.document_id
-      WHERE dh.action = 'VIEW' AND d.is_deleted = false
-      GROUP BY dh.document_id, d.file_name, d.doc_code
-      ORDER BY view_count DESC
-      LIMIT 10
-    `
-
-    const userActivity = await this.prisma.$queryRaw<Array<{
-      user_id: string
-      user_name: string
-      action_count: bigint
-    }>>`
-      SELECT dh.user_id, u.name as user_name, COUNT(*) as action_count
-      FROM document_history dh
-      JOIN users u ON u.id = dh.user_id
-      GROUP BY dh.user_id, u.name
-      ORDER BY action_count DESC
-      LIMIT 10
-    `
-
-    return {
-      topViewed: topViewed.map((r) => ({
-        documentId: r.document_id,
-        fileName: r.file_name,
-        docCode: r.doc_code,
-        viewCount: Number(r.view_count),
-      })),
-      userActivity: userActivity.map((r) => ({
-        userId: r.user_id,
-        userName: r.user_name,
-        actionCount: Number(r.action_count),
-      })),
-    }
-  }
-
-  /** 문서 코드 자동 생성: DOC-{YYMM}-{NNN} */
   private async generateDocCode(): Promise<string> {
     const now = new Date()
     const yymm = `${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -1375,87 +641,7 @@ export class DocumentsService {
       orderBy: { docCode: 'desc' },
       select: { docCode: true },
     })
-    const seq = last?.docCode
-      ? parseInt(last.docCode.slice(prefix.length), 10) + 1
-      : 1
+    const seq = last?.docCode ? parseInt(last.docCode.slice(prefix.length), 10) + 1 : 1
     return `${prefix}${String(seq).padStart(3, '0')}`
-  }
-
-  /** API 응답 포맷 */
-  private formatDocument(
-    doc: {
-      id: string
-      docCode?: string | null
-      lifecycle: string
-      securityLevel: string
-      fileName: string | null
-      fileType: string | null
-      fileSize: bigint | null
-      filePath?: string | null
-      fileHash?: string | null
-      versionMajor: number
-      versionMinor: number
-      reviewedAt: Date | null
-      validUntil: Date | null
-      rowVersion: number
-      createdById: string | null
-      createdAt: Date
-      updatedAt: Date
-      _count?: { sourceRelations?: number; targetRelations?: number; placements?: number }
-    },
-  ) {
-    const relationCount = doc._count
-      ? (doc._count.sourceRelations ?? 0) + (doc._count.targetRelations ?? 0)
-      : undefined
-
-    const placementCount = doc._count?.placements ?? 0
-
-    return {
-      id: doc.id,
-      docCode: doc.docCode ?? null,
-      lifecycle: doc.lifecycle,
-      securityLevel: doc.securityLevel,
-      fileName: doc.fileName,
-      fileType: doc.fileType,
-      fileSize: Number(doc.fileSize ?? 0),
-      fileHash: doc.fileHash ?? null,
-      downloadUrl: doc.filePath ? `/api/documents/${doc.id}/file` : null,
-      versionMajor: doc.versionMajor,
-      versionMinor: doc.versionMinor,
-      reviewedAt: doc.reviewedAt?.toISOString() ?? null,
-      validUntil: doc.validUntil?.toISOString() ?? null,
-      rowVersion: doc.rowVersion,
-      createdBy: doc.createdById,
-      createdAt: doc.createdAt.toISOString(),
-      updatedAt: doc.updatedAt.toISOString(),
-      freshness: this.calcFreshness(doc),
-      placementCount,
-      ...(relationCount !== undefined && { relationCount }),
-    }
-  }
-
-  private calcFreshness(doc: {
-    lifecycle: string
-    reviewedAt: Date | null
-    validUntil: Date | null
-    updatedAt: Date
-  }): Freshness | null {
-    if (doc.lifecycle !== 'ACTIVE') return null
-
-    if (doc.validUntil) {
-      const daysUntilExpiry = (doc.validUntil.getTime() - Date.now()) / 86400000
-      if (daysUntilExpiry < 0) return 'EXPIRED'
-      if (daysUntilExpiry < FRESHNESS_THRESHOLDS.HOT) return 'WARNING'
-      return 'FRESH'
-    }
-
-    const baseDate = doc.reviewedAt ?? doc.updatedAt
-    const daysSince = Math.floor(
-      (Date.now() - baseDate.getTime()) / (1000 * 60 * 60 * 24),
-    )
-
-    if (daysSince < FRESHNESS_THRESHOLDS.HOT) return 'FRESH'
-    if (daysSince < FRESHNESS_THRESHOLDS.WARM) return 'WARNING'
-    return 'EXPIRED'
   }
 }

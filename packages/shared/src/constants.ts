@@ -100,6 +100,15 @@ export const RELATION_TYPE_LABELS: Record<string, string> = {
   SUPERSEDES: '대체',
 }
 
+/** 지식그래프 API용 방향별 관계 라벨 (ADR-016) */
+export const RELATION_DIRECTION_LABELS: Record<string, { outgoing: string; incoming: string }> = {
+  PARENT_OF: { outgoing: '상위 문서', incoming: '하위 문서로부터' },
+  CHILD_OF: { outgoing: '하위 문서', incoming: '상위 문서로부터' },
+  SIBLING: { outgoing: '형제 문서', incoming: '형제 문서로부터' },
+  REFERENCE: { outgoing: '참조 문서', incoming: '참조되는 문서' },
+  SUPERSEDES: { outgoing: '이전 버전', incoming: '다음 버전으로부터' },
+}
+
 export const FRESHNESS_LABELS: Record<string, string> = {
   FRESH: '정상',
   WARNING: '갱신필요',

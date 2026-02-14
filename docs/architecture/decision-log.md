@@ -680,6 +680,104 @@ Wrapsody(파수) 역공학 분석과 프로젝트 방향 재검토를 통해, **
 
 ---
 
+## ADR-016: 지식그래프 API 설계 — 문서 상세 조회에 연관 문서 포함 (확정, 2026-02-14)
+
+### 배경
+
+외부 업체와 RAG 시스템이 문서와 연관 문서 정보를 한 번의 API 호출로 얻을 수 있어야 한다.
+현재는 문서 조회와 관계 조회가 분리되어 있어 N+1 호출이 필요.
+
+### 요구사항
+
+1. **외부 업체**: 문서 + 관련 문서 메타데이터를 한 번에 조회
+2. **RAG 시스템**: LLM 컨텍스트 구성에 필요한 연관 문서 정보 확보
+3. **온톨로지 지식그래프**: 향후 지식그래프 시스템의 기반 API 제공
+
+### 설계 결정
+
+#### API 확장 방식
+기존 `GET /documents/:id` 엔드포인트에 쿼리 파라미터 추가:
+
+```
+GET /documents/:id?includeRelations=true&relationDepth=2&relationTypes[]=PARENT_OF
+```
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `includeRelations` | boolean | false | 연관 문서 포함 여부 |
+| `relationDepth` | 1-3 | 1 | 관계 탐색 깊이 |
+| `relationTypes` | string[] | 전체 | 포함할 관계 유형 필터 |
+| `relationLimit` | number | 50 | 관계 유형당 최대 문서 수 |
+
+#### 응답 구조
+
+```typescript
+interface DocumentWithRelationsResponse extends DocumentEntity {
+  relations?: {
+    totalCount: number      // 전체 관계 수 (권한 필터 전)
+    returnedCount: number   // 반환된 관계 수 (권한 필터 후)
+    hasMore: boolean        // limit 초과 여부
+
+    byType: Array<{
+      relationType: RelationType
+      label: string         // "상위 문서", "하위 문서" 등
+      direction: 'outgoing' | 'incoming'
+      documents: Array<RelatedDocumentSummary>
+    }>
+  }
+}
+```
+
+#### 권한 자동 필터링
+- 요청자의 신원등급(role)에 따라 접근 불가 문서 자동 제외
+- API Key의 경우 폴더 권한(groupIds)도 추가 필터링
+- totalCount vs returnedCount로 숨겨진 문서 존재 암시 (정확한 수는 노출 안 함)
+
+### 구현 내용
+
+#### 수정 파일
+
+| 파일 | 변경 내용 |
+|------|-----------|
+| `packages/shared/src/types.ts` | `RelatedDocumentSummary`, `RelationGroup`, `RelationsResponse`, `DocumentWithRelationsResponse` 타입 추가 |
+| `packages/shared/src/constants.ts` | `RELATION_DIRECTION_LABELS` 상수 추가 |
+| `packages/api/src/documents/dto/documents.dto.ts` | `DocumentDetailQueryDto` 클래스 추가 |
+| `packages/api/src/documents/documents.service.ts` | `findRelatedDocuments()` 메서드 추가, `findOne()` 확장 |
+| `packages/api/src/documents/documents.controller.ts` | 쿼리 파라미터 처리 |
+
+### 사용 예시
+
+```bash
+# 기본 조회 (기존 동작 유지)
+curl -H "Authorization: Bearer $JWT" \
+  "http://localhost:3000/api/documents/$DOC_ID"
+
+# 연관 문서 포함 (depth=1)
+curl -H "Authorization: Bearer $JWT" \
+  "http://localhost:3000/api/documents/$DOC_ID?includeRelations=true"
+
+# 특정 관계만 조회
+curl -H "Authorization: Bearer $JWT" \
+  "http://localhost:3000/api/documents/$DOC_ID?includeRelations=true&relationTypes[]=PARENT_OF&relationTypes[]=CHILD_OF"
+
+# 깊이 2 탐색
+curl -H "Authorization: Bearer $JWT" \
+  "http://localhost:3000/api/documents/$DOC_ID?includeRelations=true&relationDepth=2"
+```
+
+### 향후 확장 (Phase 2, 3)
+
+- **Phase 2**: 별도 `/knowledge-graph/explore` 엔드포인트로 그래프 탐색 API 추가
+- **Phase 3**: `relation_type_master` 테이블로 관계 유형 동적 관리, 관계 속성(property) 지원
+
+### 교훈
+
+- 기존 API를 깨지 않고 쿼리 파라미터로 확장하면 하위 호환성 유지 가능
+- 권한 필터링은 응답 가공 단계에서 처리하면 로직이 깔끔함
+- BFS 기반 재귀 탐색에서 depth 제한(max 3)으로 성능 문제 방지
+
+---
+
 ## 변경 이력
 
 | 날짜 | ADR | 요약 |
@@ -693,3 +791,4 @@ Wrapsody(파수) 역공학 분석과 프로젝트 방향 재검토를 통해, **
 | 2026-02-11 | ADR-012 | **검토중** — 문서 파싱 추상화 레이어 (업로드 고도화부터 시작) |
 | 2026-02-11 | ADR-013 | **확정** — 아키텍처 전면 재설계: 솔루션에서 프레임워크로 |
 | 2026-02-13 | ADR-014 | **확정** — Phase 로드맵 재정의: 5단계 성장 전략 (Wrapsody 분석 기반) |
+| 2026-02-14 | ADR-016 | **확정** — 지식그래프 API 설계: 문서 상세 조회에 연관 문서 포함 |

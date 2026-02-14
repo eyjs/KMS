@@ -19,7 +19,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger'
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger'
 import { ConfigService } from '@nestjs/config'
 import { Response } from 'express'
 import * as fs from 'fs'
@@ -35,8 +35,20 @@ import {
   TransitionLifecycleDto,
   BulkTransitionDto,
   IssueQueryDto,
+  DocumentDetailQueryDto,
+  ChangesQueryDto,
+  BulkMetadataDto,
 } from './dto/documents.dto'
-import type { UserRole, SecurityLevel } from '@kms/shared'
+import {
+  DocumentResponse,
+  DocumentListResponse,
+  StatsResponse,
+  ChangesResponse,
+  AccessibleIdsResponse,
+  CanAccessResponse,
+  ErrorResponse,
+} from '../common/dto/api-response.dto'
+import type { UserRole, SecurityLevel, RelationType } from '@kms/shared'
 
 interface AuthRequest {
   user: { sub: string; email: string; role: UserRole; isApiKey?: boolean; groupIds?: string[] }
@@ -111,13 +123,16 @@ export class DocumentsController {
   }
 
   @Get()
-  @ApiOperation({ summary: '문서 목록 조회' })
+  @ApiOperation({ summary: '문서 목록 조회', description: '권한 범위 내 문서 목록을 페이지네이션하여 반환합니다.' })
+  @ApiResponse({ status: 200, description: '성공', type: DocumentListResponse })
+  @ApiResponse({ status: 401, description: '인증 실패', type: ErrorResponse })
   async findAll(@Query() query: DocumentListQueryDto, @Request() req: AuthRequest) {
     return this.documentsService.findAll(query, req.user.role)
   }
 
   @Get('stats')
-  @ApiOperation({ summary: '전체 문서 통계 (대시보드용)' })
+  @ApiOperation({ summary: '전체 문서 통계 (대시보드용)', description: '라이프사이클별, 도메인별 문서 통계를 반환합니다.' })
+  @ApiResponse({ status: 200, description: '성공', type: StatsResponse })
   async getStats(@Request() req: AuthRequest) {
     return this.documentsService.getStats(req.user.role)
   }
@@ -149,7 +164,11 @@ export class DocumentsController {
   }
 
   @Get('accessible')
-  @ApiOperation({ summary: 'RAG용 - 접근 가능 문서 ID 목록' })
+  @ApiOperation({
+    summary: 'RAG용 - 접근 가능 문서 ID 목록',
+    description: '현재 인증 정보(JWT 또는 API Key)로 접근 가능한 모든 문서 ID를 반환합니다. RAG 벡터 검색 시 권한 필터로 사용합니다.',
+  })
+  @ApiResponse({ status: 200, description: '성공', type: AccessibleIdsResponse })
   async getAccessibleDocumentIds(@Request() req: AuthRequest) {
     return {
       documentIds: await this.documentsService.getAccessibleDocumentIds({
@@ -170,6 +189,44 @@ export class DocumentsController {
       isApiKey: req.user.isApiKey,
       groupIds: req.user.groupIds,
     })
+  }
+
+  @Get('changes')
+  @ApiOperation({
+    summary: '증분 동기화 - 마지막 동기화 이후 변경된 문서',
+    description: '외부 RAG 시스템이 전체 재동기화 없이 변경분만 가져갈 수 있도록 합니다. created/updated/deleted로 구분하여 반환합니다.',
+  })
+  @ApiResponse({ status: 200, description: '성공', type: ChangesResponse })
+  @ApiResponse({ status: 400, description: '잘못된 since 파라미터', type: ErrorResponse })
+  async getChanges(@Query() query: ChangesQueryDto, @Request() req: AuthRequest) {
+    return this.documentsService.getChanges(
+      new Date(query.since),
+      {
+        sub: req.user.sub,
+        role: req.user.role,
+        isApiKey: req.user.isApiKey,
+        groupIds: req.user.groupIds,
+      },
+      query.includeDeleted ?? true,
+    )
+  }
+
+  @Post('bulk-metadata')
+  @ApiOperation({
+    summary: '벌크 메타데이터 조회 - 여러 문서 한번에',
+    description: '외부 RAG 시스템이 N+1 호출 없이 여러 문서 메타데이터를 가져갑니다.',
+  })
+  async getBulkMetadata(@Body() body: BulkMetadataDto, @Request() req: AuthRequest) {
+    return this.documentsService.getBulkMetadata(
+      body.ids,
+      {
+        sub: req.user.sub,
+        role: req.user.role,
+        isApiKey: req.user.isApiKey,
+        groupIds: req.user.groupIds,
+      },
+      body.includeRelations ?? false,
+    )
   }
 
   @Get('my')
@@ -239,12 +296,27 @@ export class DocumentsController {
   }
 
   @Get('search')
-  @ApiOperation({ summary: '통합 검색' })
+  @ApiOperation({ summary: '통합 검색', description: '키워드, 도메인, 라이프사이클, 파일유형, 날짜 범위로 문서를 검색합니다.' })
+  @ApiQuery({ name: 'q', required: false, description: '검색 키워드 (파일명, 문서코드)' })
+  @ApiQuery({ name: 'domain', required: false, description: '도메인 코드' })
+  @ApiQuery({ name: 'lifecycle', required: false, enum: ['DRAFT', 'ACTIVE', 'DEPRECATED'] })
+  @ApiQuery({ name: 'fileType', required: false, enum: ['pdf', 'md', 'csv'] })
+  @ApiQuery({ name: 'orphan', required: false, type: Boolean, description: '미배치 문서만' })
+  @ApiQuery({ name: 'createdFrom', required: false, description: '생성일 시작 (ISO 8601)' })
+  @ApiQuery({ name: 'createdTo', required: false, description: '생성일 종료 (ISO 8601)' })
+  @ApiQuery({ name: 'updatedFrom', required: false, description: '수정일 시작 (ISO 8601)' })
+  @ApiQuery({ name: 'updatedTo', required: false, description: '수정일 종료 (ISO 8601)' })
+  @ApiResponse({ status: 200, description: '성공', type: DocumentListResponse })
   async search(
     @Query('q') q?: string,
     @Query('domain') domain?: string,
     @Query('lifecycle') lifecycle?: string,
+    @Query('fileType') fileType?: string,
     @Query('orphan') orphan?: string,
+    @Query('createdFrom') createdFrom?: string,
+    @Query('createdTo') createdTo?: string,
+    @Query('updatedFrom') updatedFrom?: string,
+    @Query('updatedTo') updatedTo?: string,
     @Query('page') page?: string,
     @Query('size') size?: string,
     @Request() req?: AuthRequest,
@@ -254,7 +326,12 @@ export class DocumentsController {
         q,
         domain,
         lifecycle,
+        fileType,
         orphan: orphan === 'true',
+        createdFrom,
+        createdTo,
+        updatedFrom,
+        updatedTo,
         page: parseInt(page ?? '1', 10),
         size: parseInt(size ?? '20', 10),
       },
@@ -263,20 +340,46 @@ export class DocumentsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: '문서 상세 조회' })
-  async findOne(@Param('id') id: string, @Request() req: AuthRequest) {
+  @ApiOperation({
+    summary: '문서 상세 조회 (연관 문서 포함 옵션)',
+    description: 'includeRelations=true 시 연관 문서(부모, 자식, 형제, 참조)도 함께 반환합니다. relationDepth로 탐색 깊이를 조절합니다.',
+  })
+  @ApiParam({ name: 'id', description: '문서 UUID' })
+  @ApiResponse({ status: 200, description: '성공', type: DocumentResponse })
+  @ApiResponse({ status: 403, description: '접근 권한 없음', type: ErrorResponse })
+  @ApiResponse({ status: 404, description: '문서 없음', type: ErrorResponse })
+  async findOne(
+    @Param('id') id: string,
+    @Query() query: DocumentDetailQueryDto,
+    @Request() req: AuthRequest,
+  ) {
     // 열람 기록 비동기 (실패해도 무시)
     this.documentsService.recordView(id, req.user.sub).catch(() => {})
-    return this.documentsService.findOne(id, req.user.role, {
-      sub: req.user.sub,
-      role: req.user.role,
-      isApiKey: req.user.isApiKey,
-      groupIds: req.user.groupIds,
-    })
+    return this.documentsService.findOne(
+      id,
+      req.user.role,
+      {
+        sub: req.user.sub,
+        role: req.user.role,
+        isApiKey: req.user.isApiKey,
+        groupIds: req.user.groupIds,
+      },
+      {
+        includeRelations: query.includeRelations,
+        relationDepth: query.relationDepth,
+        relationTypes: query.relationTypes as RelationType[] | undefined,
+        relationLimit: query.relationLimit,
+      },
+    )
   }
 
   @Get(':id/can-access')
-  @ApiOperation({ summary: 'RAG용 - 특정 문서 접근 가능 여부 확인' })
+  @ApiOperation({
+    summary: 'RAG용 - 특정 문서 접근 가능 여부 확인',
+    description: '현재 인증 정보로 해당 문서에 접근 가능한지 확인합니다. 불가 시 reason 필드에 사유를 포함합니다.',
+  })
+  @ApiParam({ name: 'id', description: '문서 UUID' })
+  @ApiResponse({ status: 200, description: '성공', type: CanAccessResponse })
   async canAccessDocument(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.documentsService.canAccessDocument(id, {
       sub: req.user.sub,

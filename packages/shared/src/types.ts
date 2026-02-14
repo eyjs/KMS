@@ -228,7 +228,12 @@ export interface DocumentListQuery {
   domain?: string
   lifecycle?: Lifecycle
   securityLevel?: SecurityLevel
+  fileType?: FileType
   orphan?: boolean
+  createdFrom?: string
+  createdTo?: string
+  updatedFrom?: string
+  updatedTo?: string
   page?: number
   size?: number
   sort?: string
@@ -496,4 +501,107 @@ export interface ApiKeyGroupMembershipEntity {
   groupId: string
   joinedAt: string
   group?: Pick<PermissionGroupEntity, 'id' | 'name'>
+}
+
+// ============================================================
+// 지식그래프 API (ADR-016)
+// ============================================================
+
+/** 연관 문서 요약 정보 */
+export interface RelatedDocumentSummary {
+  id: string
+  docCode: string | null
+  fileName: string | null
+  fileType: FileType | null
+  lifecycle: Lifecycle
+  securityLevel: SecurityLevel
+  downloadUrl: string | null
+  versionMajor: number
+  versionMinor: number
+  freshness: Freshness | null
+  /** 중첩 연관 문서 (depth > 1일 때) */
+  relations?: RelationsResponse
+}
+
+/** 관계 유형별 그룹 */
+export interface RelationGroup {
+  relationType: RelationType
+  label: string
+  direction: 'outgoing' | 'incoming'
+  documents: RelatedDocumentSummary[]
+}
+
+/** 연관 문서 응답 구조 */
+export interface RelationsResponse {
+  totalCount: number
+  returnedCount: number
+  hasMore: boolean
+  byType: RelationGroup[]
+}
+
+/** 연관 문서 포함 문서 상세 응답 */
+export interface DocumentWithRelationsResponse extends DocumentEntity {
+  relations?: RelationsResponse
+}
+
+/** 문서 상세 조회 쿼리 파라미터 */
+export interface DocumentDetailQuery {
+  includeRelations?: boolean
+  relationDepth?: number
+  relationTypes?: RelationType[]
+  relationLimit?: number
+}
+
+// ============================================================
+// Webhook
+// ============================================================
+
+export const WebhookEvent = {
+  DOCUMENT_CREATED: 'document.created',
+  DOCUMENT_UPDATED: 'document.updated',
+  DOCUMENT_DELETED: 'document.deleted',
+  LIFECYCLE_CHANGED: 'document.lifecycle_changed',
+  FILE_UPLOADED: 'document.file_uploaded',
+  RELATION_ADDED: 'relation.added',
+  RELATION_REMOVED: 'relation.removed',
+} as const
+export type WebhookEvent = (typeof WebhookEvent)[keyof typeof WebhookEvent]
+
+export interface WebhookEntity {
+  id: string
+  name: string
+  url: string
+  events: WebhookEvent[]
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  lastCalledAt: string | null
+  failCount: number
+}
+
+export interface WebhookDeliveryEntity {
+  id: string
+  webhookId: string
+  event: WebhookEvent
+  payload: Record<string, unknown>
+  statusCode: number | null
+  success: boolean
+  errorMessage: string | null
+  duration: number | null
+  createdAt: string
+}
+
+export interface CreateWebhookDto {
+  name: string
+  url: string
+  secret?: string
+  events: WebhookEvent[]
+}
+
+export interface UpdateWebhookDto {
+  name?: string
+  url?: string
+  secret?: string
+  events?: WebhookEvent[]
+  isActive?: boolean
 }

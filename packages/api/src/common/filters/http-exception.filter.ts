@@ -16,6 +16,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp()
     const response = ctx.getResponse<Response>()
     const request = ctx.getRequest<Request>()
+    const requestId = request.requestId
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR
     let body: Record<string, unknown> = {
@@ -23,6 +24,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message: '서버 내부 오류가 발생했습니다',
       timestamp: new Date().toISOString(),
       path: request.url,
+      requestId,
     }
 
     if (exception instanceof HttpException) {
@@ -42,20 +44,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         ? body.message.join('; ')
         : body.message
 
+      const logPrefix = requestId ? `[${requestId.slice(0, 8)}] ` : ''
+
       // 4xx는 warn, 5xx는 error
       if (status >= 500) {
         this.logger.error(
-          `${request.method} ${request.url} ${status} - ${logMessage}`,
+          `${logPrefix}${request.method} ${request.url} ${status} - ${logMessage}`,
           exception.stack,
         )
       } else {
-        this.logger.warn(`${request.method} ${request.url} ${status} - ${logMessage}`)
+        this.logger.warn(`${logPrefix}${request.method} ${request.url} ${status} - ${logMessage}`)
       }
     } else {
       // 예상치 못한 에러
       const err = exception instanceof Error ? exception : new Error(String(exception))
+      const logPrefix = requestId ? `[${requestId.slice(0, 8)}] ` : ''
       this.logger.error(
-        `${request.method} ${request.url} 500 - Unhandled: ${err.message}`,
+        `${logPrefix}${request.method} ${request.url} 500 - Unhandled: ${err.message}`,
         err.stack,
       )
     }
