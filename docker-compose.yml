@@ -16,6 +16,28 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: kms-api
+    ports:
+      - '3001:3000'
+    environment:
+      DATABASE_URL: postgresql://kms:kms_dev@postgres:5432/kms?schema=public
+      JWT_SECRET: dev_jwt_secret_key_32_chars_min
+      JWT_REFRESH_SECRET: dev_refresh_secret_32_chars_min
+      JWT_EXPIRES_IN: 1h
+      JWT_REFRESH_EXPIRES_IN: 7d
+      API_PORT: 3000
+      STORAGE_PATH: /app/storage/originals
+      CORS_ORIGIN: http://localhost:5173
+    volumes:
+      - storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: kms-pgadmin
@@ -30,3 +52,4 @@ services:
 
 volumes:
   pgdata:
+  storage:
