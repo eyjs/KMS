@@ -9,7 +9,7 @@ import { useDomainStore } from '@/stores/domain'
 import { LIFECYCLE_TRANSITIONS, LIFECYCLE_LABELS, FRESHNESS_LABELS, SECURITY_LEVEL_LABELS, RELATION_TYPE_LABELS } from '@kms/shared'
 import { useRecentDocs } from '@/composables/useRecentDocs'
 import { getApiErrorMessage } from '@/utils'
-import type { DocumentEntity, DocumentPlacementEntity, Lifecycle, RelationEntity, RelationType } from '@kms/shared'
+import type { DocumentEntity, DocumentPlacementEntity, Lifecycle, RelationEntity, RelationType, RelationGraphResponse } from '@kms/shared'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PdfViewer from '@/components/viewer/PdfViewer.vue'
 import MarkdownViewer from '@/components/viewer/MarkdownViewer.vue'
@@ -18,6 +18,10 @@ import DocumentTimeline from '@/components/document/DocumentTimeline.vue'
 import DocumentExplorer from '@/components/document/DocumentExplorer.vue'
 import VersionHistoryDialog from '@/components/document/VersionHistoryDialog.vue'
 import RelationPropertyDialog from '@/components/graph/RelationPropertyDialog.vue'
+import RelationGraph from '@/components/graph/RelationGraph.vue'
+import OntologyGraph from '@/components/graph/OntologyGraph.vue'
+import { knowledgeGraphApi } from '@/api/knowledge-graph'
+import type { OntologyGraphResponse } from '@kms/shared'
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const replaceFileInput = ref<HTMLInputElement | null>(null)
@@ -26,6 +30,12 @@ const versionDialogVisible = ref(false)
 const propertyDialogVisible = ref(false)
 const selectedRelationId = ref<string | null>(null)
 const selectedRelationType = ref('')
+
+// 뷰 모드 탭
+const viewMode = ref<'document' | 'graph' | 'ontology'>('document')
+const graphData = ref<RelationGraphResponse | null>(null)
+const ontologyData = ref<OntologyGraphResponse | null>(null)
+const graphLoading = ref(false)
 
 const route = useRoute()
 const router = useRouter()
@@ -38,6 +48,70 @@ const relations = ref<{ asSource: RelationEntity[]; asTarget: RelationEntity[] }
 const placements = ref<DocumentPlacementEntity[]>([])
 const loading = ref(true)
 const historyExpanded = ref<string[]>([]) // 기본값: 접힌 상태
+
+// 그래프/온톨로지 데이터 로드
+async function loadGraphData() {
+  if (!doc.value) return
+  graphLoading.value = true
+  try {
+    const { data } = await knowledgeGraphApi.explore(doc.value.id, 2, undefined, 50)
+    // KnowledgeGraphResponse를 RelationGraphResponse로 변환
+    graphData.value = {
+      nodes: data.nodes.map((n) => ({
+        id: n.id,
+        docCode: n.docCode,
+        fileName: n.fileName,
+        lifecycle: n.lifecycle,
+        securityLevel: n.securityLevel,
+        depth: n.depth,
+      })),
+      edges: data.edges,
+      centerId: data.meta.startId,
+    }
+  } catch (error) {
+    console.error('Failed to load graph data:', error)
+    graphData.value = null
+  } finally {
+    graphLoading.value = false
+  }
+}
+
+async function loadOntologyData() {
+  if (!doc.value) return
+  graphLoading.value = true
+  try {
+    const { data } = await knowledgeGraphApi.exploreOntology(doc.value.id, 2, undefined, 50)
+    ontologyData.value = data
+  } catch (error) {
+    console.error('Failed to load ontology data:', error)
+    ontologyData.value = null
+  } finally {
+    graphLoading.value = false
+  }
+}
+
+function handleViewModeChange(mode: string) {
+  viewMode.value = mode as 'document' | 'graph' | 'ontology'
+  if (mode === 'graph' && !graphData.value) {
+    loadGraphData()
+  } else if (mode === 'ontology' && !ontologyData.value) {
+    loadOntologyData()
+  }
+}
+
+function handleGraphNodeClick(nodeId: string) {
+  // 노드 클릭 시 해당 문서로 이동
+}
+
+function handleGraphNodeDoubleClick(nodeId: string) {
+  // 더블클릭 시 해당 문서 상세로 이동
+  router.push(`/d/${domainCode.value}/doc/${nodeId}`)
+}
+
+function handleOntologyUpdated() {
+  // 온톨로지 속성 변경 후 데이터 새로고침
+  loadOntologyData()
+}
 
 const RELATION_TYPES: Array<{ value: RelationType; label: string }> = [
   { value: 'PARENT_OF', label: '상위 문서 (PARENT_OF)' },
@@ -561,23 +635,65 @@ async function handleRemovePlacement(placementId: string, domainName: string) {
         </el-card>
       </div>
 
-      <!-- 가운데: 문서 뷰어 (메인) -->
+      <!-- 가운데: 문서 뷰어 / 그래프 / 온톨로지 (탭) -->
       <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden">
         <el-card shadow="never" style="flex: 1; display: flex; flex-direction: column" :body-style="{ padding: '0', flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' }">
           <template #header>
-            <span style="font-weight: 600">문서 뷰어</span>
+            <div style="display: flex; align-items: center; gap: 16px">
+              <el-radio-group
+                :model-value="viewMode"
+                size="small"
+                @change="handleViewModeChange"
+              >
+                <el-radio-button value="document">문서</el-radio-button>
+                <el-radio-button value="graph">관계 그래프</el-radio-button>
+                <el-radio-button value="ontology">온톨로지</el-radio-button>
+              </el-radio-group>
+              <span v-if="viewMode === 'graph'" style="font-size: 12px; color: #909399">
+                노드 더블클릭: 해당 문서로 이동
+              </span>
+              <span v-if="viewMode === 'ontology'" style="font-size: 12px; color: #909399">
+                엣지 클릭: 관계 속성 설정
+              </span>
+            </div>
           </template>
-          <div v-if="hasFile" style="flex: 1; min-height: 0">
-            <PdfViewer v-if="doc.fileType === 'pdf'" :document-id="doc.id" />
-            <MarkdownViewer v-else-if="doc.fileType === 'md'" :document-id="doc.id" />
-            <CsvViewer v-else-if="doc.fileType === 'csv'" :document-id="doc.id" />
+
+          <!-- 문서 뷰어 -->
+          <div v-if="viewMode === 'document'" style="flex: 1; min-height: 0">
+            <div v-if="hasFile" style="height: 100%">
+              <PdfViewer v-if="doc.fileType === 'pdf'" :document-id="doc.id" />
+              <MarkdownViewer v-else-if="doc.fileType === 'md'" :document-id="doc.id" />
+              <CsvViewer v-else-if="doc.fileType === 'csv'" :document-id="doc.id" />
+            </div>
+            <div v-else style="height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; color: #909399">
+              <p style="margin: 0 0 12px">파일이 아직 첨부되지 않은 문서입니다</p>
+              <el-button type="primary" size="small" :loading="attachLoading" @click="triggerFileAttach">
+                파일 첨부
+              </el-button>
+              <input ref="fileInput" type="file" accept=".pdf,.md,.csv" style="display: none" @change="handleFileAttach" />
+            </div>
           </div>
-          <div v-else style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; color: #909399">
-            <p style="margin: 0 0 12px">파일이 아직 첨부되지 않은 문서입니다</p>
-            <el-button type="primary" size="small" :loading="attachLoading" @click="triggerFileAttach">
-              파일 첨부
-            </el-button>
-            <input ref="fileInput" type="file" accept=".pdf,.md,.csv" style="display: none" @change="handleFileAttach" />
+
+          <!-- 관계 그래프 (읽기 전용) -->
+          <div v-else-if="viewMode === 'graph'" style="flex: 1; min-height: 0; position: relative">
+            <RelationGraph
+              :data="graphData"
+              :loading="graphLoading"
+              @node-click="handleGraphNodeClick"
+              @node-double-click="handleGraphNodeDoubleClick"
+            />
+          </div>
+
+          <!-- 온톨로지 그래프 (편집 가능) -->
+          <div v-else-if="viewMode === 'ontology'" style="flex: 1; min-height: 0; position: relative">
+            <OntologyGraph
+              :data="ontologyData"
+              :loading="graphLoading"
+              :editable="auth.hasMinRole('EDITOR')"
+              @node-click="handleGraphNodeClick"
+              @node-double-click="handleGraphNodeDoubleClick"
+              @updated="handleOntologyUpdated"
+            />
           </div>
         </el-card>
       </div>

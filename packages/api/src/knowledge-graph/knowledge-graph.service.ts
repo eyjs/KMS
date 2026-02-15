@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { CategoriesService } from '../categories/categories.service'
 import { SECURITY_LEVEL_ORDER } from '@kms/shared'
@@ -21,6 +21,10 @@ interface AuthUser {
   isApiKey?: boolean
   groupIds?: string[]
 }
+
+/** 허용된 관계 속성 키 (프레임워크 표준) */
+const ALLOWED_PROPERTY_KEYS = ['strength', 'reason', 'validUntil', 'confidence', 'createdByType'] as const
+const MAX_VALUE_LENGTH = 1000
 
 @Injectable()
 export class KnowledgeGraphService {
@@ -386,6 +390,18 @@ export class KnowledgeGraphService {
     key: string,
     value: string,
   ): Promise<RelationPropertyEntity> {
+    // 키 검증 (프레임워크 표준 키만 허용)
+    if (!ALLOWED_PROPERTY_KEYS.includes(key as typeof ALLOWED_PROPERTY_KEYS[number])) {
+      throw new BadRequestException(
+        `허용되지 않은 속성 키: ${key}. 허용된 키: ${ALLOWED_PROPERTY_KEYS.join(', ')}`,
+      )
+    }
+
+    // 값 길이 검증
+    if (value.length > MAX_VALUE_LENGTH) {
+      throw new BadRequestException(`속성 값이 최대 길이(${MAX_VALUE_LENGTH})를 초과했습니다`)
+    }
+
     // 관계 존재 확인
     const relation = await this.prisma.relation.findUnique({
       where: { id: relationId },

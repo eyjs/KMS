@@ -147,8 +147,16 @@ function destroyNetwork() {
     network.destroy()
     network = null
   }
-  nodesDataSet = null
-  edgesDataSet = null
+  // DataSet 명시적 정리 (메모리 누수 방지)
+  if (nodesDataSet) {
+    nodesDataSet.clear()
+    nodesDataSet = null
+  }
+  if (edgesDataSet) {
+    edgesDataSet.clear()
+    edgesDataSet = null
+  }
+  edgeMap.clear()
 }
 
 function renderGraph() {
@@ -229,20 +237,29 @@ async function saveProperties() {
   saving.value = true
   try {
     const relationId = selectedEdge.value.id
+    const operations: Promise<unknown>[] = []
 
-    // 강도 저장
-    if (propertyForm.value.strength && propertyForm.value.strength !== '5') {
-      await knowledgeGraphApi.setRelationProperty(relationId, 'strength', propertyForm.value.strength)
+    // 강도 저장 (숫자를 문자열로 변환)
+    const strengthValue = String(propertyForm.value.strength ?? 5)
+    if (strengthValue !== '5') {
+      operations.push(knowledgeGraphApi.setRelationProperty(relationId, 'strength', strengthValue))
     }
 
     // 이유 저장
-    if (propertyForm.value.reason) {
-      await knowledgeGraphApi.setRelationProperty(relationId, 'reason', propertyForm.value.reason)
+    const reasonValue = String(propertyForm.value.reason ?? '').trim()
+    if (reasonValue) {
+      operations.push(knowledgeGraphApi.setRelationProperty(relationId, 'reason', reasonValue))
     }
 
     // 신뢰도 저장
-    if (propertyForm.value.confidence && propertyForm.value.confidence !== 'manual') {
-      await knowledgeGraphApi.setRelationProperty(relationId, 'confidence', propertyForm.value.confidence)
+    const confidenceValue = String(propertyForm.value.confidence ?? 'manual')
+    if (confidenceValue !== 'manual') {
+      operations.push(knowledgeGraphApi.setRelationProperty(relationId, 'confidence', confidenceValue))
+    }
+
+    // 병렬로 저장
+    if (operations.length > 0) {
+      await Promise.all(operations)
     }
 
     ElMessage.success('속성이 저장되었습니다')
