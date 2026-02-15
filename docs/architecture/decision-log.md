@@ -792,3 +792,63 @@ curl -H "Authorization: Bearer $JWT" \
 | 2026-02-11 | ADR-013 | **확정** — 아키텍처 전면 재설계: 솔루션에서 프레임워크로 |
 | 2026-02-13 | ADR-014 | **확정** — Phase 로드맵 재정의: 5단계 성장 전략 (Wrapsody 분석 기반) |
 | 2026-02-14 | ADR-016 | **확정** — 지식그래프 API 설계: 문서 상세 조회에 연관 문서 포함 |
+| 2026-02-16 | ADR-017 | **계획** — Entity 레이어 도입: 온톨로지 클래스 개념 추가 |
+
+---
+
+## ADR-017: Entity 레이어 도입 — 온톨로지 클래스 개념 (계획, 2026-02-16)
+
+### 배경
+
+현재 지식그래프의 한계:
+- 모든 노드가 "문서(Document)" 단일 타입
+- "보험사 → 상품 → 문서" 같은 다중 엔티티 관계 표현 불가
+- RAG에서 컨텍스트 확장이 어려움
+
+### 핵심 설계
+
+**기존 구조 위에 Entity 레이어를 얹는 방식** (기존 Document 변경 없음)
+
+```
+        ┌── Document (기존, 그대로)
+Node ──┤
+        └── Entity (신규, 선택적)
+              ├── Carrier (보험사)
+              ├── Product (상품)
+              ├── Person (사람)
+              └── Regulation (규정)
+```
+
+### 하위호환 보장
+
+| 레이어 | 영향 |
+|--------|------|
+| Document | ❌ 없음 |
+| Relation | ⚠️ nullable 컬럼 추가만 |
+| DocumentPlacement | ❌ 없음 |
+| 도메인/카테고리 | ❌ 없음 |
+| 권한 | ❌ 없음 |
+| 지식그래프 | ✅ 옵션으로 Entity 포함 |
+
+### 주요 테이블
+
+1. **entity_class_master**: 엔티티 클래스 정의 (CARRIER, PRODUCT, PERSON...)
+2. **entities**: 문서 외 엔티티 인스턴스
+3. **relations 확장**: `source_entity_id`, `target_entity_id` nullable 컬럼 추가
+
+### 예상 결과
+
+```
+Before: 약관.pdf ──PARENT_OF──> 가이드.pdf
+
+After:  삼성생명(Carrier) ──제공──> 종신보험(Product)
+        종신보험(Product) ──관련문서──> 약관.pdf(Document)
+        보험업법(Regulation) ──규제──> 종신보험(Product)
+```
+
+### 일정
+
+- **Phase 2.5 또는 Phase 3 초반** 도입 예정
+- 예상 소요: 8~10시간
+
+→ 상세 설계: [`entity-layer-design.md`](./entity-layer-design.md)

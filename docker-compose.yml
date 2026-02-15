@@ -31,7 +31,7 @@ services:
       JWT_REFRESH_EXPIRES_IN: 7d
       API_PORT: 3000
       STORAGE_PATH: /app/storage/originals
-      CORS_ORIGIN: http://localhost:5173
+      CORS_ORIGIN: "*"
     volumes:
       - storage:/app/storage
     depends_on:
